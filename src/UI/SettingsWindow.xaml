@@ -84,7 +84,7 @@
             <!-- verify -->
             <Border Style="{StaticResource Row}">
                 <CheckBox x:Name="Verify" Style="{StaticResource Toggle}" Checked="Changed" Unchecked="Changed"
-                          ToolTip="Reads each copy back and compares it with the original. Moves are always checked before the original is removed.">
+                          ToolTip="Reads each copy back and compares it with the original. A move then removes the original only after its copy matches.">
                     <StackPanel>
                         <TextBlock Style="{StaticResource Head}" Text="Check every copy"/>
                         <TextBlock Style="{StaticResource Sub}" Text="xxHash64"/>

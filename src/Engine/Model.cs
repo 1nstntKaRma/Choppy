@@ -18,7 +18,7 @@ namespace Choppy.Engine
         public OpKind Op;
         public List<string> Sources = new List<string>();   // long-form paths
         public string Dest;                                  // long-form destination folder
-        public bool Verify;                                  // copies only; a move is always verified before its source is deleted
+        public bool Verify;                                  // check each copy (a move then removes the original only after its copy matches)
         public ConflictPolicy Policy = ConflictPolicy.Ask;
         public bool ResumeMode;                              // a resumed job skips files already there with the same size and date
         public double SpeedLimitMbps;                        // 0 = no limit

@@ -214,6 +214,11 @@ namespace Choppy
                     var jt = new PipeTuning { Chunk = 1 << 20, Slots = 4, Align = 4096, WriteBatch = 3 };
                     var rj = BigCopy.Copy(Paths.ToLong(a), Paths.ToLong(b), 0, File.GetLastWriteTimeUtc(a).ToFileTimeUtc(), 0x20, jt, true, false, null, n => true);
                     check("pipeline joined writes " + size + " B", rj.Error == 0 && rj.Hash == XxHash64.OfBytes(data) && System.Linq.Enumerable.SequenceEqual(File.ReadAllBytes(b), data));
+                    // one disk: read a batch, then write it
+                    string c = Path.Combine(dir, "phase-" + size + ".bin");
+                    var pt = new PipeTuning { Chunk = 1 << 20, Slots = 3, Align = 4096, Phased = true };
+                    var rp = BigCopy.Copy(Paths.ToLong(a), Paths.ToLong(c), 0, File.GetLastWriteTimeUtc(a).ToFileTimeUtc(), 0x20, pt, true, false, null, 2 << 20, n => true);
+                    check("pipeline phased " + size + " B", rp.Error == 0 && rp.Hash == XxHash64.OfBytes(data) && System.Linq.Enumerable.SequenceEqual(File.ReadAllBytes(c), data));
                 }
                 // the end through the Windows cache: same bytes, same size
                 {

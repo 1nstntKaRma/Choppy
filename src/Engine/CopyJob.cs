@@ -27,7 +27,7 @@ namespace Choppy.Engine
     /// <summary>
     /// A copy or move job. Never loses a file:
     ///  - every file is written to "&lt;name&gt;.chpart" and renamed into place only when complete (and verified, if on),
-    ///  - a move deletes a source file only after its copy is in place and verified,
+    ///  - a move deletes a source file only after its copy is in place (and verified, if on; a big file is flushed to the disk),
     ///  - errors are retried with backoff; a network drop waits for the network to come back.
     /// </summary>
     internal sealed class CopyJob
@@ -67,7 +67,7 @@ namespace Choppy.Engine
         public readonly List<FileItem> SkippedItems = new List<FileItem>();
         public readonly List<string> Notes = new List<string>();
         public string LogPath;
-        public volatile bool Verify;            // effective for this job (copies: setting, can be switched live; moves: always)
+        public volatile bool Verify;            // effective for this job (the setting; can be switched live)
 
         // speed history (bytes/s), one sample per 250 ms
         public readonly object SpeedLock = new object();
@@ -206,7 +206,7 @@ namespace Choppy.Engine
             var monitor = new Thread(MonitorLoop) { IsBackground = true, Name = "CopyJob monitor" };
             try
             {
-                Verify = Spec.Op == OpKind.Move || Spec.Verify;
+                Verify = Spec.Verify;
                 SetPhase(JobPhase.Analyzing);
                 monitor.Start();
 
@@ -960,7 +960,7 @@ namespace Choppy.Engine
                 Id = Spec.Id + "a",
                 Op = Spec.Op,
                 Dest = Spec.Dest,
-                Verify = Verify && Spec.Op == OpKind.Copy,
+                Verify = Verify,
                 Policy = Spec.Policy,
                 SpeedLimitMbps = limitBps > 0 ? limitBps * 8 / 1e6 : 0,
                 Origin = "Administrator",

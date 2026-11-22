@@ -604,12 +604,8 @@ namespace Choppy.UI
             {
                 var s = Settings.Current;
                 if (TgClose.IsChecked != s.CloseWhenDone) TgClose.IsChecked = s.CloseWhenDone;
-                bool move = job != null && job.Spec.Op == OpKind.Move;
-                bool verify = move || (job != null && !job.IsFinished ? job.Verify || (job.Phase == JobPhase.Queued && job.Spec.Verify) : s.VerifyCopies);
+                bool verify = job != null && !job.IsFinished ? job.Verify || (job.Phase == JobPhase.Queued && job.Spec.Verify) : s.VerifyCopies;
                 if (TgVerify.IsChecked != verify) TgVerify.IsChecked = verify;
-                TgVerify.IsEnabled = !move;
-                TgVerify.ToolTip = move ? "A move always checks each copy (xxHash64) before the original is removed."
-                    : "Check every copied file against the original (xxHash64)";
                 bool limitOn = s.SpeedLimitMbps > 0;
                 if (TgLimit.IsChecked != limitOn) TgLimit.IsChecked = limitOn;
                 bool mbps = UseMbps(job);
@@ -641,7 +637,7 @@ namespace Choppy.UI
             {
                 bool on = TgVerify.IsChecked == true;
                 s.VerifyCopies = on;
-                if (job != null && !job.IsFinished && job.Spec.Op == OpKind.Copy) { job.Verify = on; job.Spec.Verify = on; }
+                if (job != null && !job.IsFinished) { job.Verify = on; job.Spec.Verify = on; }
             }
             else if (sender == TgLimit)
             {

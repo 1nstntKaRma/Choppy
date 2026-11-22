@@ -66,6 +66,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <TextBlock Style="{StaticResource T.Cap}" Text="FROM" VerticalAlignment="Center"/>
@@ -76,14 +77,14 @@
                 <TextBlock Grid.Row="1" Style="{StaticResource T.Cap}" Text="TO" VerticalAlignment="Center"/>
                 <Path x:Name="ToIcon" Grid.Row="1" Grid.Column="1" Data="{StaticResource G.Drive}" Stroke="#FFAEB6C2" StrokeThickness="1.3" VerticalAlignment="Center" HorizontalAlignment="Left"/>
                 <TextBlock x:Name="ToName" Grid.Row="1" Grid.Column="2" Style="{StaticResource Head}" Text="-"/>
-                <ui:PathText x:Name="ToPath" Grid.Row="1" Grid.Column="3" Height="20" Margin="10,1,0,0" VerticalAlignment="Center"/>
-                <!-- compact: speeds next to the destination -->
-                <TextBlock x:Name="CompactSpeeds" Grid.Row="1" Grid.Column="4" FontSize="14" VerticalAlignment="Center" Margin="14,0,0,0">
+                <ui:PathText x:Name="ToPath" Grid.Row="1" Grid.Column="3" Grid.ColumnSpan="3" Height="20" Margin="10,1,0,0" VerticalAlignment="Center"/>
+                <!-- compact: speeds on their own row (right, where the bar ends), so the destination keeps the whole width -->
+                <TextBlock x:Name="CompactSpeeds" Grid.Row="2" Grid.ColumnSpan="5" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,4,0,-6">
                     <Run x:Name="CNow" Text="" Foreground="{StaticResource B.NowSpeed}" FontWeight="SemiBold"/><Run x:Name="CAvgLabel" Text="" Foreground="{StaticResource B.Dim}" FontSize="12.5"/><Run x:Name="CAvg" Text="" Foreground="{StaticResource B.AvgSpeed}" FontWeight="SemiBold"/>
                 </TextBlock>
 
                 <!-- extended: badge + percent -->
-                <Border x:Name="Badge" Grid.Row="2" Grid.ColumnSpan="4" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,12,0,0"
+                <Border x:Name="Badge" Grid.Row="3" Grid.ColumnSpan="4" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,12,0,0"
                         CornerRadius="15" Padding="12,4,14,5" Background="#FF132B44" BorderBrush="#FF245E9C" BorderThickness="1">
                     <StackPanel Orientation="Horizontal">
                         <Ellipse x:Name="BadgeDot" Width="7" Height="7" Fill="#FF3BA3FF" VerticalAlignment="Center" Margin="0,1,0,0"/>
@@ -91,18 +92,18 @@
                         <TextBlock x:Name="BadgeDetail" Text="checking the drives" FontSize="13.5" Foreground="{StaticResource B.AccentText}" Margin="12,0,0,0"/>
                     </StackPanel>
                 </Border>
-                <TextBlock x:Name="PercentExt" Grid.Row="2" Grid.Column="4" Grid.ColumnSpan="2" Text="0%" FontFamily="{StaticResource F.Display}" FontSize="30" FontWeight="Bold"
+                <TextBlock x:Name="PercentExt" Grid.Row="3" Grid.Column="4" Grid.ColumnSpan="2" Text="0%" FontFamily="{StaticResource F.Display}" FontSize="30" FontWeight="Bold"
                            Foreground="#FFF5F7FA" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,8,0,-4"/>
 
-                <Grid x:Name="BarTrack" Grid.Row="3" Grid.ColumnSpan="5" Height="7" VerticalAlignment="Center" Margin="0,14,0,0">
+                <Grid x:Name="BarTrack" Grid.Row="4" Grid.ColumnSpan="5" Height="7" VerticalAlignment="Center" Margin="0,14,0,0">
                     <Border CornerRadius="3.5" Background="{StaticResource B.Track}"/>
                     <Border x:Name="Bar" CornerRadius="3.5" Background="{StaticResource B.Progress}" HorizontalAlignment="Left" Width="0"/>
                 </Grid>
-                <TextBlock x:Name="PercentCompact" Grid.Row="3" Grid.Column="5" Text="0%" FontFamily="{StaticResource F.Display}" FontSize="25" FontWeight="Bold"
+                <TextBlock x:Name="PercentCompact" Grid.Row="4" Grid.Column="5" Text="0%" FontFamily="{StaticResource F.Display}" FontSize="25" FontWeight="Bold"
                            Foreground="#FFF5F7FA" MinWidth="70" TextAlignment="Right" VerticalAlignment="Center" Margin="12,12,0,0"/>
 
                 <!-- 24.8 GB of 35.8 GB · 2 of 6 files · Elapsed 37 min · Remaining 16 min -->
-                <Grid x:Name="Stats" Grid.Row="4" Grid.ColumnSpan="5" Margin="0,9,0,0">
+                <Grid x:Name="Stats" Grid.Row="5" Grid.ColumnSpan="5" Margin="0,9,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
@@ -189,7 +190,7 @@
                         <CheckBox x:Name="TgClose" Style="{StaticResource Quick}" Content="Close at completion" Checked="Quick_Changed" Unchecked="Quick_Changed"
                                   ToolTip="Close this window a few seconds after a copy finishes with no problems"/>
                         <CheckBox x:Name="TgVerify" Style="{StaticResource Quick}" Content="Verify files" Checked="Quick_Changed" Unchecked="Quick_Changed"
-                                  ToolTip="Check every copied file against the original (xxHash64)"/>
+                                  ToolTip="Check every copied file against the original (xxHash64). A move then removes the original only after its copy matches."/>
                         <Border Style="{StaticResource QuickPill}">
                             <StackPanel Orientation="Horizontal">
                                 <CheckBox x:Name="TgLimit" Style="{StaticResource QuickDot}" Content="Speed limit" Checked="Quick_Changed" Unchecked="Quick_Changed" VerticalAlignment="Center"

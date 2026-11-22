@@ -26,7 +26,7 @@ namespace Choppy.Engine
     /// <summary>User settings in HKCU\Software\Choppy (or a settings.ini in the data folder in test mode).</summary>
     internal sealed class Settings
     {
-        public bool VerifyCopies;                       // copies: check with xxHash64 (moves always check)
+        public bool VerifyCopies;                       // check every copy with xxHash64 (copies and moves)
         public ConflictPolicy Policy = ConflictPolicy.Ask;
         public double SpeedLimitMbps;                   // 0 = off
         public double LimitValueMbps = 100;             // the limit's value, kept while it is off

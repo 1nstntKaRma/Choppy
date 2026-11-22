@@ -19,6 +19,7 @@ namespace Choppy.Engine
         readonly int chunk, slots;
         readonly long size, pieces;
         readonly bool overlapped;
+        readonly bool phased;           // one disk at both ends: read a batch, then write it (see ReadPhased)
         readonly IntPtr mem;
         readonly int[] lens;
         readonly IntPtr[] ovs;          // one OVERLAPPED per buffer (unmanaged: it must not move while a read is out)
@@ -30,9 +31,10 @@ namespace Choppy.Engine
         public volatile int Error;      // read error (0 = none)
 
         /// <summary>size = bytes to read (the file's size). overlapped = the handle was opened with FILE_FLAG_OVERLAPPED.</summary>
-        public RingReader(SafeFileHandle h, long size, int chunk, int slots, bool overlapped, XxHash64 hash)
+        public RingReader(SafeFileHandle h, long size, int chunk, int slots, bool overlapped, XxHash64 hash, bool phased = false)
         {
             this.h = h; this.size = size; this.chunk = chunk; this.slots = slots; this.overlapped = overlapped; this.hash = hash;
+            this.phased = phased && overlapped;
             pieces = size <= 0 ? 0 : (size + chunk - 1) / chunk;
             mem = Native.VirtualAlloc(IntPtr.Zero, (UIntPtr)((long)chunk * slots), Native.MEM_COMMIT | Native.MEM_RESERVE, Native.PAGE_READWRITE);
             if (mem == IntPtr.Zero) throw new OutOfMemoryException();
@@ -53,6 +55,8 @@ namespace Choppy.Engine
             th = new Thread(overlapped ? (ThreadStart)ReadQueued : ReadInOrder) { IsBackground = true, Name = "read ahead", Priority = ThreadPriority.AboveNormal };
             th.Start();
         }
+
+        public int Slots { get { return slots; } }
 
         byte* Buf(long piece) { return (byte*)mem + (piece % slots) * chunk; }
 
@@ -87,6 +91,7 @@ namespace Choppy.Engine
         // overlapped handle: as many reads out at once as there are free buffers
         void ReadQueued()
         {
+            if (phased) { ReadPhased(); return; }
             long issued = 0, done = 0;
             while (done < pieces && !stop)
             {
@@ -99,23 +104,48 @@ namespace Choppy.Engine
                     issued++;
                 }
                 if (stop) break;
-                int n = Collect(done);
-                // a read can come back short before the end (over a network): read the rest of the piece
-                long want = Math.Min(chunk, size - done * chunk);
-                while (n > 0 && n < want && Error == 0)
-                {
-                    if (!Issue(done, n, (int)(chunk - n))) break;
-                    int m = Collect(done);
-                    if (m <= 0) { if (Error == 0) Error = Native.ERROR_HANDLE_EOF; break; }
-                    n += m;
-                }
-                if (n <= 0 && Error == 0) Error = Native.ERROR_HANDLE_EOF;
-                if (Error != 0) n = 0;
+                int n = CollectWhole(done);
                 Post(done, n);
                 done++;
                 if (n <= 0) { Drain(done, issued); return; }
             }
             Drain(done, issued);
+        }
+
+        // One disk at both ends: a whole batch (every buffer) is read with no write in between, then written with no
+        // read in between - the heads go between the two places once per batch instead of once per piece.
+        void ReadPhased()
+        {
+            long done = 0;
+            while (done < pieces && !stop)
+            {
+                for (int i = 0; i < slots; i++) { free.Wait(); if (stop) return; }   // the writer gave every buffer back
+                long end = Math.Min(pieces, done + slots);
+                for (long k = done; k < end; k++)
+                    if (!Issue(k, 0, chunk)) { Drain(done, k); Post(done, 0); return; }
+                for (; done < end; done++)
+                {
+                    int n = CollectWhole(done);
+                    Post(done, n);
+                    if (n <= 0) { Drain(done + 1, end); return; }
+                }
+            }
+        }
+
+        /// <summary>A piece read in full (a read can come back short over a network: the rest is read too). 0 = error.</summary>
+        int CollectWhole(long piece)
+        {
+            int n = Collect(piece);
+            long want = Math.Min(chunk, size - piece * chunk);
+            while (n > 0 && n < want && Error == 0)
+            {
+                if (!Issue(piece, n, (int)(chunk - n))) break;
+                int m = Collect(piece);
+                if (m <= 0) { if (Error == 0) Error = Native.ERROR_HANDLE_EOF; break; }
+                n += m;
+            }
+            if (n <= 0 && Error == 0) Error = Native.ERROR_HANDLE_EOF;
+            return Error != 0 ? 0 : n;
         }
 
         bool Issue(long piece, int offsetInPiece, int bytes)
@@ -167,7 +197,8 @@ namespace Choppy.Engine
         {
             int got = 0;
             long k = taken;
-            while (got < more && n == (got + 1) * chunk && k + 1 < pieces && (k + 1) % slots != 0 && full.Wait(0))
+            // phased: wait for the rest of the batch (it is being read right now); else take only what is there
+            while (got < more && n == (got + 1) * chunk && k + 1 < pieces && (k + 1) % slots != 0 && (phased ? full.Wait(Timeout.Infinite) : full.Wait(0)))
             {
                 int m = lens[(k + 1) % slots];
                 if (m <= 0) { full.Release(); break; }   // a read error: left for Next to report
@@ -204,6 +235,7 @@ namespace Choppy.Engine
         public int Slots = 4;           // pieces in flight between the reader and the writer
         public int Align = 4096;        // sector multiple for unbuffered I/O
         public int WriteBatch = 1;      // pieces already read that may go out as one write (a hard disk streams without gaps)
+        public bool Phased;             // one hard disk at both ends: read all buffers, then write them all
     }
 
     internal sealed class BigResult
@@ -282,41 +314,50 @@ namespace Choppy.Engine
                         int slots = (int)Math.Max(2, Math.Min(tune.Slots, (size + tune.Chunk - 1) / tune.Chunk));
                         var mem = new Native.MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf(typeof(Native.MEMORYSTATUSEX)) };
                         if (Native.GlobalMemoryStatusEx(ref mem)) slots = (int)Math.Max(2, Math.Min(slots, (long)(mem.ullAvailPhys / 8) / tune.Chunk));
-                        using (var rr = new RingReader(hs, size, tune.Chunk, slots, true, x))
+                        using (var rr = new RingReader(hs, size, tune.Chunk, slots, true, x, tune.Phased))
                         {
                             byte* p; int n;
                             while (rr.Next(out p, out n))
                             {
-                                int joined = tune.WriteBatch > 1 ? rr.Gather(tune.WriteBatch - 1, ref n) : 0;
-                                if (hc == null && cachedTail > 0 && size - done <= cachedTail)
+                                // phased (one disk): the whole batch is read before any of it is written
+                                int joined = tune.Phased ? rr.Gather(rr.Slots - 1, ref n) : tune.WriteBatch > 1 ? rr.Gather(tune.WriteBatch - 1, ref n) : 0;
+                                // phased: written a piece at a time, so the progress moves smoothly (the writes follow each other on the disk)
+                                int step = tune.Phased ? tune.Chunk : n;
+                                for (int off = 0; off < n && r.Error == 0; )
                                 {
-                                    // the last part: through the Windows cache from here on (done is a whole number of pieces).
-                                    // The unbuffered handle closes first: Windows writes cached data out when such a handle
-                                    // sets the size or closes, and the tail must stay in memory until Windows writes it on its own
-                                    hc = Native.CreateFileW(dst, Native.GENERIC_WRITE, Native.FILE_SHARE_READ | Native.FILE_SHARE_WRITE | Native.FILE_SHARE_DELETE,
-                                        IntPtr.Zero, Native.OPEN_EXISTING, Native.FILE_FLAG_SEQUENTIAL_SCAN, IntPtr.Zero);
-                                    long at;
-                                    if (hc.IsInvalid || !Native.SetFilePointerEx(hc, done, out at, 0)) { hc.Dispose(); hc = null; cachedTail = 0; }
-                                    else { hd.Dispose(); fin = hc; renameTo = null; }   // renamed by path once it is closed
-                                }
-                                int w = n, wrote;
-                                bool ok;
-                                if (hc != null) ok = Native.WriteFile(hc, p, n, out wrote, IntPtr.Zero);
-                                else
-                                {
-                                    if (w % align != 0)
+                                    if (hc == null && cachedTail > 0 && size - done <= cachedTail)
                                     {
-                                        // the tail: pad to a whole sector, the size is put right below
-                                        int padded = (n + align - 1) / align * align;
-                                        for (int k = n; k < padded; k++) p[k] = 0;
-                                        w = padded;
+                                        // the last part: through the Windows cache from here on (done is a whole number of pieces).
+                                        // The unbuffered handle closes first: Windows writes cached data out when such a handle
+                                        // sets the size or closes, and the tail must stay in memory until Windows writes it on its own
+                                        hc = Native.CreateFileW(dst, Native.GENERIC_WRITE, Native.FILE_SHARE_READ | Native.FILE_SHARE_WRITE | Native.FILE_SHARE_DELETE,
+                                            IntPtr.Zero, Native.OPEN_EXISTING, Native.FILE_FLAG_SEQUENTIAL_SCAN, IntPtr.Zero);
+                                        long at;
+                                        if (hc.IsInvalid || !Native.SetFilePointerEx(hc, done, out at, 0)) { hc.Dispose(); hc = null; cachedTail = 0; }
+                                        else { hd.Dispose(); fin = hc; renameTo = null; }   // renamed by path once it is closed
                                     }
-                                    ok = Native.WriteFile(hd, p, w, out wrote, IntPtr.Zero);
+                                    int len = Math.Min(step, n - off), w = len, wrote;
+                                    byte* q = p + off;
+                                    bool ok;
+                                    if (hc != null) ok = Native.WriteFile(hc, q, len, out wrote, IntPtr.Zero);
+                                    else
+                                    {
+                                        if (w % align != 0)
+                                        {
+                                            // the tail: pad to a whole sector, the size is put right below
+                                            int padded = (len + align - 1) / align * align;
+                                            for (int k = len; k < padded; k++) q[k] = 0;
+                                            w = padded;
+                                        }
+                                        ok = Native.WriteFile(hd, q, w, out wrote, IntPtr.Zero);
+                                    }
+                                    if (!ok) { r.Error = Unsupported(Marshal.GetLastWin32Error()); break; }
+                                    off += len;
+                                    done += len;
+                                    if (!progress(done)) r.Error = Native.ERROR_REQUEST_ABORTED;
                                 }
-                                if (!ok) { r.Error = Unsupported(Marshal.GetLastWin32Error()); break; }
                                 rr.Release(1 + joined);
-                                done += n;
-                                if (!progress(done)) { r.Error = Native.ERROR_REQUEST_ABORTED; break; }
+                                if (r.Error != 0) break;
                             }
                             if (r.Error == 0 && rr.Error != 0) r.Error = Unsupported(rr.Error);
                         }

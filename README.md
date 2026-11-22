@@ -9,7 +9,7 @@
 
 **Choppy** copies and moves files fast and shows everything that matters in one dark window: from where to where, how far it is, the live and the average speed, the time so far and the time left, the file in flight and what takes the space. It can take over **Ctrl+V** in Explorer, or stay on the right-click menu only.
 
-It never leaves a half-written file behind, a move removes the original only after the copy is checked, a copy cut off by a crash or a power cut can be resumed, and a folder that needs administrator rights (`C:\`, `Program Files`) gets them with one question.
+It never leaves a half-written file behind, a move removes the original only after its copy is complete (and checked, with Verify on), a copy cut off by a crash or a power cut can be resumed, and a folder that needs administrator rights (`C:\`, `Program Files`) gets them with one question.
 
 <p align="center">
   <img src="screenshots/compact.png" width="383" alt="Choppy - compact view">
@@ -95,7 +95,7 @@ Choppy runs as you, never as administrator (its Ctrl+V hook and clipboard live i
 - **Yes:** the rest of that copy goes to a short-lived Choppy started as administrator, in its own window; it does just that copy and exits. Your window follows it (progress, Pause, Cancel) and its numbers join your report. Files copied before the question stay done.
 - **No:** those files are listed as failed, like before - **Retry failed** asks again.
 
-The administrator copy keeps every rule: temporary names, verify before a move removes the original, nothing half-written on cancel, a job record and a log. It never installs the keyboard hook and never touches the startup entry or the right-click menu.
+The administrator copy keeps every rule: temporary names, verify (when on) before a move removes the original, nothing half-written on cancel, a job record and a log. It never installs the keyboard hook and never touches the startup entry or the right-click menu.
 
 ---
 
@@ -108,12 +108,12 @@ The administrator copy keeps every rule: temporary names, verify before a move r
 | SSD / NVMe | 4-8 files in flight; big files through the pipeline (8 MB pieces) |
 | Hard disk / USB stick | One stream, in order - no seeking; big files through the pipeline (32 MB pieces, 4 reads queued at the disk) |
 
-**The pipeline** (big files between local drives): one thread reads, one writes, at the same time; the next pieces are already queued at the source disk, so another program reading that disk can't send its heads away between them. With verify on (or for a move) the source is hashed on the way in, so the check reads only the copy back. Extra data streams (`Zone.Identifier` of downloads), dates and attributes come along. The badge shows the choice: *Adaptive · 1 stream*.
+**The pipeline** (big files between local drives): one thread reads, one writes, at the same time; the next pieces are already queued at the source disk, so another program reading that disk can't send its heads away between them. With verify on, the source is hashed on the way in, so the check reads only the copy back. Extra data streams (`Zone.Identifier` of downloads), dates and attributes come along. The badge shows the choice: *Adaptive · 1 stream*.
 
 ## Never Loses A File
 
 - Written as `<name>.chpart`, renamed into place when complete - a half file never has the real name.
-- **Verify** (xxHash64) reads each copy back and compares; a move always checks before it removes the original.
+- **Verify** (xxHash64) reads each copy back and compares; with it on, a move removes the original only after its copy matches. Without it, a big file is flushed to the disk before its original goes.
 - A job record stays on disk until a copy ends: after a crash or power cut the next start offers **Resume** - files already there with the same size and date are kept, only the rest is copied.
 - Network dropped: it waits (up to 15 min) and goes on. File in use: tried again, then listed for **Retry failed**. Destination full: it pauses.
 - Created and modified dates, read-only / hidden attributes and paths longer than 260 characters are kept.

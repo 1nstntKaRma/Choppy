@@ -87,9 +87,10 @@ namespace Choppy.Engine
                 p.BigSlots = 1;
                 // big pieces, several reads queued at the disk: other programs on it can't send the heads away between
                 // them (measured with a torrent-like load: 32 MB x 4 = 157 MB/s, 16 MB x 4 = 152, Explorer 146).
-                // One disk for both ends: bigger pieces, fewer trips of the heads between reading and writing
-                p.Pipe.Chunk = oneDisk ? 64 << 20 : 32 << 20;
-                p.Pipe.Slots = oneDisk ? 3 : 8;
+                p.Pipe.Chunk = 32 << 20;
+                p.Pipe.Slots = 8;
+                // one disk at both ends: read 256 MB, then write it - not both at once (the heads would go back and forth every piece)
+                p.Pipe.Phased = oneDisk;
                 // writing to a hard disk: pieces already read go out together (up to 128 MB), no gap for the platter to pass
                 if (dst != null && dst.IsSlowSeek && !oneDisk) p.Pipe.WriteBatch = 4;
                 return p;
