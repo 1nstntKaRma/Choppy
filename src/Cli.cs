@@ -48,6 +48,7 @@ namespace Choppy
                         case "--engine": { string e = args[++i]; spec.Engine = e == "auto" ? null : e; } break;
                         case "--chunk": spec.PipeChunkMB = int.Parse(args[++i]); break;
                         case "--slots": spec.PipeSlots = int.Parse(args[++i]); break;
+                        case "--batch": spec.PipeBatch = int.Parse(args[++i]); break;
                         case "--no-tail": spec.NoCachedTail = true; break;
                         case "--tail": spec.TailMB = int.Parse(args[++i]); break;
                         default: rest.Add(a); break;
@@ -68,7 +69,7 @@ namespace Choppy
                 bool pausedOnce = false, skipped = false;
                 while (!job.IsFinished)
                 {
-                    Thread.Sleep(200);
+                    Thread.Sleep(50);
                     double t = sw.Elapsed.TotalSeconds;
                     if (cancelAfter > 0 && t >= cancelAfter && !job.IsCanceled) job.Cancel();
                     if (pauseAt > 0 && !pausedOnce && t >= pauseAt) { job.Pause(); pausedOnce = true; }
@@ -202,6 +203,17 @@ namespace Choppy
                     ulong h; int e;
                     check("hash unbuffered " + size + " B", XxHash64.HashFile(Paths.ToLong(b), true, null, out h, out e) && h == XxHash64.OfBytes(data));
                     check("hash buffered " + size + " B", XxHash64.HashFile(Paths.ToLong(a), false, null, out h, out e) && h == XxHash64.OfBytes(data));
+                }
+                // pieces joined into bigger writes: same bytes, at every odd size
+                foreach (int size in new[] { (1 << 20) * 3, (5 << 20) + 777, (7 << 20) + 4096, 123457 })
+                {
+                    string a = Path.Combine(dir, "join-a" + size + ".bin"), b = Path.Combine(dir, "join-b" + size + ".bin");
+                    var data = new byte[size];
+                    new Random(size + 1).NextBytes(data);
+                    File.WriteAllBytes(a, data);
+                    var jt = new PipeTuning { Chunk = 1 << 20, Slots = 4, Align = 4096, WriteBatch = 3 };
+                    var rj = BigCopy.Copy(Paths.ToLong(a), Paths.ToLong(b), 0, File.GetLastWriteTimeUtc(a).ToFileTimeUtc(), 0x20, jt, true, false, null, n => true);
+                    check("pipeline joined writes " + size + " B", rj.Error == 0 && rj.Hash == XxHash64.OfBytes(data) && System.Linq.Enumerable.SequenceEqual(File.ReadAllBytes(b), data));
                 }
                 // the end through the Windows cache: same bytes, same size
                 {

@@ -753,8 +753,8 @@ namespace Choppy.Engine
         bool CopyBig(FileItem f, string temp, Transfer t, out int err)
         {
             var tune = Plan.Pipe;
-            if (Spec.PipeChunkMB > 0 || Spec.PipeSlots > 0)
-                tune = new PipeTuning { Align = tune.Align, Chunk = Spec.PipeChunkMB > 0 ? Spec.PipeChunkMB << 20 : tune.Chunk, Slots = Spec.PipeSlots > 0 ? Spec.PipeSlots : tune.Slots };
+            if (Spec.PipeChunkMB > 0 || Spec.PipeSlots > 0 || Spec.PipeBatch > 0)
+                tune = new PipeTuning { Align = tune.Align, Chunk = Spec.PipeChunkMB > 0 ? Spec.PipeChunkMB << 20 : tune.Chunk, Slots = Spec.PipeSlots > 0 ? Spec.PipeSlots : tune.Slots, WriteBatch = Spec.PipeBatch > 0 ? Spec.PipeBatch : tune.WriteBatch };
             Func<long, bool> progress = done =>
             {
                 long delta = done - t.Done;

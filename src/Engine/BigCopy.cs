@@ -159,11 +159,30 @@ namespace Choppy.Engine
             return n > 0;
         }
 
-        /// <summary>Hands the piece from Next back to the reader.</summary>
-        public void Release()
+        /// <summary>
+        /// The pieces right after the one from Next that are already read (and sit right after it in memory) join it,
+        /// up to more: one bigger write keeps a hard disk streaming. n grows by their bytes; returns how many joined.
+        /// </summary>
+        public int Gather(int more, ref int n)
         {
-            taken++;
-            free.Release();
+            int got = 0;
+            long k = taken;
+            while (got < more && n == (got + 1) * chunk && k + 1 < pieces && (k + 1) % slots != 0 && full.Wait(0))
+            {
+                int m = lens[(k + 1) % slots];
+                if (m <= 0) { full.Release(); break; }   // a read error: left for Next to report
+                k++;
+                got++;
+                n += m;
+            }
+            return got;
+        }
+
+        /// <summary>Hands the pieces from Next (+ Gather) back to the reader.</summary>
+        public void Release(int count = 1)
+        {
+            taken += count;
+            free.Release(count);
         }
 
         public void Dispose()
@@ -184,6 +203,7 @@ namespace Choppy.Engine
         public int Chunk = 8 << 20;     // bytes per read / write
         public int Slots = 4;           // pieces in flight between the reader and the writer
         public int Align = 4096;        // sector multiple for unbuffered I/O
+        public int WriteBatch = 1;      // pieces already read that may go out as one write (a hard disk streams without gaps)
     }
 
     internal sealed class BigResult
@@ -258,13 +278,16 @@ namespace Choppy.Engine
 
                         var x = hash ? new XxHash64() : null;
                         long done = 0;
-                        // no more buffers than the file has pieces (a 40 MB file needs two, not four)
+                        // no more buffers than the file has pieces (a 40 MB file needs two, not four), nor than memory allows
                         int slots = (int)Math.Max(2, Math.Min(tune.Slots, (size + tune.Chunk - 1) / tune.Chunk));
+                        var mem = new Native.MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf(typeof(Native.MEMORYSTATUSEX)) };
+                        if (Native.GlobalMemoryStatusEx(ref mem)) slots = (int)Math.Max(2, Math.Min(slots, (long)(mem.ullAvailPhys / 8) / tune.Chunk));
                         using (var rr = new RingReader(hs, size, tune.Chunk, slots, true, x))
                         {
                             byte* p; int n;
                             while (rr.Next(out p, out n))
                             {
+                                int joined = tune.WriteBatch > 1 ? rr.Gather(tune.WriteBatch - 1, ref n) : 0;
                                 if (hc == null && cachedTail > 0 && size - done <= cachedTail)
                                 {
                                     // the last part: through the Windows cache from here on (done is a whole number of pieces).
@@ -291,7 +314,7 @@ namespace Choppy.Engine
                                     ok = Native.WriteFile(hd, p, w, out wrote, IntPtr.Zero);
                                 }
                                 if (!ok) { r.Error = Unsupported(Marshal.GetLastWin32Error()); break; }
-                                rr.Release();
+                                rr.Release(1 + joined);
                                 done += n;
                                 if (!progress(done)) { r.Error = Native.ERROR_REQUEST_ABORTED; break; }
                             }

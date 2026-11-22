@@ -30,7 +30,7 @@ namespace Choppy.Engine
         public int ForceWorkers;                             // tests: fixed number of files in flight (0 = Adaptive)
         public bool NoFastPath;                              // tests: always rename with a separate call
         public string Engine;                                // tests: null = Adaptive, "copyfile" = CopyFileEx only, "nobuf" = the old unbuffered CopyFileEx
-        public int PipeChunkMB, PipeSlots;                   // tests: pipeline piece size / pieces in flight (0 = Adaptive)
+        public int PipeChunkMB, PipeSlots, PipeBatch;                   // tests: pipeline piece size / pieces in flight (0 = Adaptive)
         public bool NoCachedTail;                            // tests: the last file's end goes straight to the disk too
         public int TailMB = -1;                              // tests: how much of each big file's end goes through the cache (-1 = Adaptive)
 

@@ -89,7 +89,9 @@ namespace Choppy.Engine
                 // them (measured with a torrent-like load: 32 MB x 4 = 157 MB/s, 16 MB x 4 = 152, Explorer 146).
                 // One disk for both ends: bigger pieces, fewer trips of the heads between reading and writing
                 p.Pipe.Chunk = oneDisk ? 64 << 20 : 32 << 20;
-                p.Pipe.Slots = oneDisk ? 3 : 4;
+                p.Pipe.Slots = oneDisk ? 3 : 8;
+                // writing to a hard disk: pieces already read go out together (up to 128 MB), no gap for the platter to pass
+                if (dst != null && dst.IsSlowSeek && !oneDisk) p.Pipe.WriteBatch = 4;
                 return p;
             }
             p.Kind = (dst != null && dst.Kind == DeviceKind.Ssd) || (src != null && src.Kind == DeviceKind.Ssd) ? "SSD" : "Disk";
