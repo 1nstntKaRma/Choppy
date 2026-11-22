@@ -91,7 +91,7 @@ namespace Choppy
             Manager.JobStarted = j =>
             {
                 if (j.Spec.HandoffPath != null) Handoff.Report(j);   // keeps the user's Choppy up to date
-                Dispatcher.BeginInvoke(new Action(ShowMain));
+                Dispatcher.BeginInvoke(new Action(() => ShowMain(true)));   // a new copy: the window comes up on top
             };
             Manager.AllDone = j => Dispatcher.BeginInvoke(new Action(MaybeExit));
 
@@ -132,7 +132,7 @@ namespace Choppy
                 case "move":
                     if (args.Length < 3) { ShowSettings(null); break; }
                     var spec = NewSpec(cmd == "move" ? OpKind.Move : OpKind.Copy, args.Skip(1).Take(args.Length - 2), args[args.Length - 1], "Command line");
-                    if (spec != null) Manager.Enqueue(spec);
+                    if (spec != null) { Manager.Enqueue(spec); ShowMain(true); }
                     break;
                 case "paste":
                     PasteInto(args.Length > 1 ? args[1] : null, "Right-click");
@@ -183,6 +183,7 @@ namespace Choppy
             var spec = NewSpec(move ? OpKind.Move : OpKind.Copy, files, dest, origin);
             if (spec == null) return;
             Manager.Enqueue(spec);
+            ShowMain(true);   // a new copy (running or queued): the window comes up on top
             // like Explorer: files that were cut are pasted once
             if (move && !AppPaths.TestMode) try { Clipboard.Clear(); } catch { }
         }
@@ -196,7 +197,13 @@ namespace Choppy
 
         // ================= windows =================
 
-        public void ShowMain()
+        public void ShowMain() { ShowMain(false); }
+
+        /// <summary>
+        /// Shows the copy window. lift = a new copy was started: the window comes up above every other window, then
+        /// after a moment goes back to normal stacking (it stays in front until the user clicks something else).
+        /// </summary>
+        public void ShowMain(bool lift)
         {
             if (main == null)
             {
@@ -204,20 +211,19 @@ namespace Choppy
                 main.Closed += (s, e) => { main = null; MaybeExit(); };
                 if (TestHook.Park) { main.WindowStartupLocation = WindowStartupLocation.Manual; main.Left = -32000; main.Top = 0; main.ShowInTaskbar = false; main.ShowActivated = false; }
             }
+            if (lift && !TestHook.Park) main.Topmost = true;   // before Show: it appears on top, not behind Explorer
             if (!main.IsVisible) main.Show();
             if (main.WindowState == WindowState.Minimized) main.WindowState = WindowState.Normal;
-            if (!TestHook.Park)
+            if (TestHook.Park) return;
+            // Windows may refuse the focus to a program in the background; on top it is seen at once all the same
+            bool active = main.Activate();
+            if (lift || !active)
             {
-                // Windows won't let a background program take the focus; lift the window above the others for a
-                // moment so it is seen at once (the focus stays where the user is working)
-                if (!main.Activate())
-                {
-                    var w = main;
-                    w.Topmost = true;
-                    var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
-                    t.Tick += (s, e) => { t.Stop(); w.Topmost = false; };
-                    t.Start();
-                }
+                var w = main;
+                w.Topmost = true;
+                var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+                t.Tick += (s, e) => { t.Stop(); if (w == main) w.Topmost = false; };
+                t.Start();
             }
         }
 

@@ -544,7 +544,7 @@ namespace Choppy.Engine
                 for (long k = size; k < padded; k++) buf[k] = 0;
                 int wrote;
                 if (padded > 0 && !Native.WriteFile(hd, buf, (int)padded, out wrote, IntPtr.Zero)) return Unsupported(Marshal.GetLastWin32Error());
-                if (!SetLength(hd, Native.FileEndOfFileInfo, size)) return Marshal.GetLastWin32Error();
+                if (!cached && !SetLength(hd, Native.FileEndOfFileInfo, size)) return Marshal.GetLastWin32Error();   // only the padded unbuffered write needs trimming
                 var bi = new Native.FILE_BASIC_INFO { CreationTime = ctime, LastWriteTime = mtime, FileAttributes = attrs & KeepAttrs };
                 if (bi.FileAttributes == 0) bi.FileAttributes = Native.FILE_ATTRIBUTE_NORMAL;
                 Native.SetFileInformationByHandle(hd, Native.FileBasicInfo, &bi, Marshal.SizeOf(typeof(Native.FILE_BASIC_INFO)));
