@@ -17,7 +17,7 @@ namespace Choppy.Engine
     {
         readonly SafeFileHandle h;
         readonly int chunk, slots;
-        readonly long size, pieces;
+        readonly long size, pieces, start;   // reads [start, size)
         readonly bool overlapped;
         readonly bool phased;           // one disk at both ends: read a batch, then write it (see ReadPhased)
         readonly IntPtr mem;
@@ -30,12 +30,16 @@ namespace Choppy.Engine
         long taken;
         public volatile int Error;      // read error (0 = none)
 
-        /// <summary>size = bytes to read (the file's size). overlapped = the handle was opened with FILE_FLAG_OVERLAPPED.</summary>
-        public RingReader(SafeFileHandle h, long size, int chunk, int slots, bool overlapped, XxHash64 hash, bool phased = false)
+        /// <summary>
+        /// size = where to stop reading (the file's size, or the end of a stretch); start = where to begin (overlapped
+        /// handles only, a sector multiple). overlapped = the handle was opened with FILE_FLAG_OVERLAPPED.
+        /// </summary>
+        public RingReader(SafeFileHandle h, long size, int chunk, int slots, bool overlapped, XxHash64 hash, bool phased = false, long start = 0)
         {
             this.h = h; this.size = size; this.chunk = chunk; this.slots = slots; this.overlapped = overlapped; this.hash = hash;
             this.phased = phased && overlapped;
-            pieces = size <= 0 ? 0 : (size + chunk - 1) / chunk;
+            this.start = overlapped ? start : 0;
+            pieces = size - this.start <= 0 ? 0 : (size - this.start + chunk - 1) / chunk;
             mem = Native.VirtualAlloc(IntPtr.Zero, (UIntPtr)((long)chunk * slots), Native.MEM_COMMIT | Native.MEM_RESERVE, Native.PAGE_READWRITE);
             if (mem == IntPtr.Zero) throw new OutOfMemoryException();
             lens = new int[slots];
@@ -74,7 +78,7 @@ namespace Choppy.Engine
             {
                 free.Wait();
                 if (stop) return;
-                int want = (int)Math.Min(chunk, size - k * chunk), n = 0;
+                int want = (int)Math.Min(chunk, size - start - k * chunk), n = 0;
                 while (n < want)
                 {
                     int m;
@@ -136,7 +140,7 @@ namespace Choppy.Engine
         int CollectWhole(long piece)
         {
             int n = Collect(piece);
-            long want = Math.Min(chunk, size - piece * chunk);
+            long want = Math.Min(chunk, size - start - piece * chunk);
             while (n > 0 && n < want && Error == 0)
             {
                 if (!Issue(piece, n, (int)(chunk - n))) break;
@@ -151,7 +155,7 @@ namespace Choppy.Engine
         bool Issue(long piece, int offsetInPiece, int bytes)
         {
             var o = (NativeOverlapped*)ovs[piece % slots];
-            long off = piece * chunk + offsetInPiece;
+            long off = start + piece * chunk + offsetInPiece;
             o->OffsetLow = (int)(off & 0xFFFFFFFF);
             o->OffsetHigh = (int)(off >> 32);
             o->InternalLow = IntPtr.Zero; o->InternalHigh = IntPtr.Zero;
@@ -236,6 +240,89 @@ namespace Choppy.Engine
         public int Align = 4096;        // sector multiple for unbuffered I/O
         public int WriteBatch = 1;      // pieces already read that may go out as one write (a hard disk streams without gaps)
         public bool Phased;             // one hard disk at both ends: read all buffers, then write them all
+        public bool Prealloc = true;    // reserve the whole size up front
+        public int CachedWriteChunk;    // bytes per write through the Windows cache (0 = a whole piece)
+    }
+
+    /// <summary>
+    /// Finds the fastest way for this copy while it runs. No fixed rule fits every PC, disk and cable, so the first big
+    /// file is copied in a few short stretches (about 1.5 s each), each one another way - piece size, pieces in flight,
+    /// reading and writing at once or one after the other - and the fastest way copies the rest, and the next big files.
+    /// </summary>
+    internal sealed class PipeTuner
+    {
+        readonly List<PipeTuning> ways;
+        readonly double[] rate;             // bytes/s per way (0 = not measured)
+        int state = -1;                     // -1 = warming up, 0..n-1 = trying way i, n = settled
+        long trialBytes = 256L << 20;
+        public PipeTuning Best;
+        public bool Changed;                // settled on another way than the starting one
+
+        const long WarmBytes = 128L << 20;
+        const long Unit = 64L << 20;        // stretches end on whole pieces of every way (pieces are at most 64 MB)
+
+        public PipeTuner(PipeTuning start, IEnumerable<PipeTuning> others)
+        {
+            ways = new List<PipeTuning> { start };
+            if (others != null) ways.AddRange(others);
+            rate = new double[ways.Count];
+            Best = start;
+        }
+
+        public bool Settled { get { return state >= ways.Count; } }
+
+        /// <summary>The way for the stretch from done on, and where that stretch ends. keepFree = the file's end that must stay out of trials.</summary>
+        public PipeTuning Next(long done, long size, long keepFree, out long end, out bool measured)
+        {
+            measured = false;
+            end = size;
+            if (Settled || ways.Count < 2) return Best;
+            long len = state < 0 ? WarmBytes : trialBytes;
+            if (done + len + keepFree + Unit > size) return Best;   // no room in this file: the next big file tries
+            end = done + len;
+            measured = state >= 0;
+            return state < 0 ? Best : ways[state];
+        }
+
+        public void Report(long bytes, double seconds, bool measured)
+        {
+            if (Settled || seconds < 0.2 || bytes <= 0) return;
+            double r = bytes / seconds;
+            if (state < 0)
+            {
+                // a trial of about 1.5 s at the speed seen so far, whole 64 MB units, 128 MB .. 1 GB
+                long b = (long)(r * 1.5) / Unit * Unit;
+                trialBytes = Math.Max(2 * Unit, Math.Min(16 * Unit, b));
+                state = 0;
+                return;
+            }
+            if (!measured) return;
+            rate[state] = r;
+            if (++state < ways.Count) return;
+            // another way must win by 3%, or the starting one stays (no flapping on noise)
+            int best = 0;
+            for (int i = 1; i < ways.Count; i++) if (rate[i] > rate[best]) best = i;
+            if (best != 0 && rate[best] < rate[0] * 1.03) best = 0;
+            Best = ways[best];
+            Changed = best != 0;
+        }
+
+        /// <summary>What was measured, for the log and tests: "32x8 phased 150 MB/s | 16x8 phased 161 MB/s <-".</summary>
+        public string Summary
+        {
+            get
+            {
+                var parts = new List<string>();
+                for (int i = 0; i < ways.Count; i++)
+                    if (rate[i] > 0) parts.Add(Describe(ways[i]) + " " + (rate[i] / 1048576).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " MB/s" + (ways[i] == Best && Settled ? " <-" : ""));
+                return string.Join(" | ", parts);
+            }
+        }
+
+        public static string Describe(PipeTuning t)
+        {
+            return (t.Chunk >> 20) + "x" + t.Slots + (t.Phased ? " phased" : "") + (t.WriteBatch > 1 ? " join" + t.WriteBatch : "");
+        }
     }
 
     internal sealed class BigResult
@@ -270,7 +357,7 @@ namespace Choppy.Engine
         public static BigResult Copy(string src, string dst, long ctime, long mtime, uint attrs, PipeTuning tune,
             bool hash, bool flush, string renameTo, Func<long, bool> progress)
         {
-            return Copy(src, dst, ctime, mtime, attrs, tune, hash, flush, renameTo, 0, progress);
+            return Copy(src, dst, ctime, mtime, attrs, tune, hash, flush, renameTo, 0, progress, null);
         }
 
         /// <summary>
@@ -278,7 +365,7 @@ namespace Choppy.Engine
         /// done as soon as they are in memory and Windows writes them out right after. 0 = all straight to the disk.
         /// </summary>
         public static BigResult Copy(string src, string dst, long ctime, long mtime, uint attrs, PipeTuning tune,
-            bool hash, bool flush, string renameTo, long cachedTail, Func<long, bool> progress)
+            bool hash, bool flush, string renameTo, long cachedTail, Func<long, bool> progress, PipeTuner tuner = null)
         {
             var r = new BigResult();
             using (var hs = Native.CreateFileW(src, Native.GENERIC_READ, Native.FILE_SHARE_READ | Native.FILE_SHARE_DELETE, IntPtr.Zero,
@@ -301,65 +388,81 @@ namespace Choppy.Engine
                         int align = Math.Max(512, tune.Align);
                         long room = (size + align - 1) / align * align;
                         // the whole size up front: the disk can hand out one piece, and a full disk shows at once
-                        if (room > 0 && !SetLength(hd, Native.FileAllocationInfo, room))
+                        if (tune.Prealloc && room > 0 && !SetLength(hd, Native.FileAllocationInfo, room))
                         {
                             int e = Marshal.GetLastWin32Error();
                             if (e == Native.ERROR_DISK_FULL || e == Native.ERROR_HANDLE_DISK_FULL) { r.Error = e; return r; }
                         }
-                        if (room > 0 && !SetLength(hd, Native.FileEndOfFileInfo, room)) { r.Error = Unsupported(Marshal.GetLastWin32Error()); return r; }
+                        if (tune.Prealloc && room > 0 && !SetLength(hd, Native.FileEndOfFileInfo, room)) { r.Error = Unsupported(Marshal.GetLastWin32Error()); return r; }
 
                         var x = hash ? new XxHash64() : null;
                         long done = 0;
-                        // no more buffers than the file has pieces (a 40 MB file needs two, not four), nor than memory allows
-                        int slots = (int)Math.Max(2, Math.Min(tune.Slots, (size + tune.Chunk - 1) / tune.Chunk));
                         var mem = new Native.MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf(typeof(Native.MEMORYSTATUSEX)) };
-                        if (Native.GlobalMemoryStatusEx(ref mem)) slots = (int)Math.Max(2, Math.Min(slots, (long)(mem.ullAvailPhys / 8) / tune.Chunk));
-                        using (var rr = new RingReader(hs, size, tune.Chunk, slots, true, x, tune.Phased))
+                        long memCap = Native.GlobalMemoryStatusEx(ref mem) ? (long)(mem.ullAvailPhys / 8) : long.MaxValue;
+                        // stretch by stretch: with a tuner the first stretches try other ways, then the fastest copies the rest
+                        while (done < size && r.Error == 0)
                         {
-                            byte* p; int n;
-                            while (rr.Next(out p, out n))
+                            long end = size;
+                            bool measured = false;
+                            if (tuner != null) tune = tuner.Next(done, size, cachedTail, out end, out measured);
+                            // no more buffers than the stretch has pieces (a 40 MB file needs two, not four), nor than memory allows
+                            int slots = (int)Math.Max(2, Math.Min(tune.Slots, (end - done + tune.Chunk - 1) / tune.Chunk));
+                            slots = (int)Math.Max(2, Math.Min(slots, memCap / tune.Chunk));
+                            long from = done, waited = 0;
+                            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                            using (var rr = new RingReader(hs, end, tune.Chunk, slots, true, x, tune.Phased, done))
                             {
-                                // phased (one disk): the whole batch is read before any of it is written
-                                int joined = tune.Phased ? rr.Gather(rr.Slots - 1, ref n) : tune.WriteBatch > 1 ? rr.Gather(tune.WriteBatch - 1, ref n) : 0;
-                                // phased: written a piece at a time, so the progress moves smoothly (the writes follow each other on the disk)
-                                int step = tune.Phased ? tune.Chunk : n;
-                                for (int off = 0; off < n && r.Error == 0; )
+                                byte* p; int n;
+                                while (rr.Next(out p, out n))
                                 {
-                                    if (hc == null && cachedTail > 0 && size - done <= cachedTail)
+                                    // phased (one disk): the whole batch is read before any of it is written
+                                    int joined = tune.Phased ? rr.Gather(rr.Slots - 1, ref n) : tune.WriteBatch > 1 ? rr.Gather(tune.WriteBatch - 1, ref n) : 0;
+                                    // phased: written a piece at a time, so the progress moves smoothly (the writes follow each other on the disk)
+                                    int step = tune.Phased ? tune.Chunk : n;
+                                    for (int off = 0; off < n && r.Error == 0; )
                                     {
-                                        // the last part: through the Windows cache from here on (done is a whole number of pieces).
-                                        // The unbuffered handle closes first: Windows writes cached data out when such a handle
-                                        // sets the size or closes, and the tail must stay in memory until Windows writes it on its own
-                                        hc = Native.CreateFileW(dst, Native.GENERIC_WRITE, Native.FILE_SHARE_READ | Native.FILE_SHARE_WRITE | Native.FILE_SHARE_DELETE,
-                                            IntPtr.Zero, Native.OPEN_EXISTING, Native.FILE_FLAG_SEQUENTIAL_SCAN, IntPtr.Zero);
-                                        long at;
-                                        if (hc.IsInvalid || !Native.SetFilePointerEx(hc, done, out at, 0)) { hc.Dispose(); hc = null; cachedTail = 0; }
-                                        else { hd.Dispose(); fin = hc; renameTo = null; }   // renamed by path once it is closed
-                                    }
-                                    int len = Math.Min(step, n - off), w = len, wrote;
-                                    byte* q = p + off;
-                                    bool ok;
-                                    if (hc != null) ok = Native.WriteFile(hc, q, len, out wrote, IntPtr.Zero);
-                                    else
-                                    {
-                                        if (w % align != 0)
+                                        if (hc == null && cachedTail > 0 && size - done <= cachedTail)
                                         {
-                                            // the tail: pad to a whole sector, the size is put right below
-                                            int padded = (len + align - 1) / align * align;
-                                            for (int k = len; k < padded; k++) q[k] = 0;
-                                            w = padded;
+                                            // the last part: through the Windows cache from here on (done is a whole number of pieces).
+                                            // The unbuffered handle closes first: Windows writes cached data out when such a handle
+                                            // sets the size or closes, and the tail must stay in memory until Windows writes it on its own
+                                            hc = Native.CreateFileW(dst, Native.GENERIC_WRITE, Native.FILE_SHARE_READ | Native.FILE_SHARE_WRITE | Native.FILE_SHARE_DELETE,
+                                                IntPtr.Zero, Native.OPEN_EXISTING, Native.FILE_FLAG_SEQUENTIAL_SCAN, IntPtr.Zero);
+                                            long at;
+                                            if (hc.IsInvalid || !Native.SetFilePointerEx(hc, done, out at, 0)) { hc.Dispose(); hc = null; cachedTail = 0; }
+                                            else { hd.Dispose(); fin = hc; renameTo = null; }   // renamed by path once it is closed
                                         }
-                                        ok = Native.WriteFile(hd, q, w, out wrote, IntPtr.Zero);
+                                        int len = Math.Min(hc != null && tune.CachedWriteChunk > 0 ? Math.Min(step, tune.CachedWriteChunk) : step, n - off), w = len, wrote;
+                                        byte* q = p + off;
+                                        bool ok;
+                                        if (hc != null) ok = Native.WriteFile(hc, q, len, out wrote, IntPtr.Zero);
+                                        else
+                                        {
+                                            if (w % align != 0)
+                                            {
+                                                // the tail: pad to a whole sector, the size is put right below
+                                                int padded = (len + align - 1) / align * align;
+                                                for (int k = len; k < padded; k++) q[k] = 0;
+                                                w = padded;
+                                            }
+                                            ok = Native.WriteFile(hd, q, w, out wrote, IntPtr.Zero);
+                                        }
+                                        if (!ok) { r.Error = Unsupported(Marshal.GetLastWin32Error()); break; }
+                                        off += len;
+                                        done += len;
+                                        // a pause or the speed limit holds the copy here: that time isn't the way's speed
+                                        long c0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                                        if (!progress(done)) r.Error = Native.ERROR_REQUEST_ABORTED;
+                                        long held = System.Diagnostics.Stopwatch.GetTimestamp() - c0;
+                                        if (held > System.Diagnostics.Stopwatch.Frequency / 20) waited += held;
                                     }
-                                    if (!ok) { r.Error = Unsupported(Marshal.GetLastWin32Error()); break; }
-                                    off += len;
-                                    done += len;
-                                    if (!progress(done)) r.Error = Native.ERROR_REQUEST_ABORTED;
+                                    rr.Release(1 + joined);
+                                    if (r.Error != 0) break;
                                 }
-                                rr.Release(1 + joined);
-                                if (r.Error != 0) break;
+                                if (r.Error == 0 && rr.Error != 0) r.Error = Unsupported(rr.Error);
                             }
-                            if (r.Error == 0 && rr.Error != 0) r.Error = Unsupported(rr.Error);
+                            if (tuner != null && r.Error == 0)
+                                tuner.Report(done - from, (double)(System.Diagnostics.Stopwatch.GetTimestamp() - t0 - waited) / System.Diagnostics.Stopwatch.Frequency, measured);
                         }
                         r.Bytes = done;
                         if (r.Error != 0) return r;

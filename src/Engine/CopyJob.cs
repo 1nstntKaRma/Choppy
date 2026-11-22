@@ -434,6 +434,10 @@ namespace Choppy.Engine
             ConflictsLeft = Scan.Conflicts;
             Plan = Plan.Choose(new JobSpec { Op = OpKind.Copy }, SrcVol, DstVol, Scan);
             if (Spec.ForceWorkers > 0) { Plan.Workers = Spec.ForceWorkers; Plan.CanTune = false; }
+            if (Spec.NoTune) Plan.CanTune = false;
+            bool fixedPipe = Spec.PipeChunkMB > 0 || Spec.PipeSlots > 0 || Spec.PipeBatch > 0 || Spec.NoTune;
+            // with a speed limit the trials would measure the limit, not the drives
+            pipeTuner = Plan.Pipeline && !fixedPipe && limitBps <= 0 && Plan.PipeWays.Count > 0 ? new PipeTuner(Plan.Pipe, Plan.PipeWays) : null;
             int da = Native.GetFileAttributesW(Spec.Dest);
             pipeOffAtDest = da != Native.INVALID_FILE_ATTRIBUTES && ((uint)da & (Native.FILE_ATTRIBUTE_COMPRESSED | Native.FILE_ATTRIBUTE_ENCRYPTED)) != 0;
 
@@ -460,7 +464,7 @@ namespace Choppy.Engine
             SetPhase(JobPhase.Copying);
             if (!paused) CopyClock.Start();
             activeWorkers = Plan.Workers;
-            int threads = Plan.CanTune ? 32 : Plan.Workers;
+            int threads = Plan.CanTune ? Math.Max(Plan.Workers, Plan.MaxWorkers) : Plan.Workers;
             var workers = new Thread[Math.Max(1, threads)];
             for (int i = 0; i < workers.Length; i++)
             {
@@ -744,6 +748,10 @@ namespace Choppy.Engine
         }
 
         bool pipeOffAtDest;   // the destination folder is compressed or encrypted: the pipeline would fight it
+        PipeTuner pipeTuner;  // finds the fastest way for big files on this copy (see PipeTuner)
+
+        /// <summary>What the tuner measured on this copy (log, tests).</summary>
+        public string TuneSummary { get { return pipeTuner != null ? pipeTuner.Summary : null; } }
 
         bool UsePipe(FileItem f)
         {
@@ -753,8 +761,8 @@ namespace Choppy.Engine
         bool CopyBig(FileItem f, string temp, Transfer t, out int err)
         {
             var tune = Plan.Pipe;
-            if (Spec.PipeChunkMB > 0 || Spec.PipeSlots > 0 || Spec.PipeBatch > 0)
-                tune = new PipeTuning { Align = tune.Align, Chunk = Spec.PipeChunkMB > 0 ? Spec.PipeChunkMB << 20 : tune.Chunk, Slots = Spec.PipeSlots > 0 ? Spec.PipeSlots : tune.Slots, WriteBatch = Spec.PipeBatch > 0 ? Spec.PipeBatch : tune.WriteBatch };
+            if (Spec.PipeChunkMB > 0 || Spec.PipeSlots > 0 || Spec.PipeBatch > 0 || Spec.NoPrealloc || Spec.CachedWriteMB > 0)
+                tune = new PipeTuning { Align = tune.Align, Chunk = Spec.PipeChunkMB > 0 ? Spec.PipeChunkMB << 20 : tune.Chunk, Slots = Spec.PipeSlots > 0 ? Spec.PipeSlots : tune.Slots, WriteBatch = Spec.PipeBatch > 0 ? Spec.PipeBatch : tune.WriteBatch, Phased = tune.Phased, Prealloc = tune.Prealloc && !Spec.NoPrealloc, CachedWriteChunk = Spec.CachedWriteMB > 0 ? Spec.CachedWriteMB << 20 : tune.CachedWriteChunk };
             Func<long, bool> progress = done =>
             {
                 long delta = done - t.Done;
@@ -783,7 +791,17 @@ namespace Choppy.Engine
                 if (after < (64L << 20)) tail = CacheBudget();
             }
             // a move flushes the copy to the disk before the original can go
-            var r = BigCopy.Copy(f.Src, temp, f.CTime, f.MTime, f.Attr, tune, Verify, Spec.Op == OpKind.Move, t.RenameTo, tail, progress);
+            var tuner = pipeTuner != null && !pipeTuner.Settled ? pipeTuner : null;
+            if (pipeTuner != null && pipeTuner.Settled) tune = pipeTuner.Best;
+            var r = BigCopy.Copy(f.Src, temp, f.CTime, f.MTime, f.Attr, tune, Verify, Spec.Op == OpKind.Move, t.RenameTo, tail, progress, tuner);
+            if (tuner != null && tuner.Settled && tuner.Changed && !Plan.Tuned)
+            {
+                // the measurements picked another way: the badge says so, the next big files use it
+                Plan.Pipe = tuner.Best;
+                Plan.Tuned = true;
+                Plan.TuneNote = "tuned";
+                RaisePhase();
+            }
             err = r.Error;
             if (err != 0) return false;
             t.TimesSet = true;
@@ -1419,7 +1437,7 @@ namespace Choppy.Engine
                 else
                 {
                     Interrupt(small, false);
-                    TuneBig(bigP, t, b);
+                    if (Plan.Network) TuneBig(bigP, t, b);   // local big files tune inside the pipeline
                 }
             }
         }
@@ -1432,7 +1450,7 @@ namespace Choppy.Engine
             switch (p.Stage)
             {
                 case 0:
-                    if (pend < 150 || activeWorkers >= 32) return;
+                    if (pend < 150 || activeWorkers >= Plan.MaxWorkers) return;
                     if (p.Start == 0) { p.Start = t; return; }
                     if (t - p.Start >= 2) { p.Stage = 1; p.Start = t; p.StartValue = doneFiles; }
                     return;
@@ -1441,7 +1459,7 @@ namespace Choppy.Engine
                     p.BaseRate = (doneFiles - p.StartValue) / (t - p.Start);
                     if (pend < 100) { p.Stage = 3; return; }
                     p.Saved = activeWorkers;
-                    Volatile.Write(ref activeWorkers, Math.Min(32, activeWorkers * 2));
+                    Volatile.Write(ref activeWorkers, Math.Min(Plan.MaxWorkers, activeWorkers * 2));
                     p.Stage = 2; p.Start = t; p.StartValue = doneFiles;
                     return;
                 case 2:
@@ -1452,11 +1470,11 @@ namespace Choppy.Engine
                         Plan.Workers = activeWorkers;
                         Plan.Tuned = true;
                         RaisePhase();
-                        if (pend >= 150 && activeWorkers < 32)
+                        if (pend >= 150 && activeWorkers < Plan.MaxWorkers)
                         {
                             // it helped: try one more step up
                             p.BaseRate = rate; p.Saved = activeWorkers;
-                            Volatile.Write(ref activeWorkers, Math.Min(32, activeWorkers * 2));
+                            Volatile.Write(ref activeWorkers, Math.Min(Plan.MaxWorkers, activeWorkers * 2));
                             p.Start = t; p.StartValue = doneFiles;
                             return;
                         }

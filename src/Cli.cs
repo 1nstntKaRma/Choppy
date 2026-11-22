@@ -49,6 +49,9 @@ namespace Choppy
                         case "--chunk": spec.PipeChunkMB = int.Parse(args[++i]); break;
                         case "--slots": spec.PipeSlots = int.Parse(args[++i]); break;
                         case "--batch": spec.PipeBatch = int.Parse(args[++i]); break;
+                        case "--no-prealloc": spec.NoPrealloc = true; break;
+                        case "--no-tune": spec.NoTune = true; break;
+                        case "--wchunk": spec.CachedWriteMB = int.Parse(args[++i]); break;
                         case "--no-tail": spec.NoCachedTail = true; break;
                         case "--tail": spec.TailMB = int.Parse(args[++i]); break;
                         default: rest.Add(a); break;
@@ -134,7 +137,8 @@ namespace Choppy
             sb.Append("\"phase\":" + Esc(j.Phase.ToString()));
             sb.Append(",\"seconds\":" + secs.ToString("F2", CultureInfo.InvariantCulture));
             sb.Append(",\"badge\":" + Esc(j.Plan != null ? j.Plan.Badge : null));
-            sb.Append(",\"engine\":" + Esc(j.Spec.Engine ?? (j.Plan != null && j.Plan.Pipeline ? "pipeline " + (j.Plan.Pipe.Chunk >> 20) + " MB x " + j.Plan.Pipe.Slots : "copyfile")));
+            sb.Append(",\"tune\":" + Esc(j.TuneSummary));
+            sb.Append(",\"engine\":" + Esc(j.Spec.Engine ?? (j.Plan != null && j.Plan.Pipeline ? "pipeline " + PipeTuner.Describe(j.Plan.Pipe) : "copyfile")));
             sb.Append(",\"srcKind\":" + Esc(j.SrcVol != null ? j.SrcVol.KindText : null));
             sb.Append(",\"dstKind\":" + Esc(j.DstVol != null ? j.DstVol.KindText : null));
             sb.Append(",\"rttMs\":" + (j.DstVol != null ? j.DstVol.RttMs : -1).ToString("F1", CultureInfo.InvariantCulture));
