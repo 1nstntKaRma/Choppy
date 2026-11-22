@@ -436,7 +436,7 @@ namespace Choppy.Engine
             if (Spec.ForceWorkers > 0) { Plan.Workers = Spec.ForceWorkers; Plan.CanTune = false; }
             if (Spec.NoTune) Plan.CanTune = false;
             if (Spec.SmallMode == "batch") Plan.CanTune = false;   // batches are read and written by one worker
-            bool fixedPipe = Spec.PipeChunkMB > 0 || Spec.PipeSlots > 0 || Spec.PipeBatch > 0 || Spec.NoTune || Spec.NoPrealloc || Spec.ForcePrealloc;
+            bool fixedPipe = Spec.PipeChunkMB > 0 || Spec.PipeSlots > 0 || Spec.PipeBatch > 0 || Spec.PipeDepth > 0 || Spec.NoTune || Spec.NoPrealloc || Spec.ForcePrealloc;
             // with a speed limit the trials would measure the limit, not the drives
             pipeTuner = Plan.Pipeline && !fixedPipe && limitBps <= 0 && Plan.PipeWays.Count > 0 ? new PipeTuner(Plan.Pipe, Plan.PipeWays, Plan.TuneSeconds, Plan.TuneMargin) : null;
             int da = Native.GetFileAttributesW(Spec.Dest);
@@ -873,8 +873,8 @@ namespace Choppy.Engine
         bool CopyBig(FileItem f, string temp, Transfer t, out int err)
         {
             var tune = Plan.Pipe;
-            if (Spec.PipeChunkMB > 0 || Spec.PipeSlots > 0 || Spec.PipeBatch > 0 || Spec.NoPrealloc || Spec.ForcePrealloc || Spec.CachedWriteMB > 0)
-                tune = new PipeTuning { Align = tune.Align, Chunk = Spec.PipeChunkMB > 0 ? Spec.PipeChunkMB << 20 : tune.Chunk, Slots = Spec.PipeSlots > 0 ? Spec.PipeSlots : tune.Slots, WriteBatch = Spec.PipeBatch > 0 ? Spec.PipeBatch : tune.WriteBatch, Phased = tune.Phased, Prealloc = Spec.ForcePrealloc || (tune.Prealloc && !Spec.NoPrealloc), CachedWriteChunk = Spec.CachedWriteMB > 0 ? Spec.CachedWriteMB << 20 : tune.CachedWriteChunk, TailAfterRead = tune.TailAfterRead };
+            if (Spec.PipeChunkMB > 0 || Spec.PipeSlots > 0 || Spec.PipeBatch > 0 || Spec.PipeDepth > 0 || Spec.NoPrealloc || Spec.ForcePrealloc || Spec.CachedWriteMB > 0)
+                tune = new PipeTuning { Align = tune.Align, Chunk = Spec.PipeChunkMB > 0 ? Spec.PipeChunkMB << 20 : tune.Chunk, Slots = Spec.PipeSlots > 0 ? Spec.PipeSlots : tune.Slots, WriteBatch = Spec.PipeBatch > 0 ? Spec.PipeBatch : tune.WriteBatch, Phased = tune.Phased, Prealloc = Spec.ForcePrealloc || (tune.Prealloc && !Spec.NoPrealloc), CachedWriteChunk = Spec.CachedWriteMB > 0 ? Spec.CachedWriteMB << 20 : tune.CachedWriteChunk, TailAfterRead = tune.TailAfterRead, ReadDepth = Spec.PipeDepth > 0 ? Spec.PipeDepth : tune.ReadDepth };
             Func<long, bool> progress = done =>
             {
                 long delta = done - t.Done;

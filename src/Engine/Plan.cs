@@ -105,13 +105,16 @@ namespace Choppy.Engine
                 if (dstSlow) p.Pipe.Prealloc = false;
                 // two hard disks: 512 MB read ahead in 2 MB reads, joined into 64 MB writes, so a write doesn't stop the
                 // reads and the source streams from the first second (4 GB on disk: 32 MB x 8 = 163 MB/s, 32 MB x 16 =
-                // 164-171, 2 MB x 256 = 175-179, Explorer 155-159). Once the source is fully read, what the buffers still
-                // hold goes through the cache: the copy is done then, and the disk never waits on the cache while it reads.
+                // 164-171, 2 MB x 256 = 175-179, Explorer 155-159). Only 4 reads out at the disk at once: a deep queue
+                // starts slower (first 1.5 s: 4 out = 191-217 MB/s, 256 out = 119-160) and gains nothing after (shown
+                // 173-183 vs 167-178; Explorer 176-178). Once the source is fully read, what the buffers still hold goes
+                // through the cache: the copy is done then, and the disk never waits on the cache while it reads.
                 // No trials here: two disks swing more from one second to the next than the ways differ.
                 if (srcSlow && dstSlow && !oneDisk)
                 {
                     p.Pipe.Chunk = 2 << 20;
                     p.Pipe.Slots = 256;
+                    p.Pipe.ReadDepth = 4;
                     p.Pipe.WriteBatch = 32;
                     p.Pipe.TailAfterRead = true;
                     return Aligned(p.WithSmallBatch());

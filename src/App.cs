@@ -41,31 +41,9 @@ namespace Choppy
         /// </summary>
         public bool Elevated;
 
-        static string InstanceName(bool elevated)
+        /// <summary>Runs this Choppy (Instance.Claim got the mutex first).</summary>
+        public static int Start(string[] args, Mutex mutex, string name, bool elevated)
         {
-            string sid = "user";
-            try { sid = WindowsIdentity.GetCurrent().User.Value; } catch { }
-            return "Choppy-" + sid + (AppPaths.TestMode ? "-test" : "") + (elevated ? "-admin" : "");
-        }
-
-        public static int Start(string[] args)
-        {
-            bool elevated = args.Length >= 2 && args[0] == Handoff.Arg;
-            string name = InstanceName(elevated);
-            bool created;
-            var mutex = new Mutex(true, @"Local\" + name, out created);
-            if (created && args.Length > 0 && args[0] == "--quit") { mutex.ReleaseMutex(); return 0; }   // nothing running
-            if (!created)
-            {
-                // hand the job to the running Choppy
-                for (int i = 0; i < 40; i++)
-                {
-                    if (Ipc.Send(name, args)) return 0;
-                    Thread.Sleep(100);
-                    if (mutex.WaitOne(0)) { created = true; break; }   // it just exited: take over
-                }
-                if (!created) return 1;
-            }
             var app = new App { instanceMutex = mutex, pipeName = name, Elevated = elevated };
             Current2 = app;
             app.Startup += (s, e) => app.Begin(args);
@@ -358,7 +336,7 @@ namespace Choppy
         {
             if (tray != null || TestHook.Park || Elevated) return;
             tray = new WinForms.NotifyIcon();
-            try { tray.Icon = System.Drawing.Icon.ExtractAssociatedIcon(Takeover.ExePath); } catch { }
+            try { tray.Icon = ChoppyIcon.Small(); } catch { try { tray.Icon = System.Drawing.Icon.ExtractAssociatedIcon(Takeover.ExePath); } catch { } }
             tray.Text = "Choppy";
             tray.MouseClick += (s, e) => { if (e.Button == WinForms.MouseButtons.Left) Dispatcher.BeginInvoke(new Action(TrayOpen)); };
             tray.Visible = true;
@@ -451,6 +429,39 @@ namespace Choppy
             public override System.Drawing.Color CheckBackground { get { return System.Drawing.Color.FromArgb(0x0E, 0x72, 0xE6); } }
             public override System.Drawing.Color CheckSelectedBackground { get { return System.Drawing.Color.FromArgb(0x1C, 0x80, 0xF2); } }
             public override System.Drawing.Color CheckPressedBackground { get { return System.Drawing.Color.FromArgb(0x0E, 0x72, 0xE6); } }
+        }
+    }
+
+    /// <summary>
+    /// One Choppy per user: its mutex, or handing a job to the one already running. Kept apart from App, so a second
+    /// start hands its job over without loading WPF.
+    /// </summary>
+    internal static class Instance
+    {
+        public static string Name(bool elevated)
+        {
+            string sid = "user";
+            try { sid = WindowsIdentity.GetCurrent().User.Value; } catch { }
+            return "Choppy-" + sid + (AppPaths.TestMode ? "-test" : "") + (elevated ? "-admin" : "");
+        }
+
+        /// <summary>This process's instance mutex, or null when there is nothing more to do here (code = exit code).</summary>
+        public static Mutex Claim(string[] args, string name, out int code)
+        {
+            code = 0;
+            bool created;
+            var mutex = new Mutex(true, @"Local\" + name, out created);
+            if (created && args.Length > 0 && args[0] == "--quit") { mutex.ReleaseMutex(); return null; }   // nothing running
+            if (created) return mutex;
+            // hand the job to the running Choppy
+            for (int i = 0; i < 40; i++)
+            {
+                if (Ipc.Send(name, args)) return null;
+                Thread.Sleep(100);
+                if (mutex.WaitOne(0)) return mutex;   // it just exited: take over
+            }
+            code = 1;
+            return null;
         }
     }
 

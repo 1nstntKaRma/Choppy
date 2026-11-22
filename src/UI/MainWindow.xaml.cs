@@ -45,8 +45,8 @@ namespace Choppy.UI
             InitializeComponent();
             WholeNumberBox.Attach(LimitBox);
             Manager = mgr;
-            try { AppIcon.Source = BitmapFrame.Create(new Uri("pack://application:,,,/Choppy;component/Choppy.ico")); } catch { }
-            try { Icon = AppIcon.Source; } catch { }
+            try { AppIcon.Source = ChoppyIcon.Frame(20); } catch { }
+            try { Icon = BitmapFrame.Create(new Uri(ChoppyIcon.Uri)); } catch { }
             var dim = (Brush)FindResource("B.Dim");
             FromPath.ParentBrush = dim; FromPath.LeafBrush = dim; FromPath.FontSize = 14.5;
             ToPath.ParentBrush = dim; ToPath.LeafBrush = dim; ToPath.FontSize = 14.5;

@@ -1,15 +1,13 @@
-## Choppy v1.32
+## Choppy v1.33
 
 📋⚡ Windows 10 / 11 - fast, clear file copier ⚡ everything that matters in one plain, dark window.
 
-### What's in v1.32
-- **Hard disk to hard disk:** big files are read 512 MB ahead in 2 MB reads and written in 64 MB pieces; once the source is fully read, what's left goes through the Windows cache. 4 GB on disk: 166-179 MB/s (was ~150).
-- **Settings on one line each:** a shorter window, **Logs folder**, About next to the version.
-- **Speed limit in whole numbers**, in Settings and in the quick toggles.
-- **A speed limit holds steady:** small writes while it's on, so the speed sits at the limit instead of jumping around it.
-- Starts a little faster.
+### What's in v1.33
+- **New icon**, sharp at every size and screen scaling (title bars, About, tray).
+- **Hard disk to hard disk:** only 4 reads at the disk at once (the 512 MB read-ahead stays): the copy streams from the first second. 4 GB on disk: 172-182 MB/s.
+- **A paste while Choppy runs hands over faster** (37 ms instead of 52) and no longer resets what makes the next start quicker.
 
 ### Install / Update
-1. Download **Choppy-v1.32.zip** and extract all files (or use the PowerShell one-liner from the README).
+1. Download **Choppy-v1.33.zip** and extract all files (or use the PowerShell one-liner from the README).
 2. Double-click **Activate Choppy.cmd** (or run `build.ps1` and choose **[1]**).
 3. Remove at any time with **Revert to Windows Copy.cmd**.

@@ -99,7 +99,38 @@ namespace Choppy.UI
         }
     }
 
-    /// <summary>Dark question / message box in the Choppy style.</summary>
+    /// <summary>The app icon at a given size: the frame of Choppy.ico that fits the screen's scaling (not the 16 px one stretched).</summary>
+    internal static class ChoppyIcon
+    {
+        public const string Uri = "pack://application:,,,/Choppy;component/Choppy.ico";
+        static BitmapDecoder decoder;
+        static double scale;
+
+        public static ImageSource Frame(double size)
+        {
+            if (decoder == null)
+            {
+                decoder = BitmapDecoder.Create(new System.Uri(Uri), BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+                try { using (var g = System.Drawing.Graphics.FromHwnd(IntPtr.Zero)) scale = g.DpiX / 96.0; } catch { scale = 1; }
+            }
+            double px = size * Math.Max(1, scale);
+            BitmapFrame best = null, largest = null;
+            foreach (var f in decoder.Frames)
+            {
+                if (largest == null || f.PixelWidth > largest.PixelWidth) largest = f;
+                if (f.PixelWidth >= px && (best == null || f.PixelWidth < best.PixelWidth)) best = f;
+            }
+            return best ?? largest;
+        }
+
+        /// <summary>The icon for the tray (the small icon size, its own frame).</summary>
+        public static System.Drawing.Icon Small()
+        {
+            var r = Application.GetResourceStream(new System.Uri(Uri));
+            using (var st = r.Stream) return new System.Drawing.Icon(st, System.Windows.Forms.SystemInformation.SmallIconSize);
+        }
+    }
+
     /// <summary>A box that takes whole numbers only: other keys and pastes are ignored.</summary>
     internal static class WholeNumberBox
     {
@@ -115,6 +146,7 @@ namespace Choppy.UI
         }
     }
 
+    /// <summary>Dark question / message box in the Choppy style.</summary>
     internal static class Dialogs
     {
         public const string Repo = "https://github.com/1nstntKaRma/Choppy";
@@ -143,7 +175,7 @@ namespace Choppy.UI
             var sp = new StackPanel { Margin = new Thickness(24, 22, 24, 20) };
 
             var head = new StackPanel { Orientation = Orientation.Horizontal };
-            try { head.Children.Add(new Image { Source = BitmapFrame.Create(new Uri("pack://application:,,,/Choppy;component/Choppy.ico")), Width = 36, Height = 36, Margin = new Thickness(0, 0, 14, 0) }); } catch { }
+            try { head.Children.Add(new Image { Source = ChoppyIcon.Frame(36), Width = 36, Height = 36, Margin = new Thickness(0, 0, 14, 0) }); } catch { }
             var names = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             names.Children.Add(new TextBlock { Text = "Choppy", FontSize = 22, FontWeight = FontWeights.SemiBold });
             names.Children.Add(new TextBlock { Text = "v" + typeof(Dialogs).Assembly.GetName().Version.ToString(3) + " · fast, clear file copier for Windows", FontSize = 13.5, Foreground = (Brush)app.FindResource("B.Dim") });

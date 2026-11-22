@@ -15,7 +15,7 @@ namespace Choppy.UI
         public SettingsWindow()
         {
             InitializeComponent();
-            try { AppIcon.Source = BitmapFrame.Create(new Uri("pack://application:,,,/Choppy;component/Choppy.ico")); Icon = AppIcon.Source; } catch { }
+            try { AppIcon.Source = ChoppyIcon.Frame(20); Icon = BitmapFrame.Create(new Uri(ChoppyIcon.Uri)); } catch { }
             // the administrator copy never touches Explorer, the Run key or Ultracopier
             if (App.Current2 != null && App.Current2.Elevated) TakeoverRow.Visibility = Visibility.Collapsed;
             Version.Text = "v" + typeof(SettingsWindow).Assembly.GetName().Version.ToString(3);

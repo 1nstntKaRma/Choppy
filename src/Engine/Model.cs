@@ -30,7 +30,7 @@ namespace Choppy.Engine
         public int ForceWorkers;                             // tests: fixed number of files in flight (0 = Adaptive)
         public bool NoFastPath;                              // tests: always rename with a separate call
         public string Engine;                                // tests: null = Adaptive, "copyfile" = CopyFileEx only, "nobuf" = the old unbuffered CopyFileEx
-        public int PipeChunkMB, PipeSlots, PipeBatch, CachedWriteMB;                   // tests: pipeline piece size / pieces in flight (0 = Adaptive)
+        public int PipeChunkMB, PipeSlots, PipeBatch, PipeDepth, CachedWriteMB;                   // tests: pipeline piece size / pieces in flight (0 = Adaptive)
         public bool NoPrealloc;                              // tests: no size reserved up front
         public string SmallMode;                             // tests: small files - "unbuf", "cached", "tiny" (cache under 64 KB), "off" (no batches), "batch" (batches on any hard disk)
         public bool ForcePrealloc;                           // tests: reserve the size up front even on a hard disk

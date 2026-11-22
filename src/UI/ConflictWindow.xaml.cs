@@ -19,7 +19,7 @@ namespace Choppy.UI
         {
             InitializeComponent();
             this.info = info;
-            try { AppIcon.Source = BitmapFrame.Create(new Uri("pack://application:,,,/Choppy;component/Choppy.ico")); Icon = AppIcon.Source; } catch { }
+            try { AppIcon.Source = ChoppyIcon.Frame(18); Icon = BitmapFrame.Create(new Uri(ChoppyIcon.Uri)); } catch { }
             FileName.Text = Path.GetFileName(info.ExistingPath);
             FileName.ToolTip = info.ExistingPath;
             InSize.Text = Format.Size(info.IncomingSize);

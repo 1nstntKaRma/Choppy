@@ -16,7 +16,7 @@ namespace Choppy.Engine
     internal sealed unsafe class RingReader : IDisposable
     {
         readonly SafeFileHandle h;
-        readonly int chunk, slots;
+        readonly int chunk, slots, depth;
         readonly long size, pieces, start;   // reads [start, size)
         readonly bool overlapped;
         readonly bool phased;           // one disk at both ends: read a batch, then write it (see ReadPhased)
@@ -35,9 +35,10 @@ namespace Choppy.Engine
         /// size = where to stop reading (the file's size, or the end of a stretch); start = where to begin (overlapped
         /// handles only, a sector multiple). overlapped = the handle was opened with FILE_FLAG_OVERLAPPED.
         /// </summary>
-        public RingReader(SafeFileHandle h, long size, int chunk, int slots, bool overlapped, XxHash64 hash, bool phased = false, long start = 0)
+        public RingReader(SafeFileHandle h, long size, int chunk, int slots, bool overlapped, XxHash64 hash, bool phased = false, long start = 0, int depth = 0)
         {
             this.h = h; this.size = size; this.chunk = chunk; this.slots = slots; this.overlapped = overlapped; this.hash = hash;
+            this.depth = depth > 0 ? Math.Min(depth, slots) : slots;
             this.phased = phased && overlapped;
             this.start = overlapped ? start : 0;
             pieces = size - this.start <= 0 ? 0 : (size - this.start + chunk - 1) / chunk;
@@ -101,7 +102,7 @@ namespace Choppy.Engine
             long issued = 0, done = 0;
             while (done < pieces && !stop)
             {
-                while (issued < pieces && issued - done < slots)
+                while (issued < pieces && issued - done < depth)
                 {
                     if (issued == done) free.Wait();          // nothing out: wait for a buffer
                     else if (!free.Wait(0)) break;              // reads are out: go collect one
@@ -247,6 +248,7 @@ namespace Choppy.Engine
         public bool Prealloc = true;    // reserve the whole size up front
         public int CachedWriteChunk;    // bytes per write through the Windows cache (0 = a whole piece)
         public bool TailAfterRead;      // the cached tail starts once the source is fully read: what the buffers still hold goes through the cache
+        public int ReadDepth;           // reads out at the disk at once (0 = one per free buffer): the buffers can hold far more than that
     }
 
     /// <summary>
@@ -422,7 +424,7 @@ namespace Choppy.Engine
                             slots = (int)Math.Max(2, Math.Min(slots, memCap / tune.Chunk));
                             long from = done, waited = 0;
                             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-                            using (var rr = new RingReader(hs, end, tune.Chunk, slots, true, x, tune.Phased, done))
+                            using (var rr = new RingReader(hs, end, tune.Chunk, slots, true, x, tune.Phased, done, tune.ReadDepth))
                             {
                                 byte* p; int n;
                                 while (rr.Next(out p, out n))
