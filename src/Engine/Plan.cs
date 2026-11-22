@@ -119,9 +119,10 @@ namespace Choppy.Engine
                     p.PipeWays.Add(Way(1, 32, false, 32));    // small reads, joined into 32 MB writes
                     p.PipeWays.Add(Way(8, 8, false, 4));
                 }
-                // many small files: one at a time to begin with; it measures two (and four) and keeps what is faster.
-                // One disk at both ends: always one - small files go in read-then-write batches instead
-                p.CanTune = files > 1 && !oneDisk;
+                // many small files: read in batches in disk order, then written through the cache - one worker
+                // (1,000 files: two hard disks 90-93 MB/s, one disk 67-69; one file at a time 73-76 / 58-60; Explorer 64-67 / 52-55)
+                p.SmallBatch = true;
+                p.CanTune = false;
                 p.MaxWorkers = 4;
                 // a hard disk's speed swings over short stretches: longer trials, and another way must win by 8%
                 p.TuneSeconds = 2.0;
@@ -142,6 +143,7 @@ namespace Choppy.Engine
         }
 
         public int MaxWorkers = 32;          // the most files in flight tuning may go to
+        public bool SmallBatch;              // a hard disk at either end: small files in read-then-write batches
         public double TuneSeconds = 0.75;    // length of one trial stretch
         public double TuneMargin = 1.03;     // how much faster another way must be to take over
 

@@ -750,12 +750,13 @@ namespace Choppy.Engine
 
         bool BatchOn
         {
-            get { return Plan != null && Plan.Pipeline && (Plan.Pipe.Phased || Spec.SmallMode == "batch") && Plan.Workers == 1 && Spec.Engine == null && !pipeOffAtDest && Spec.SmallMode != "off"; }
+            get { return Plan != null && Plan.Pipeline && (Plan.SmallBatch || Spec.SmallMode == "batch") && Plan.Workers == 1 && !Plan.CanTune && Spec.Engine == null && !pipeOffAtDest && Spec.SmallMode != "off"; }
         }
 
         /// <summary>
         /// Reads the small files from index i on (up to 256 MB, 1,024 files) into memory, in the order they sit on the
-        /// disk: the heads sweep once over the sources, then the writes follow without a single read in between.
+        /// disk: the heads sweep once over the sources; then they are written through the cache, whose own writer puts
+        /// them out in one sweep while the next batch is read.
         /// </summary>
         unsafe void FillBatch(int i)
         {
