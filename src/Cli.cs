@@ -324,6 +324,15 @@ namespace Choppy
             string longName = new string('n', 252) + ".bin";
             check("temp long", CopyJob.TempName(@"\\?\C:\x\" + longName).EndsWith(".chpart") && Paths.FileName(CopyJob.TempName(@"\\?\C:\x\" + longName)).Length < 255);
             PipelineChecks(check);
+            // the Ctrl+V hook: its own thread, put in again on time (observe only: it never takes a key here)
+            if (Choppy.Explorer.PasteHook.Start(null, null, true))
+            {
+                System.Threading.Thread.Sleep(3500);
+                bool ok = Choppy.Explorer.PasteHook.Running && Choppy.Explorer.PasteHook.Refreshes >= 1 && Choppy.Explorer.PasteHook.Dropped == 0;
+                Choppy.Explorer.PasteHook.Stop();
+                check("Ctrl+V hook on its own thread, refreshed (" + Choppy.Explorer.PasteHook.Refreshes + ")", ok && !Choppy.Explorer.PasteHook.Running);
+            }
+            else sb.AppendLine("SKIP Ctrl+V hook (no desktop to hook here)");
             sb.AppendLine(fails == 0 ? "ALL PASS" : fails + " FAILED");
             if (outFile != null) File.WriteAllText(outFile, sb.ToString());
             return fails == 0 ? 0 : 2;

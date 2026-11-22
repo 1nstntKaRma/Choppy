@@ -65,7 +65,9 @@ Non-interactive: `-Shell Apply`, `-Shell RightClick`, `-Shell Install` (keeps th
 
 ## Default File Manager
 
-**On:** Ctrl+V of files in an Explorer window or on the desktop is handed to Choppy (a small keyboard hook in Choppy itself - nothing is loaded into Explorer). Ctrl+V while renaming a file, in the address bar or in search stays a normal paste; virtual places like *This PC* keep Explorer's own paste. Drag and drop stays Windows' own copy.
+**On:** Ctrl+V of files in an Explorer window or on the desktop is handed to Choppy (a small keyboard hook in Choppy itself - nothing is loaded into Explorer). So is Shift+Insert, the paste a clipboard manager sends. Ctrl+V while renaming a file, in the address bar or in search stays a normal paste; virtual places like *This PC* keep Explorer's own paste. Drag and drop stays Windows' own copy.
+
+The hook runs on a thread of its own and is put in again every few seconds, so a busy moment never hands a paste to Windows. Any start of Choppy (a right-click paste, the settings) brings it back to the tray, and a Choppy that closes on an error starts again. Each paste of files in Explorer is noted in `%LOCALAPPDATA%\Choppy\Logs\ctrl-v.txt`, with the reason whenever Windows did it instead.
 
 **Off:** Windows is left alone. Choppy works through right-click **Paste with Choppy** on folders, folder backgrounds and drives.
 

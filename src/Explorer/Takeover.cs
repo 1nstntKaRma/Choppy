@@ -23,9 +23,19 @@ namespace Choppy.Explorer
         static readonly Guid SID_STopLevelBrowser = new Guid("4C96BE40-915C-11CF-99D3-00AA004AE837");
         static readonly Guid IID_IShellBrowser = new Guid("000214E2-0000-0000-C000-000000000046");
 
-        /// <summary>A real folder path, or null (virtual places like This PC - Explorer keeps those pastes).</summary>
         public static string FolderOf(IntPtr hwnd)
         {
+            bool isVirtual;
+            return FolderOf(hwnd, out isVirtual);
+        }
+
+        /// <summary>
+        /// A real folder path, or null. isVirtual = the window shows a virtual place (This PC, a library: Explorer keeps
+        /// those pastes); null without it = Explorer didn't answer (ask again).
+        /// </summary>
+        public static string FolderOf(IntPtr hwnd, out bool isVirtual)
+        {
+            isVirtual = false;
             var sb = new StringBuilder(64);
             GetClassName(hwnd, sb, sb.Capacity);
             string cls = sb.ToString();
@@ -54,7 +64,7 @@ namespace Choppy.Explorer
                         if (activeTab != IntPtr.Zero)
                         {
                             IntPtr tab = TabOf((object)w);
-                            if (tab == activeTab) return Usable(p);
+                            if (tab == activeTab) { isVirtual = IsVirtual(p); return Usable(p); }
                         }
                         if (first == null) first = p;
                     }
@@ -68,8 +78,11 @@ namespace Choppy.Explorer
                 if (windows != null) try { Marshal.ReleaseComObject(windows); } catch { }
                 if (shell != null) try { Marshal.ReleaseComObject(shell); } catch { }
             }
+            isVirtual = IsVirtual(first);
             return Usable(first);
         }
+
+        static bool IsVirtual(string p) { return p != null && p.StartsWith("::"); }
 
         static string PathOf(dynamic w)
         {

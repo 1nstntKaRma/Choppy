@@ -52,6 +52,8 @@ namespace Choppy
                 try { File.AppendAllText(Path.Combine(AppPaths.DataDir, "errors.txt"), DateTime.Now + " " + e.Exception + Environment.NewLine); } catch { }
                 e.Handled = true;
             };
+            // an error on another thread ends the process: noted, and a Choppy that watches Ctrl+V starts again in the tray
+            AppDomain.CurrentDomain.UnhandledException += (s, e) => app.OnCrash(e.ExceptionObject as Exception);
             int code = app.Run();
             try { mutex.ReleaseMutex(); } catch { }
             return code;
@@ -79,6 +81,11 @@ namespace Choppy
             if (!string.IsNullOrEmpty(hookDir)) testHook = new TestHook(this, hookDir);
 
             if (!Elevated) Takeover.Refresh();
+            // "Default file manager" on: any start of Choppy for a copy, a paste or the settings stays in the tray watching
+            // Ctrl+V - a right-click paste brings the takeover back even if the tray copy was closed (not for the
+            // installer's own steps like --menu, which wait for it to exit)
+            bool step = args.Length > 0 && args[0].StartsWith("--");
+            if (!Elevated && !AppPaths.TestMode && !step && Settings.Current.ExplorerTakeover) ApplyTakeover();
             HandleArgs(args);
             if (!Elevated) Dispatcher.BeginInvoke(new Action(OfferResume), DispatcherPriority.ApplicationIdle);
         }
@@ -168,9 +175,35 @@ namespace Choppy
 
         void OnExplorerPaste(IntPtr explorerWindow)
         {
-            string dest = ShellLocation.FolderOf(explorerWindow);
-            if (dest == null) { PasteHook.ReplayPaste(); return; }   // This PC, Libraries...: Explorer's own paste
-            PasteInto(dest, "Explorer");
+            // the folder the window shows (asked of Explorer itself; it can be slow or busy for a moment: asked again)
+            string dest = null;
+            bool isVirtual = false;
+            for (int i = 0; i < 3 && dest == null; i++)
+            {
+                if (i > 0) System.Threading.Thread.Sleep(120);
+                dest = ShellLocation.FolderOf(explorerWindow, out isVirtual);
+                if (isVirtual) break;
+            }
+            if (dest == null)
+            {
+                // This PC, Libraries, Quick access...: Explorer's own paste
+                PasteLog.Write(isVirtual ? "Pasted by Windows: the window shows a virtual place (This PC, a library...)" : "Pasted by Windows: Explorer didn't say which folder the window shows");
+                PasteHook.ReplayPaste();
+                return;
+            }
+            string[] files; bool move, busy;
+            if (!ClipboardFiles.Read(out files, out move, out busy))
+            {
+                PasteLog.Write(busy ? "Pasted by Windows: another program kept the clipboard open" : "Pasted by Windows: no files on the clipboard any more");
+                PasteHook.ReplayPaste();
+                return;
+            }
+            PasteLog.Write("Choppy: " + (move ? "move " : "copy ") + files.Length + (files.Length == 1 ? " item" : " items") + " to " + dest);
+            var spec = NewSpec(move ? OpKind.Move : OpKind.Copy, files, dest, "Explorer");
+            if (spec == null) return;
+            Manager.Enqueue(spec);
+            ShowMain(true);
+            if (move && !AppPaths.TestMode) try { Clipboard.Clear(); } catch { }
         }
 
         // ================= windows =================
@@ -307,6 +340,20 @@ namespace Choppy
         }
 
         // ================= tray + Explorer takeover =================
+
+        void OnCrash(Exception ex)
+        {
+            try { File.AppendAllText(Path.Combine(AppPaths.DataDir, "errors.txt"), DateTime.Now + " (closed) " + ex + Environment.NewLine); } catch { }
+            try
+            {
+                var me = System.Diagnostics.Process.GetCurrentProcess();
+                // not when it fails right at the start (it would only fail again)
+                if (Elevated || AppPaths.TestMode || !Settings.Current.ExplorerTakeover || DateTime.Now - me.StartTime < TimeSpan.FromSeconds(30)) return;
+                PasteLog.Write("Choppy closed on an error; started again in the tray.");
+                System.Diagnostics.Process.Start(Takeover.ExePath, "--revive " + me.Id);
+            }
+            catch { }
+        }
 
         public void ApplyTakeover()
         {
@@ -458,7 +505,9 @@ namespace Choppy
             {
                 if (Ipc.Send(name, args)) return null;
                 Thread.Sleep(100);
-                if (mutex.WaitOne(0)) return mutex;   // it just exited: take over
+                // it just exited: take over (left behind by a Choppy that ended on an error counts too)
+                try { if (mutex.WaitOne(0)) return mutex; }
+                catch (AbandonedMutexException) { return mutex; }
             }
             code = 1;
             return null;

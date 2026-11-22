@@ -28,6 +28,13 @@ namespace Choppy
                 Profile("cli.jit");
                 return RunCli(args);
             }
+            // a Choppy that ended on an error started this one: wait until it is gone, then watch Ctrl+V from the tray
+            int dead;
+            if (args.Length == 2 && args[0] == "--revive" && int.TryParse(args[1], out dead))
+            {
+                try { using (var p = System.Diagnostics.Process.GetProcessById(dead)) p.WaitForExit(20000); } catch { }
+                args = new[] { "--tray" };
+            }
             // a Choppy is already running: hand it the job and exit, before anything of WPF is loaded
             bool elevated = args.Length >= 2 && args[0] == Handoff.Arg;
             string name = Instance.Name(elevated);
