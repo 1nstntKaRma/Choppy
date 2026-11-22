@@ -196,7 +196,7 @@
                                 <CheckBox x:Name="TgLimit" Style="{StaticResource QuickDot}" Content="Speed limit" Checked="Quick_Changed" Unchecked="Quick_Changed" VerticalAlignment="Center"
                                           ToolTip="Leave room on the line for everything else"/>
                                 <Rectangle Width="1" Height="18" Fill="#FF3A4048" Margin="10,0,8,0" VerticalAlignment="Center"/>
-                                <TextBox x:Name="LimitBox" Style="{StaticResource Box.Small}" VerticalAlignment="Center" TextChanged="LimitBox_Changed"/>
+                                <TextBox x:Name="LimitBox" Style="{StaticResource Box.Small}" VerticalAlignment="Center" MaxLength="6" TextChanged="LimitBox_Changed"/>
                                 <TextBlock x:Name="LimitUnit" Text="MB/s" FontSize="13.5" Foreground="{StaticResource B.Dim}" VerticalAlignment="Center" Margin="7,0,8,0"/>
                             </StackPanel>
                         </Border>

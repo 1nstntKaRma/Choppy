@@ -239,6 +239,11 @@ namespace Choppy
                     File.WriteAllBytes(a, data);
                     var rt = BigCopy.Copy(Paths.ToLong(a), Paths.ToLong(b), 0, File.GetLastWriteTimeUtc(a).ToFileTimeUtc(), 0x20, tune, false, false, null, 2 << 20, n => true);
                     check("pipeline cached tail", rt.Error == 0 && System.Linq.Enumerable.SequenceEqual(File.ReadAllBytes(b), data));
+                    // two hard disks: the cached end starts once the source is fully read (whatever the buffers still hold)
+                    string c = Path.Combine(dir, "tail-c.bin");
+                    var at = new PipeTuning { Chunk = 1 << 20, Slots = 8, Align = 4096, WriteBatch = 2, Prealloc = false, TailAfterRead = true };
+                    var ra = BigCopy.Copy(Paths.ToLong(a), Paths.ToLong(c), 0, File.GetLastWriteTimeUtc(a).ToFileTimeUtc(), 0x20, at, true, false, null, 64 << 20, n => true);
+                    check("pipeline cached end after read", ra.Error == 0 && ra.Hash == XxHash64.OfBytes(data) && System.Linq.Enumerable.SequenceEqual(File.ReadAllBytes(c), data));
                 }
                 // an extra data stream (downloads carry Zone.Identifier) comes along
                 string s = Path.Combine(dir, "s.bin"), t = Path.Combine(dir, "t.bin");

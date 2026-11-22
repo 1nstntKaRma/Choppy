@@ -29,6 +29,7 @@ namespace Choppy.Engine
         volatile bool stop;
         long taken;
         public volatile int Error;      // read error (0 = none)
+        public volatile bool AllRead;   // the last piece is in memory: nothing is left to read
 
         /// <summary>
         /// size = where to stop reading (the file's size, or the end of a stretch); start = where to begin (overlapped
@@ -87,6 +88,7 @@ namespace Choppy.Engine
                     n += m;
                 }
                 if (Error != 0) n = 0;
+                if (n > 0 && k + 1 == pieces) AllRead = true;
                 Post(k, n);
                 if (n <= 0) return;
             }
@@ -109,6 +111,7 @@ namespace Choppy.Engine
                 }
                 if (stop) break;
                 int n = CollectWhole(done);
+                if (n > 0 && done + 1 == pieces) AllRead = true;
                 Post(done, n);
                 done++;
                 if (n <= 0) { Drain(done, issued); return; }
@@ -130,6 +133,7 @@ namespace Choppy.Engine
                 for (; done < end; done++)
                 {
                     int n = CollectWhole(done);
+                    if (n > 0 && done + 1 == pieces) AllRead = true;
                     Post(done, n);
                     if (n <= 0) { Drain(done + 1, end); return; }
                 }
@@ -242,6 +246,7 @@ namespace Choppy.Engine
         public bool Phased;             // one hard disk at both ends: read all buffers, then write them all
         public bool Prealloc = true;    // reserve the whole size up front
         public int CachedWriteChunk;    // bytes per write through the Windows cache (0 = a whole piece)
+        public bool TailAfterRead;      // the cached tail starts once the source is fully read: what the buffers still hold goes through the cache
     }
 
     /// <summary>
@@ -368,9 +373,11 @@ namespace Choppy.Engine
         /// <summary>
         /// cachedTail: the last bytes of the file go through the Windows cache (like Explorer's copy), so the copy is
         /// done as soon as they are in memory and Windows writes them out right after. 0 = all straight to the disk.
+        /// maxWrite: the most bytes one write may take right now (a speed limit writes in small steps, so it holds
+        /// steady instead of in bursts); 0 = no cap.
         /// </summary>
         public static BigResult Copy(string src, string dst, long ctime, long mtime, uint attrs, PipeTuning tune,
-            bool hash, bool flush, string renameTo, long cachedTail, Func<long, bool> progress, PipeTuner tuner = null)
+            bool hash, bool flush, string renameTo, long cachedTail, Func<long, bool> progress, PipeTuner tuner = null, Func<int> maxWrite = null)
         {
             var r = new BigResult();
             using (var hs = Native.CreateFileW(src, Native.GENERIC_READ, Native.FILE_SHARE_READ | Native.FILE_SHARE_DELETE, IntPtr.Zero,
@@ -424,9 +431,11 @@ namespace Choppy.Engine
                                     int joined = tune.Phased ? rr.Gather(rr.Slots - 1, ref n) : tune.WriteBatch > 1 ? rr.Gather(tune.WriteBatch - 1, ref n) : 0;
                                     // phased: written a piece at a time, so the progress moves smoothly (the writes follow each other on the disk)
                                     int step = tune.Phased ? tune.Chunk : n;
+                                    int cap = maxWrite != null ? maxWrite() : 0;
+                                    if (cap > 0 && cap < step) step = Math.Max(align, cap / align * align);
                                     for (int off = 0; off < n && r.Error == 0; )
                                     {
-                                        if (hc == null && cachedTail > 0 && size - done <= cachedTail)
+                                        if (hc == null && cachedTail > 0 && size - done <= cachedTail && (!tune.TailAfterRead || (end == size && rr.AllRead)))
                                         {
                                             // the last part: through the Windows cache from here on (done is a whole number of pieces).
                                             // The unbuffered handle closes first: Windows writes cached data out when such a handle

@@ -19,6 +19,7 @@ namespace Choppy.UI
             // the administrator copy never touches Explorer, the Run key or Ultracopier
             if (App.Current2 != null && App.Current2.Elevated) TakeoverRow.Visibility = Visibility.Collapsed;
             Version.Text = "v" + typeof(SettingsWindow).Assembly.GetName().Version.ToString(3);
+            WholeNumberBox.Attach(LimitValue);
             Reload();
             Loaded += (o, e) => Native2.Rounded(this);
             MouseLeftButtonDown += (o, e) => { if (e.GetPosition(this).Y < 46) try { DragMove(); } catch { } };
@@ -81,9 +82,8 @@ namespace Choppy.UI
         /// <summary>The typed limit in Mbps, or 0 when it isn't a number.</summary>
         double ParseLimit()
         {
-            double v;
-            if (double.TryParse(LimitValue.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out v) && v > 0) return Math.Min(100000, Format.LimitToMbps(v, LimitInMbps));
-            return 0;
+            int v = Format.ParseLimit(LimitValue.Text);
+            return v > 0 ? Math.Min(100000, Format.LimitToMbps(v, LimitInMbps)) : 0;
         }
 
         void LimitValue_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e)

@@ -874,7 +874,7 @@ namespace Choppy.Engine
         {
             var tune = Plan.Pipe;
             if (Spec.PipeChunkMB > 0 || Spec.PipeSlots > 0 || Spec.PipeBatch > 0 || Spec.NoPrealloc || Spec.ForcePrealloc || Spec.CachedWriteMB > 0)
-                tune = new PipeTuning { Align = tune.Align, Chunk = Spec.PipeChunkMB > 0 ? Spec.PipeChunkMB << 20 : tune.Chunk, Slots = Spec.PipeSlots > 0 ? Spec.PipeSlots : tune.Slots, WriteBatch = Spec.PipeBatch > 0 ? Spec.PipeBatch : tune.WriteBatch, Phased = tune.Phased, Prealloc = Spec.ForcePrealloc || (tune.Prealloc && !Spec.NoPrealloc), CachedWriteChunk = Spec.CachedWriteMB > 0 ? Spec.CachedWriteMB << 20 : tune.CachedWriteChunk };
+                tune = new PipeTuning { Align = tune.Align, Chunk = Spec.PipeChunkMB > 0 ? Spec.PipeChunkMB << 20 : tune.Chunk, Slots = Spec.PipeSlots > 0 ? Spec.PipeSlots : tune.Slots, WriteBatch = Spec.PipeBatch > 0 ? Spec.PipeBatch : tune.WriteBatch, Phased = tune.Phased, Prealloc = Spec.ForcePrealloc || (tune.Prealloc && !Spec.NoPrealloc), CachedWriteChunk = Spec.CachedWriteMB > 0 ? Spec.CachedWriteMB << 20 : tune.CachedWriteChunk, TailAfterRead = tune.TailAfterRead };
             Func<long, bool> progress = done =>
             {
                 long delta = done - t.Done;
@@ -907,7 +907,7 @@ namespace Choppy.Engine
             // while it still measures, at most a quarter of the file's end waits in memory: the rest is room for the trials
             if (tuner != null) tail = Math.Min(tail, f.Size / 4);
             if (pipeTuner != null && pipeTuner.Settled) tune = pipeTuner.Best;
-            var r = BigCopy.Copy(f.Src, temp, f.CTime, f.MTime, f.Attr, tune, Verify, Spec.Op == OpKind.Move, t.RenameTo, tail, progress, tuner);
+            var r = BigCopy.Copy(f.Src, temp, f.CTime, f.MTime, f.Attr, tune, Verify, Spec.Op == OpKind.Move, t.RenameTo, tail, progress, tuner, LimitStep);
             if (tuner != null && tuner.Settled && tuner.Changed && !Plan.Tuned)
             {
                 // the measurements picked another way: the badge says so, the next big files use it
@@ -1469,6 +1469,13 @@ namespace Choppy.Engine
         }
 
         // ---------- speed limit ----------
+
+        /// <summary>With a speed limit, one write is at most an eighth of a second of it (at least 256 KB): steady, not bursts.</summary>
+        int LimitStep()
+        {
+            double rate = limitBps;
+            return rate > 0 ? (int)Math.Max(256 << 10, Math.Min(64 << 20, rate / 8)) : 0;
+        }
 
         void Throttle(long bytes)
         {

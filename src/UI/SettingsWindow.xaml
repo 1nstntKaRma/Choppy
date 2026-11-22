@@ -20,6 +20,7 @@
             <Setter Property="Foreground" Value="{StaticResource B.Faint}"/>
             <Setter Property="Margin" Value="0,2,0,0"/>
         </Style>
+        <GridLength x:Key="NameCol">200</GridLength>
         <Style x:Key="Row" TargetType="Border">
             <Setter Property="BorderBrush" Value="{StaticResource B.Sep}"/>
             <Setter Property="BorderThickness" Value="0,0,0,1"/>
@@ -39,16 +40,21 @@
             <Button Style="{StaticResource Btn.TitleClose}" Content="&#xE8BB;" FontSize="12" Height="46" HorizontalAlignment="Right" WindowChrome.IsHitTestVisibleInChrome="True" Click="Close_Click"/>
         </Grid>
 
-        <StackPanel Grid.Row="1" Margin="22,0,22,18">
+        <!-- one line per setting: name | what it does / its choices | switch (the choices and switches line up) -->
+        <StackPanel Grid.Row="1" Margin="22,0,22,16">
             <!-- default file manager -->
-            <Border x:Name="TakeoverRow" Style="{StaticResource Row}" Padding="0,4,0,13">
+            <Border x:Name="TakeoverRow" Style="{StaticResource Row}" Padding="0,4,0,12">
                 <StackPanel>
                     <CheckBox x:Name="Takeover" Style="{StaticResource Toggle}" Checked="Takeover_Changed" Unchecked="Takeover_Changed"
                               ToolTip="Off: Windows' own copy stays the default; use right-click &quot;Paste with Choppy&quot;. Drag and drop always stays Windows' own copy.">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource Head}" Text="Default file manager"/>
-                            <TextBlock Style="{StaticResource Sub}" Text="Ctrl+V in Explorer opens Choppy"/>
-                        </StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="{StaticResource NameCol}"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource Head}" Text="Default file manager" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Style="{StaticResource Sub}" Text="Ctrl+V in Explorer opens Choppy" VerticalAlignment="Center" Margin="0"/>
+                        </Grid>
                     </CheckBox>
                     <TextBlock x:Name="UcNote" Style="{StaticResource Sub}" Foreground="{StaticResource B.Warn}" Margin="0,6,0,0" Visibility="Collapsed"
                                Text="Another copier that takes Ctrl+V is closed while this is on (off brings it back)."/>
@@ -70,25 +76,33 @@
             </Border>
 
             <!-- unit -->
-            <Border Style="{StaticResource Row}">
-                <StackPanel>
-                    <TextBlock Style="{StaticResource Head}" Text="Show speed in"/>
-                    <WrapPanel Margin="0,10,0,-6">
-                        <RadioButton x:Name="UAuto" GroupName="unit" Style="{StaticResource Seg}" Content="Auto" Checked="Changed" ToolTip="Network: Mbps. Disks: MB/s."/>
-                        <RadioButton x:Name="UMbps" GroupName="unit" Style="{StaticResource Seg}" Content="Mbps" Checked="Changed"/>
-                        <RadioButton x:Name="UMbs" GroupName="unit" Style="{StaticResource Seg}" Content="MB/s" Checked="Changed"/>
-                    </WrapPanel>
-                </StackPanel>
+            <Border Style="{StaticResource Row}" Padding="0,10,0,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="{StaticResource NameCol}"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource Head}" Text="Show speed in" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <RadioButton x:Name="UAuto" GroupName="unit" Style="{StaticResource Seg}" Margin="0,0,6,0" Content="Auto" Checked="Changed" ToolTip="Network: Mbps. Disks: MB/s."/>
+                        <RadioButton x:Name="UMbps" GroupName="unit" Style="{StaticResource Seg}" Margin="0,0,6,0" Content="Mbps" Checked="Changed"/>
+                        <RadioButton x:Name="UMbs" GroupName="unit" Style="{StaticResource Seg}" Margin="0" Content="MB/s" Checked="Changed"/>
+                    </StackPanel>
+                </Grid>
             </Border>
 
             <!-- verify -->
             <Border Style="{StaticResource Row}">
                 <CheckBox x:Name="Verify" Style="{StaticResource Toggle}" Checked="Changed" Unchecked="Changed"
                           ToolTip="Reads each copy back and compares it with the original. A move then removes the original only after its copy matches.">
-                    <StackPanel>
-                        <TextBlock Style="{StaticResource Head}" Text="Check every copy"/>
-                        <TextBlock Style="{StaticResource Sub}" Text="xxHash64"/>
-                    </StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="{StaticResource NameCol}"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource Head}" Text="Check every copy" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="1" Style="{StaticResource Sub}" Text="xxHash64" VerticalAlignment="Center" Margin="0"/>
+                    </Grid>
                 </CheckBox>
             </Border>
 
@@ -101,34 +115,38 @@
             </Border>
 
             <!-- speed limit -->
-            <Border Style="{StaticResource Row}">
+            <Border Style="{StaticResource Row}" Padding="0,10,0,10">
                 <Grid>
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="{StaticResource NameCol}"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Style="{StaticResource Head}" Text="Speed limit" VerticalAlignment="Center" ToolTip="Leaves room on the line for everything else"/>
-                    <CheckBox x:Name="Limit" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center" Checked="Changed" Unchecked="Changed"/>
-                    <TextBox x:Name="LimitValue" Grid.Column="2" Style="{StaticResource Box.Small}" Width="60" Height="30" Margin="0,0,0,0" TextChanged="LimitValue_Changed"/>
-                    <TextBlock x:Name="LimitUnit" Grid.Column="3" Text="MB/s" FontSize="14" Foreground="{StaticResource B.Dim}" VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="38"/>
+                    <TextBox x:Name="LimitValue" Grid.Column="1" Style="{StaticResource Box.Small}" Width="60" Height="30" MaxLength="6" TextChanged="LimitValue_Changed"/>
+                    <TextBlock x:Name="LimitUnit" Grid.Column="2" Text="MB/s" FontSize="14" Foreground="{StaticResource B.Dim}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                    <CheckBox x:Name="Limit" Grid.Column="4" Style="{StaticResource Toggle}" VerticalAlignment="Center" Checked="Changed" Unchecked="Changed"/>
                 </Grid>
             </Border>
 
-            <Grid Margin="0,16,0,0">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Style="{StaticResource Btn.Link}" Click="Logs_Click" Margin="-6,0,0,0">
-                        <TextBlock Text="Open the log folder" FontSize="14" Foreground="{StaticResource B.Link}"/>
+            <Grid Margin="0,14,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="{StaticResource NameCol}"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Button Style="{StaticResource Btn.Link}" Click="Logs_Click" Margin="-6,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center">
+                    <TextBlock Text="Logs folder" FontSize="14" Foreground="{StaticResource B.Link}" Padding="0,0,0,2"/>
+                </Button>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="-6,0,0,0">
+                    <Button Style="{StaticResource Btn.Link}" Click="About_Click">
+                        <TextBlock Text="About" FontSize="14" Foreground="{StaticResource B.Link}" Padding="0,0,0,2"/>
                     </Button>
-                    <Button Style="{StaticResource Btn.Link}" Click="About_Click" Margin="8,0,0,0">
-                        <TextBlock Text="About" FontSize="14" Foreground="{StaticResource B.Link}"/>
-                    </Button>
+                    <TextBlock x:Name="Version" FontSize="14" Foreground="{StaticResource B.Faint}" VerticalAlignment="Center" Margin="8,0,0,0"/>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <TextBlock x:Name="Version" FontSize="14" Foreground="{StaticResource B.Faint}" VerticalAlignment="Center" Margin="0,0,16,0"/>
-                    <Button Style="{StaticResource Btn.Primary}" Content="Done" Height="38" Padding="22,0" Click="Close_Click"/>
-                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource Btn.Primary}" Content="Done" Height="38" Padding="22,0" Click="Close_Click"/>
             </Grid>
         </StackPanel>
     </Grid>

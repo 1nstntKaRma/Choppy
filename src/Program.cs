@@ -21,7 +21,15 @@ namespace Choppy
                 Environment.CurrentDirectory = AppPaths.DataDir;
             }
             catch { }
-            if (args.Length > 0 && (args[0] == "--cli" || args[0] == "--selftest" || args[0] == "--where"))
+            bool cli = args.Length > 0 && (args[0] == "--cli" || args[0] == "--selftest" || args[0] == "--where");
+            // compile on spare cores what the last start needed (a small profile file in the data folder)
+            try
+            {
+                System.Runtime.ProfileOptimization.SetProfileRoot(AppPaths.DataDir);
+                System.Runtime.ProfileOptimization.StartProfile(cli ? "cli.jit" : "app.jit");
+            }
+            catch { }
+            if (cli)
                 return Cli.Run(args);
             return App.Start(args);
         }

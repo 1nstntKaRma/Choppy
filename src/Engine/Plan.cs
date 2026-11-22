@@ -42,7 +42,7 @@ namespace Choppy.Engine
                 if (Network) s += Workers + " files in flight hide the network's round trips" + (CanTune ? "; it measures and adds more when that is faster." : ".");
                 else if (Workers <= 1) s += "one file at a time, in order - no seeking back and forth.";
                 else s += Workers + " small files at once.";
-                if (Pipeline) s += " Big files are read and written past the Windows cache; the first big file tries a few ways and the fastest copies the rest.";
+                if (Pipeline) s += " Big files are read and written past the Windows cache" + (PipeWays.Count > 0 ? "; the first big file tries a few ways and the fastest copies the rest." : ".");
                 return s;
             }
         }
@@ -103,6 +103,19 @@ namespace Choppy.Engine
                 // no size reserved up front on a hard disk: the reservation can land the file on a slower part of the
                 // platter (NVMe to hard disk: 199-206 MB/s without it, 169-170 with it)
                 if (dstSlow) p.Pipe.Prealloc = false;
+                // two hard disks: 512 MB read ahead in 2 MB reads, joined into 64 MB writes, so a write doesn't stop the
+                // reads and the source streams from the first second (4 GB on disk: 32 MB x 8 = 163 MB/s, 32 MB x 16 =
+                // 164-171, 2 MB x 256 = 175-179, Explorer 155-159). Once the source is fully read, what the buffers still
+                // hold goes through the cache: the copy is done then, and the disk never waits on the cache while it reads.
+                // No trials here: two disks swing more from one second to the next than the ways differ.
+                if (srcSlow && dstSlow && !oneDisk)
+                {
+                    p.Pipe.Chunk = 2 << 20;
+                    p.Pipe.Slots = 256;
+                    p.Pipe.WriteBatch = 32;
+                    p.Pipe.TailAfterRead = true;
+                    return Aligned(p.WithSmallBatch());
+                }
                 // all of the above is a first guess: the first big file measures these ways against it and keeps the fastest
                 if (oneDisk)
                 {
@@ -119,15 +132,10 @@ namespace Choppy.Engine
                     p.PipeWays.Add(Way(1, 32, false, 32));    // small reads, joined into 32 MB writes
                     p.PipeWays.Add(Way(8, 8, false, 4));
                 }
-                // many small files: read in batches in disk order, then written through the cache - one worker
-                // (1,000 files: two hard disks 90-93 MB/s, one disk 67-69; one file at a time 73-76 / 58-60; Explorer 64-67 / 52-55)
-                p.SmallBatch = true;
-                p.CanTune = false;
-                p.MaxWorkers = 4;
                 // a hard disk's speed swings over short stretches: longer trials, and another way must win by 8%
                 p.TuneSeconds = 2.0;
                 p.TuneMargin = 1.08;
-                return Aligned(p);
+                return Aligned(p.WithSmallBatch());
             }
             p.Kind = (dst != null && dst.Kind == DeviceKind.Ssd) || (src != null && src.Kind == DeviceKind.Ssd) ? "SSD" : "Disk";
             p.Workers = files <= 1 ? 1 : (files > 32 && median < (1L << 20)) ? 8 : 4;
@@ -146,6 +154,16 @@ namespace Choppy.Engine
         public bool SmallBatch;              // a hard disk at either end: small files in read-then-write batches
         public double TuneSeconds = 0.75;    // length of one trial stretch
         public double TuneMargin = 1.03;     // how much faster another way must be to take over
+
+        // many small files: read in batches in disk order, then written through the cache - one worker
+        // (1,000 files: two hard disks 90-93 MB/s, one disk 67-69; one file at a time 73-76 / 58-60; Explorer 64-67 / 52-55)
+        Plan WithSmallBatch()
+        {
+            SmallBatch = true;
+            CanTune = false;
+            MaxWorkers = 4;
+            return this;
+        }
 
         static PipeTuning Way(int mb, int slots, bool phased, int batch)
         {

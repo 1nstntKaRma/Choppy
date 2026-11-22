@@ -43,6 +43,7 @@ namespace Choppy.UI
         internal MainWindow(JobManager mgr)
         {
             InitializeComponent();
+            WholeNumberBox.Attach(LimitBox);
             Manager = mgr;
             try { AppIcon.Source = BitmapFrame.Create(new Uri("pack://application:,,,/Choppy;component/Choppy.ico")); } catch { }
             try { Icon = AppIcon.Source; } catch { }
@@ -656,8 +657,8 @@ namespace Choppy.UI
         void LimitBox_Changed(object sender, TextChangedEventArgs e)
         {
             if (loadingQuick || !LimitBox.IsKeyboardFocusWithin) return;
-            double v;
-            if (!double.TryParse(LimitBox.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out v) || v <= 0) return;
+            int v = Format.ParseLimit(LimitBox.Text);
+            if (v <= 0) return;
             var s = Settings.Current;
             s.LimitValueMbps = Format.LimitToMbps(v, UseMbps(job));
             if (s.SpeedLimitMbps > 0) s.SpeedLimitMbps = s.LimitValueMbps;

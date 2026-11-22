@@ -100,6 +100,21 @@ namespace Choppy.UI
     }
 
     /// <summary>Dark question / message box in the Choppy style.</summary>
+    /// <summary>A box that takes whole numbers only: other keys and pastes are ignored.</summary>
+    internal static class WholeNumberBox
+    {
+        public static void Attach(TextBox box)
+        {
+            box.PreviewTextInput += (s, e) => { foreach (char c in e.Text) if (c < '0' || c > '9') { e.Handled = true; return; } };
+            DataObject.AddPastingHandler(box, (s, e) =>
+            {
+                var text = e.DataObject.GetDataPresent(typeof(string)) ? (string)e.DataObject.GetData(typeof(string)) : null;
+                if (Format.ParseLimit(text) == 0) e.CancelCommand();
+            });
+            box.PreviewKeyDown += (s, e) => { if (e.Key == System.Windows.Input.Key.Space) e.Handled = true; };
+        }
+    }
+
     internal static class Dialogs
     {
         public const string Repo = "https://github.com/1nstntKaRma/Choppy";

@@ -107,6 +107,7 @@ The administrator copy keeps every rule: temporary names, verify (when on) befor
 | NAS / network share / VPN | 8-16 files in flight for many small files (measures and goes up to 32 when that is faster), big files one at a time with Windows' pipelined writes |
 | SSD / NVMe | 4-8 files in flight; big files through the pipeline (8 MB pieces) |
 | Hard disk / USB stick | One stream, in order - no seeking; big files through the pipeline (32 MB pieces, 8 reads queued at the disk; writes to a hard disk joined up to 128 MB) |
+| Two hard disks | Big files: 512 MB read ahead in 2 MB reads, written in 64 MB pieces; once the source is fully read, what's left goes through the Windows cache |
 | Both ends on one hard disk | Big files: 256 MB read, then written - not both at once, so the heads don't run back and forth |
 
 **The pipeline** (big files between local drives): one thread reads, one writes, at the same time; the next pieces are already queued at the source disk, so another program reading that disk can't send its heads away between them. With verify on, the source is hashed on the way in, so the check reads only the copy back. Extra data streams (`Zone.Identifier` of downloads), dates and attributes come along. The badge shows the choice: *Adaptive · 1 stream*.
@@ -128,8 +129,12 @@ On one setup (Windows 10, NAS over Tailscale, ~9 ms, ~100 Mbps upload):
 | Big files to the NAS | median **95.5 Mbps** |
 | 600 small files to the NAS | **52 files/s** (32 in flight; 30 files/s with 8) |
 | Local SSD, 2,027 files / 650 MB | **1.0 s** (3.4 s with every file verified) |
+| 10,000 files of 4 KB-1 MB (5 GB), NVMe to NVMe | **4.9-6.9 s** |
 | One big file, NVMe to NVMe (4 GB) | **2.4 GB/s** |
-| One big file within one hard disk (4 GB) | **~90 MB/s** (the disk streams ~180: every byte is read and written by the same heads) |
+| One big file, NVMe to hard disk (4 GB) | **~200 MB/s** |
+| One big file, hard disk to another hard disk (4 GB) | **166-179 MB/s** on disk |
+| One big file within one hard disk (4 GB) | **95-102 MB/s** (the disk streams ~180: every byte is read and written by the same heads) |
+| 1,000 small files, hard disk to hard disk / within one hard disk | **90-93 / 67-69 MB/s** |
 
 ---
 

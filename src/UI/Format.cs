@@ -67,10 +67,18 @@ namespace Choppy.UI
         }
 
         /// <summary>A speed limit (kept in Mbps) in the unit on screen.</summary>
+        /// <summary>The speed limit in the unit shown, as a whole number (at least 1).</summary>
         public static string Limit(double mbps, bool asMbps)
         {
             double v = asMbps ? mbps : mbps * 1e6 / 8 / (1024 * 1024);
-            return v.ToString(v >= 100 ? "0" : "0.#", C);
+            return Math.Max(1, Math.Round(v)).ToString("0", C);
+        }
+
+        /// <summary>A typed limit: whole numbers only (0 = not one).</summary>
+        public static int ParseLimit(string text)
+        {
+            int v;
+            return int.TryParse(text, NumberStyles.None, C, out v) && v > 0 ? v : 0;
         }
 
         public static double LimitToMbps(double value, bool asMbps)
