@@ -246,7 +246,7 @@ namespace Choppy.Engine
 
     /// <summary>
     /// Finds the fastest way for this copy while it runs. No fixed rule fits every PC, disk and cable, so the first big
-    /// file is copied in a few short stretches (about 1.5 s each), each one another way - piece size, pieces in flight,
+    /// file is copied in a few short stretches (under a second each), each one another way - piece size, pieces in flight,
     /// reading and writing at once or one after the other - and the fastest way copies the rest, and the next big files.
     /// </summary>
     internal sealed class PipeTuner
@@ -258,8 +258,8 @@ namespace Choppy.Engine
         public PipeTuning Best;
         public bool Changed;                // settled on another way than the starting one
 
-        const long WarmBytes = 128L << 20;
-        const long Unit = 64L << 20;        // stretches end on whole pieces of every way (pieces are at most 64 MB)
+        const long WarmBytes = 64L << 20;
+        const long Unit = 32L << 20;        // stretches end on whole pieces of every way (pieces are at most 32 MB)
 
         public PipeTuner(PipeTuning start, IEnumerable<PipeTuning> others)
         {
@@ -286,17 +286,18 @@ namespace Choppy.Engine
 
         public void Report(long bytes, double seconds, bool measured)
         {
-            if (Settled || seconds < 0.2 || bytes <= 0) return;
-            double r = bytes / seconds;
+            if (Settled || bytes <= 0) return;
+            double r = bytes / Math.Max(0.001, seconds);
             if (state < 0)
             {
-                // a trial of about 1.5 s at the speed seen so far, whole 64 MB units, 128 MB .. 1 GB
-                long b = (long)(r * 1.5) / Unit * Unit;
+                // the warm-up only sizes the trials: any time is good enough (a fast drive does 64 MB in a few hundredths)
+                // a trial of about 0.75 s at the speed seen so far, whole 32 MB units, 64 MB .. 512 MB
+                long b = (long)(r * 0.75) / Unit * Unit;
                 trialBytes = Math.Max(2 * Unit, Math.Min(16 * Unit, b));
                 state = 0;
                 return;
             }
-            if (!measured) return;
+            if (!measured || seconds < 0.1) return;   // too short to tell: this way is tried again on the next stretch
             rate[state] = r;
             if (++state < ways.Count) return;
             // another way must win by 3%, or the starting one stays (no flapping on noise)

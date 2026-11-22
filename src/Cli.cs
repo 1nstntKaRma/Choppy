@@ -223,6 +223,11 @@ namespace Choppy
                     var pt = new PipeTuning { Chunk = 1 << 20, Slots = 3, Align = 4096, Phased = true };
                     var rp = BigCopy.Copy(Paths.ToLong(a), Paths.ToLong(c), 0, File.GetLastWriteTimeUtc(a).ToFileTimeUtc(), 0x20, pt, true, false, null, 2 << 20, n => true);
                     check("pipeline phased " + size + " B", rp.Error == 0 && rp.Hash == XxHash64.OfBytes(data) && System.Linq.Enumerable.SequenceEqual(File.ReadAllBytes(c), data));
+                    // nothing reserved up front (hard disk destinations): the file grows as it is written
+                    string g = Path.Combine(dir, "grow-" + size + ".bin");
+                    var gt = new PipeTuning { Chunk = 1 << 20, Slots = 4, Align = 4096, WriteBatch = 3, Prealloc = false };
+                    var rg = BigCopy.Copy(Paths.ToLong(a), Paths.ToLong(g), 0, File.GetLastWriteTimeUtc(a).ToFileTimeUtc(), 0x20, gt, true, false, null, n => true);
+                    check("pipeline no reservation " + size + " B", rg.Error == 0 && rg.Hash == XxHash64.OfBytes(data) && System.Linq.Enumerable.SequenceEqual(File.ReadAllBytes(g), data));
                 }
                 // the end through the Windows cache: same bytes, same size
                 {

@@ -87,14 +87,21 @@ namespace Choppy.Engine
                 p.Kind = slow == DeviceKind.Usb ? "USB" : slow == DeviceKind.Optical ? "Disc" : "HDD";
                 p.Workers = 1;
                 p.BigSlots = 1;
+                bool srcSlow = src != null && src.IsSlowSeek, dstSlow = dst != null && dst.IsSlowSeek;
                 // big pieces, several reads queued at the disk: other programs on it can't send the heads away between
                 // them (measured with a torrent-like load: 32 MB x 4 = 157 MB/s, 16 MB x 4 = 152, Explorer 146).
                 p.Pipe.Chunk = 32 << 20;
                 p.Pipe.Slots = 8;
+                // a hard disk read into a fast drive: many small reads queued keep it streaming (1 MB x 32 measured
+                // ahead of 32 MB x 8 and of Explorer, two rounds out of two)
+                if (srcSlow && !dstSlow) { p.Pipe.Chunk = 1 << 20; p.Pipe.Slots = 32; }
                 // one disk at both ends: read 256 MB, then write it - not both at once (the heads would go back and forth every piece)
                 p.Pipe.Phased = oneDisk;
                 // writing to a hard disk: pieces already read go out together (up to 128 MB), no gap for the platter to pass
-                if (dst != null && dst.IsSlowSeek && !oneDisk) p.Pipe.WriteBatch = 4;
+                if (dstSlow && !oneDisk) p.Pipe.WriteBatch = 4;
+                // no size reserved up front on a hard disk: the reservation can land the file on a slower part of the
+                // platter (NVMe to hard disk: 199-206 MB/s without it, 169-170 with it)
+                if (dstSlow) p.Pipe.Prealloc = false;
                 // all of the above is a first guess: the first big file measures these ways against it and keeps the fastest
                 if (oneDisk)
                 {
@@ -102,11 +109,17 @@ namespace Choppy.Engine
                     p.PipeWays.Add(Way(16, 8, true, 1));
                     p.PipeWays.Add(Way(32, 8, false, 1));
                 }
+                else if (srcSlow && !dstSlow)
+                {
+                    p.PipeWays.Add(Way(4, 16, false, 1));
+                    p.PipeWays.Add(Way(8, 8, false, 1));
+                    p.PipeWays.Add(Way(32, 8, false, 1));
+                }
                 else
                 {
-                    p.PipeWays.Add(Way(8, 8, false, p.Pipe.WriteBatch));
-                    p.PipeWays.Add(Way(64, 4, false, p.Pipe.WriteBatch > 1 ? 2 : 1));
-                    p.PipeWays.Add(Way(32, 8, false, p.Pipe.WriteBatch > 1 ? 1 : 4));
+                    p.PipeWays.Add(Way(1, 32, false, 32));    // small reads, joined into 32 MB writes
+                    p.PipeWays.Add(Way(8, 8, false, 4));
+                    p.PipeWays.Add(Way(32, 8, false, 1));
                 }
                 // many small files: one at a time to begin with; it measures two (and four) and keeps what is faster
                 p.CanTune = files > 1;
@@ -135,7 +148,7 @@ namespace Choppy.Engine
 
         static Plan Aligned(Plan p)
         {
-            foreach (var w in p.PipeWays) w.Align = p.Pipe.Align;
+            foreach (var w in p.PipeWays) { w.Align = p.Pipe.Align; w.Prealloc = p.Pipe.Prealloc; }
             return p;
         }
     }

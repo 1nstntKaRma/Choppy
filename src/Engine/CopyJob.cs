@@ -792,6 +792,8 @@ namespace Choppy.Engine
             }
             // a move flushes the copy to the disk before the original can go
             var tuner = pipeTuner != null && !pipeTuner.Settled ? pipeTuner : null;
+            // while it still measures, at most a quarter of the file's end waits in memory: the rest is room for the trials
+            if (tuner != null) tail = Math.Min(tail, f.Size / 4);
             if (pipeTuner != null && pipeTuner.Settled) tune = pipeTuner.Best;
             var r = BigCopy.Copy(f.Src, temp, f.CTime, f.MTime, f.Attr, tune, Verify, Spec.Op == OpKind.Move, t.RenameTo, tail, progress, tuner);
             if (tuner != null && tuner.Settled && tuner.Changed && !Plan.Tuned)
