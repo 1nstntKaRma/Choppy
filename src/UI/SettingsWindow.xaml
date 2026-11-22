@@ -1,0 +1,135 @@
+<Window x:Class="Choppy.UI.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Choppy settings" Width="540" SizeToContent="Height"
+        WindowStyle="None" ResizeMode="NoResize" WindowStartupLocation="CenterScreen"
+        Background="{StaticResource B.Window}" BorderBrush="{StaticResource B.WinBorder}" BorderThickness="1"
+        FontFamily="{StaticResource F.Ui}" Foreground="{StaticResource B.Text}"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="46" ResizeBorderThickness="0" GlassFrameThickness="0,0,0,1" UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+    <Window.Resources>
+        <Style x:Key="Head" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource B.Text}"/>
+        </Style>
+        <Style x:Key="Sub" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{StaticResource B.Faint}"/>
+            <Setter Property="Margin" Value="0,2,0,0"/>
+        </Style>
+        <Style x:Key="Row" TargetType="Border">
+            <Setter Property="BorderBrush" Value="{StaticResource B.Sep}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="Padding" Value="0,13,0,13"/>
+        </Style>
+    </Window.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="46"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="18,0,0,0">
+                <Image x:Name="AppIcon" Width="20" Height="20"/>
+                <TextBlock Text="Settings" FontSize="15" FontWeight="SemiBold" Margin="10,0,0,1" VerticalAlignment="Center" Foreground="#FFE9ECF0"/>
+            </StackPanel>
+            <Button Style="{StaticResource Btn.TitleClose}" Content="&#xE8BB;" FontSize="12" Height="46" HorizontalAlignment="Right" WindowChrome.IsHitTestVisibleInChrome="True" Click="Close_Click"/>
+        </Grid>
+
+        <StackPanel Grid.Row="1" Margin="22,0,22,18">
+            <!-- default file manager -->
+            <Border x:Name="TakeoverRow" Style="{StaticResource Row}" Padding="0,4,0,13">
+                <StackPanel>
+                    <CheckBox x:Name="Takeover" Style="{StaticResource Toggle}" Checked="Takeover_Changed" Unchecked="Takeover_Changed"
+                              ToolTip="Off: Windows' own copy stays the default; use right-click &quot;Paste with Choppy&quot;. Drag and drop always stays Windows' own copy.">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource Head}" Text="Default file manager"/>
+                            <TextBlock Style="{StaticResource Sub}" Text="Ctrl+V in Explorer opens Choppy"/>
+                        </StackPanel>
+                    </CheckBox>
+                    <TextBlock x:Name="UcNote" Style="{StaticResource Sub}" Foreground="{StaticResource B.Warn}" Margin="0,6,0,0" Visibility="Collapsed"
+                               Text="Another copier that takes Ctrl+V is closed while this is on (off brings it back)."/>
+                </StackPanel>
+            </Border>
+
+            <!-- conflicts -->
+            <Border Style="{StaticResource Row}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource Head}" Text="When a file already exists"/>
+                    <WrapPanel Margin="0,10,0,-6">
+                        <RadioButton x:Name="PAsk" GroupName="pol" Style="{StaticResource Seg}" Content="Ask me" Checked="Changed"/>
+                        <RadioButton x:Name="PReplace" GroupName="pol" Style="{StaticResource Seg}" Content="Replace" Checked="Changed"/>
+                        <RadioButton x:Name="PNewer" GroupName="pol" Style="{StaticResource Seg}" Content="Replace if newer" Checked="Changed"/>
+                        <RadioButton x:Name="PSkip" GroupName="pol" Style="{StaticResource Seg}" Content="Skip" Checked="Changed"/>
+                        <RadioButton x:Name="PBoth" GroupName="pol" Style="{StaticResource Seg}" Content="Keep both" Checked="Changed"/>
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- unit -->
+            <Border Style="{StaticResource Row}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource Head}" Text="Show speed in"/>
+                    <WrapPanel Margin="0,10,0,-6">
+                        <RadioButton x:Name="UAuto" GroupName="unit" Style="{StaticResource Seg}" Content="Auto" Checked="Changed" ToolTip="Network: Mbps. Disks: MB/s."/>
+                        <RadioButton x:Name="UMbps" GroupName="unit" Style="{StaticResource Seg}" Content="Mbps" Checked="Changed"/>
+                        <RadioButton x:Name="UMbs" GroupName="unit" Style="{StaticResource Seg}" Content="MB/s" Checked="Changed"/>
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- verify -->
+            <Border Style="{StaticResource Row}">
+                <CheckBox x:Name="Verify" Style="{StaticResource Toggle}" Checked="Changed" Unchecked="Changed"
+                          ToolTip="Reads each copy back and compares it with the original. Moves are always checked before the original is removed.">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource Head}" Text="Check every copy"/>
+                        <TextBlock Style="{StaticResource Sub}" Text="xxHash64"/>
+                    </StackPanel>
+                </CheckBox>
+            </Border>
+
+            <!-- close at completion -->
+            <Border Style="{StaticResource Row}">
+                <CheckBox x:Name="AutoClose" Style="{StaticResource Toggle}" Checked="Changed" Unchecked="Changed"
+                          ToolTip="A few seconds after a copy finishes with no problems. A copy with problems stays open.">
+                    <TextBlock Style="{StaticResource Head}" Text="Close at completion"/>
+                </CheckBox>
+            </Border>
+
+            <!-- speed limit -->
+            <Border Style="{StaticResource Row}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource Head}" Text="Speed limit" VerticalAlignment="Center" ToolTip="Leaves room on the line for everything else"/>
+                    <CheckBox x:Name="Limit" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center" Checked="Changed" Unchecked="Changed"/>
+                    <TextBox x:Name="LimitValue" Grid.Column="2" Style="{StaticResource Box.Small}" Width="60" Height="30" Margin="0,0,0,0" TextChanged="LimitValue_Changed"/>
+                    <TextBlock x:Name="LimitUnit" Grid.Column="3" Text="MB/s" FontSize="14" Foreground="{StaticResource B.Dim}" VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="38"/>
+                </Grid>
+            </Border>
+
+            <Grid Margin="0,16,0,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Style="{StaticResource Btn.Link}" Click="Logs_Click" Margin="-6,0,0,0">
+                        <TextBlock Text="Open the log folder" FontSize="14" Foreground="{StaticResource B.Link}"/>
+                    </Button>
+                    <Button Style="{StaticResource Btn.Link}" Click="About_Click" Margin="8,0,0,0">
+                        <TextBlock Text="About" FontSize="14" Foreground="{StaticResource B.Link}"/>
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock x:Name="Version" FontSize="14" Foreground="{StaticResource B.Faint}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                    <Button Style="{StaticResource Btn.Primary}" Content="Done" Height="38" Padding="22,0" Click="Close_Click"/>
+                </StackPanel>
+            </Grid>
+        </StackPanel>
+    </Grid>
+</Window>

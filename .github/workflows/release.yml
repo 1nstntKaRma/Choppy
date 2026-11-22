@@ -1,0 +1,68 @@
+# Publishes a release when a version tag is pushed (git tag v1.1 && git push origin v1.1):
+# builds on GitHub's servers, packages Choppy-v<VERSION>.zip with SHA256SUMS.txt, records build provenance
+# (gh attestation verify) and creates the GitHub release. The tag must match the VERSION file.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write       # create the release
+  id-token: write       # build provenance attestation
+  attestations: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Tag must match VERSION
+        shell: pwsh
+        run: |
+          $v = (Get-Content VERSION -TotalCount 1).Trim()
+          if ("v$v" -ne '${{ github.ref_name }}') { throw "Tag ${{ github.ref_name }} does not match VERSION ($v)." }
+          "VERSION=$v" >> $env:GITHUB_ENV
+
+      - name: Build + self-test
+        shell: powershell
+        run: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\build.ps1 -Shell Cancel
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP 'package'
+          New-Item -ItemType Directory -Force (Join-Path $stage 'bin') | Out-Null
+          Copy-Item bin\Choppy.exe (Join-Path $stage 'bin')
+          Copy-Item build.ps1, VERSION, README.md, LICENSE, 'Activate Choppy.cmd', 'Revert to Windows Copy.cmd' $stage
+          $zip = "Choppy-v$env:VERSION.zip"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [IO.Compression.ZipFile]::CreateFromDirectory($stage, (Join-Path $PWD $zip))
+          Copy-Item bin\Choppy.exe .
+          $files = $zip, 'Choppy.exe'
+          # LF line endings, so `sha256sum -c SHA256SUMS.txt` works everywhere (build.ps1 reads either)
+          $lines = $files | ForEach-Object { "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLowerInvariant())  $_" }
+          [IO.File]::WriteAllText((Join-Path $PWD 'SHA256SUMS.txt'), ($lines -join "`n") + "`n")
+          Get-Content SHA256SUMS.txt
+
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            Choppy-v*.zip
+            Choppy.exe
+
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = Join-Path $env:RUNNER_TEMP 'notes.md'
+          if (Test-Path .github\RELEASE_NOTES.md) { Get-Content .github\RELEASE_NOTES.md -Raw | Set-Content $notes } else { '' | Set-Content $notes }
+          $rows = Get-Content SHA256SUMS.txt | ForEach-Object { $h, $n = $_ -split '\s+', 2; "| $n | ``$h`` |" }
+          $tail = @('', '### SHA-256 Checksums', '| File | SHA-256 |', '|---|---|') + $rows + @(
+            '', 'Built on GitHub Actions from this tag. Verify with:',
+            '```', "gh attestation verify Choppy-v$env:VERSION.zip --repo ${{ github.repository }}", '```')
+          Add-Content $notes $tail
+          gh release create '${{ github.ref_name }}' "Choppy-v$env:VERSION.zip" SHA256SUMS.txt Choppy.exe `
+            --title "Choppy v$env:VERSION" --notes-file $notes --verify-tag

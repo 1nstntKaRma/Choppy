@@ -1,0 +1,37 @@
+# Builds Choppy on every push and pull request, exactly as build.ps1 does on a user's PC (build + self-test).
+# The built exe is kept as a workflow artifact for 14 days.
+name: Build
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build + self-test (no system changes)
+        shell: powershell
+        run: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\build.ps1 -Shell Cancel
+
+      - name: Check the version stamp
+        shell: powershell
+        run: |
+          $v = [version]((Get-Content VERSION -TotalCount 1).Trim())
+          $want = "$($v.Major).$($v.Minor).$([Math]::Max(0, $v.Build)).0"
+          $got = (Get-Item bin\Choppy.exe).VersionInfo.FileVersion
+          if ($got -ne $want) { throw "bin\Choppy.exe has version $got, VERSION says $want" }
+          "bin\Choppy.exe  $got  $((Get-FileHash bin\Choppy.exe).Hash)"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Choppy-${{ github.sha }}
+          path: bin/Choppy.exe
+          retention-days: 14

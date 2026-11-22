@@ -1,0 +1,98 @@
+<Window x:Class="Choppy.UI.ConflictWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="File already exists - Choppy" Width="660" SizeToContent="Height"
+        WindowStyle="None" ResizeMode="NoResize" WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{StaticResource B.Window}" BorderBrush="{StaticResource B.WinBorder}" BorderThickness="1"
+        FontFamily="{StaticResource F.Ui}" Foreground="{StaticResource B.Text}"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="40" ResizeBorderThickness="0" GlassFrameThickness="0,0,0,1" UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="40"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                <Image x:Name="AppIcon" Width="18" Height="18"/>
+                <TextBlock Text="Choppy" FontSize="13.5" Margin="10,0,0,0" VerticalAlignment="Center" Foreground="#FFE3E7EC"/>
+            </StackPanel>
+            <Button Style="{StaticResource Btn.TitleClose}" Content="&#xE8BB;" HorizontalAlignment="Right" WindowChrome.IsHitTestVisibleInChrome="True"
+                    ToolTip="Skip this file" Click="Skip_Click"/>
+        </Grid>
+
+        <StackPanel Grid.Row="1" Margin="22,4,22,22">
+            <TextBlock Text="NAME CONFLICT" FontSize="12" FontWeight="Bold" Foreground="#FF4FA8F0"/>
+            <TextBlock Text="File already exists" FontFamily="{StaticResource F.Display}" FontSize="24" FontWeight="SemiBold" Margin="0,6,0,0"/>
+            <TextBlock x:Name="FileName" FontSize="15" Foreground="#FFC9CED6" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+
+            <Grid Margin="0,18,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="14"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <!-- incoming -->
+                <Border x:Name="InCard" CornerRadius="9" BorderThickness="1" BorderBrush="#FF2D6FB4" Background="#FF172230" Padding="16,14">
+                    <StackPanel>
+                        <TextBlock Text="INCOMING" FontSize="12" FontWeight="Bold" Foreground="#FF4FA8F0"/>
+                        <Border CornerRadius="6" Height="124" Margin="0,10,0,0" Background="#FF1E2833" ClipToBounds="True">
+                            <Grid>
+                                <TextBlock x:Name="InExt" FontSize="22" FontWeight="SemiBold" Foreground="#FF4C5A6B" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <Image x:Name="InImg" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality"/>
+                            </Grid>
+                        </Border>
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <TextBlock x:Name="InSize" FontSize="15" FontWeight="SemiBold"/>
+                            <Border x:Name="InTag" CornerRadius="8" Padding="7,1,7,2" Margin="8,0,0,0" Background="#FF15324F" Visibility="Collapsed" VerticalAlignment="Center">
+                                <TextBlock x:Name="InTagText" FontSize="11.5" Foreground="#FF8ACDFF"/>
+                            </Border>
+                        </StackPanel>
+                        <TextBlock x:Name="InDate" FontSize="13" Foreground="{StaticResource B.Dim}" Margin="0,3,0,0"/>
+                    </StackPanel>
+                </Border>
+                <!-- already there -->
+                <Border Grid.Column="2" CornerRadius="9" BorderThickness="1" BorderBrush="#FF2A2F37" Background="#FF191C21" Padding="16,14">
+                    <StackPanel>
+                        <TextBlock Text="ALREADY THERE" FontSize="12" FontWeight="Bold" Foreground="{StaticResource B.Label}"/>
+                        <Border CornerRadius="6" Height="124" Margin="0,10,0,0" Background="#FF22272E" ClipToBounds="True">
+                            <Grid>
+                                <TextBlock x:Name="ExExt" FontSize="22" FontWeight="SemiBold" Foreground="#FF4C535C" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <Image x:Name="ExImg" Stretch="UniformToFill" Opacity="0.55" RenderOptions.BitmapScalingMode="HighQuality"/>
+                            </Grid>
+                        </Border>
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <TextBlock x:Name="ExSize" FontSize="15" FontWeight="SemiBold"/>
+                            <Border x:Name="ExTag" CornerRadius="8" Padding="7,1,7,2" Margin="8,0,0,0" Background="#FF2A2F37" Visibility="Collapsed" VerticalAlignment="Center">
+                                <TextBlock x:Name="ExTagText" FontSize="11.5" Foreground="{StaticResource B.Text2}"/>
+                            </Border>
+                        </StackPanel>
+                        <TextBlock x:Name="ExDate" FontSize="13" Foreground="{StaticResource B.Dim}" Margin="0,3,0,0"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Border x:Name="CompareRow" Margin="0,14,0,0" CornerRadius="7" Padding="12,8" Background="#FF1B1F25" BorderBrush="#FF2C3138" BorderThickness="1" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock x:Name="CompareIcon" FontFamily="{StaticResource F.Icons}" FontSize="14" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="CompareText" FontSize="13.5" Margin="9,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <CheckBox x:Name="ApplyAll" Style="{StaticResource Check}" Margin="0,18,0,0">
+                <TextBlock x:Name="ApplyAllText" Text="Apply to all remaining conflicts"/>
+            </CheckBox>
+
+            <Grid Margin="0,18,0,0">
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="BtnCompare" Style="{StaticResource Btn}" Content="Compare" Click="Compare_Click" ToolTip="Check whether both files have the same content (xxHash64)"/>
+                    <Button x:Name="BtnSkip" Style="{StaticResource Btn}" Content="Skip" Margin="10,0,0,0" Click="Skip_Click"/>
+                    <Button x:Name="BtnBoth" Style="{StaticResource Btn}" Content="Keep both" Margin="10,0,0,0" Click="Both_Click"/>
+                </StackPanel>
+                <Button x:Name="BtnReplace" Style="{StaticResource Btn.Primary}" Content="Replace" MinWidth="110" HorizontalAlignment="Right" Click="Replace_Click"/>
+            </Grid>
+        </StackPanel>
+    </Grid>
+</Window>
