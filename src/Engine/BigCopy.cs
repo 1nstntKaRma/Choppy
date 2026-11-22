@@ -261,8 +261,12 @@ namespace Choppy.Engine
         const long WarmBytes = 64L << 20;
         const long Unit = 32L << 20;        // stretches end on whole pieces of every way (pieces are at most 32 MB)
 
-        public PipeTuner(PipeTuning start, IEnumerable<PipeTuning> others)
+        readonly double trialSeconds, margin;   // a hard disk measures steadily only over longer stretches
+
+        public PipeTuner(PipeTuning start, IEnumerable<PipeTuning> others, double trialSeconds = 0.75, double margin = 1.03)
         {
+            this.trialSeconds = trialSeconds;
+            this.margin = margin;
             ways = new List<PipeTuning> { start };
             if (others != null) ways.AddRange(others);
             rate = new double[ways.Count];
@@ -291,8 +295,8 @@ namespace Choppy.Engine
             if (state < 0)
             {
                 // the warm-up only sizes the trials: any time is good enough (a fast drive does 64 MB in a few hundredths)
-                // a trial of about 0.75 s at the speed seen so far, whole 32 MB units, 64 MB .. 512 MB
-                long b = (long)(r * 0.75) / Unit * Unit;
+                // a trial of trialSeconds at the speed seen so far, whole 32 MB units, 64 MB .. 512 MB
+                long b = (long)(r * trialSeconds) / Unit * Unit;
                 trialBytes = Math.Max(2 * Unit, Math.Min(16 * Unit, b));
                 state = 0;
                 return;
@@ -300,10 +304,10 @@ namespace Choppy.Engine
             if (!measured || seconds < 0.1) return;   // too short to tell: this way is tried again on the next stretch
             rate[state] = r;
             if (++state < ways.Count) return;
-            // another way must win by 3%, or the starting one stays (no flapping on noise)
+            // another way must win clearly (3% on SSDs, 8% on hard disks), or the starting one stays (no flapping on noise)
             int best = 0;
             for (int i = 1; i < ways.Count; i++) if (rate[i] > rate[best]) best = i;
-            if (best != 0 && rate[best] < rate[0] * 1.03) best = 0;
+            if (best != 0 && rate[best] < rate[0] * margin) best = 0;
             Best = ways[best];
             Changed = best != 0;
         }
@@ -487,6 +491,66 @@ namespace Choppy.Engine
                 }
             }
             return r;
+        }
+
+        /// <summary>
+        /// One small file read ahead into memory (one disk at both ends): opened unbuffered, where it starts on the disk
+        /// noted (so a batch is read in disk order), then read whole. False = this file goes the usual way.
+        /// </summary>
+        public static SafeFileHandle OpenSmall(string src, out long size, out long lcn)
+        {
+            size = 0; lcn = long.MaxValue;
+            var h = Native.CreateFileW(src, Native.GENERIC_READ, Native.FILE_SHARE_READ | Native.FILE_SHARE_DELETE, IntPtr.Zero,
+                Native.OPEN_EXISTING, Native.FILE_FLAG_NO_BUFFERING | Native.FILE_FLAG_SEQUENTIAL_SCAN, IntPtr.Zero);
+            if (h.IsInvalid || !Native.GetFileSizeEx(h, out size)) { h.Dispose(); return null; }
+            var streams = NamedStreams(src);
+            if (streams == null || streams.Count > 0) { h.Dispose(); return null; }   // extra streams: the usual way keeps them
+            long vcn = 0;
+            byte* rp = stackalloc byte[32];
+            int got;
+            // RETRIEVAL_POINTERS_BUFFER: count (+pad), starting VCN, then { next VCN, LCN } - the first LCN is enough
+            if ((Native.DeviceIoControl(h, Native.FSCTL_GET_RETRIEVAL_POINTERS, ref vcn, 8, rp, 32, out got, IntPtr.Zero) || Marshal.GetLastWin32Error() == 234 /*MORE_DATA*/)
+                && *(int*)rp > 0)
+                lcn = *(long*)(rp + 24);
+            return h;
+        }
+
+        public static bool ReadSmall(SafeFileHandle h, byte* buf, long size, int align)
+        {
+            long want = (size + align - 1) / align * align, done = 0;
+            while (done < size)
+            {
+                int n;
+                if (!Native.ReadFile(h, buf + done, (int)(want - done), out n, IntPtr.Zero) || n == 0) return false;
+                done += n;
+                if (n % align != 0) break;   // the end of the file
+            }
+            return done == size;
+        }
+
+        /// <summary>
+        /// Writes a file from memory to a new name in one go, past the cache, with its dates and attributes; renamed
+        /// through its own handle to renameTo when given. Returns 0 or the error. buf must have room for the sector padding.
+        /// </summary>
+        public static int WriteSmall(string dst, byte* buf, long size, int align, long ctime, long mtime, uint attrs, string renameTo, out bool renamed, bool cached = false)
+        {
+            renamed = false;
+            using (var hd = Native.CreateFileW(dst, Native.GENERIC_READ | Native.GENERIC_WRITE | Native.DELETE, Native.FILE_SHARE_READ, IntPtr.Zero,
+                Native.CREATE_NEW, (cached ? 0 : Native.FILE_FLAG_NO_BUFFERING) | Native.FILE_ATTRIBUTE_NORMAL, IntPtr.Zero))
+            {
+                if (hd.IsInvalid) return Unsupported(Marshal.GetLastWin32Error());
+                // through the cache: the exact size; Windows writes it out in its own time, many files in one sweep
+                long padded = cached ? size : (size + align - 1) / align * align;
+                for (long k = size; k < padded; k++) buf[k] = 0;
+                int wrote;
+                if (padded > 0 && !Native.WriteFile(hd, buf, (int)padded, out wrote, IntPtr.Zero)) return Unsupported(Marshal.GetLastWin32Error());
+                if (!SetLength(hd, Native.FileEndOfFileInfo, size)) return Marshal.GetLastWin32Error();
+                var bi = new Native.FILE_BASIC_INFO { CreationTime = ctime, LastWriteTime = mtime, FileAttributes = attrs & KeepAttrs };
+                if (bi.FileAttributes == 0) bi.FileAttributes = Native.FILE_ATTRIBUTE_NORMAL;
+                Native.SetFileInformationByHandle(hd, Native.FileBasicInfo, &bi, Marshal.SizeOf(typeof(Native.FILE_BASIC_INFO)));
+                if (renameTo != null) renamed = Native.RenameByHandle(hd.DangerousGetHandle(), renameTo);
+            }
+            return 0;
         }
 
         // the way in or out refuses unbuffered I/O (some file systems and drivers): CopyFileEx takes this file

@@ -51,6 +51,8 @@ namespace Choppy
                         case "--batch": spec.PipeBatch = int.Parse(args[++i]); break;
                         case "--no-prealloc": spec.NoPrealloc = true; break;
                         case "--no-tune": spec.NoTune = true; break;
+                        case "--prealloc": spec.ForcePrealloc = true; break;
+                        case "--small": spec.SmallMode = args[++i]; break;
                         case "--wchunk": spec.CachedWriteMB = int.Parse(args[++i]); break;
                         case "--no-tail": spec.NoCachedTail = true; break;
                         case "--tail": spec.TailMB = int.Parse(args[++i]); break;

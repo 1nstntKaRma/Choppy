@@ -72,6 +72,7 @@ namespace Choppy.Engine
                 p.Workers = files <= 1 ? 1 : (files > 64 && median < (8L << 20)) ? 16 : (files > 16 && median < (8L << 20)) ? 8 : 4;
                 p.BigSlots = 1;
                 p.CanTune = files > 1;
+                p.MaxWorkers = 64;   // a far NAS spends a fixed time per file: tuning may go on to 64 in flight
                 return p;
             }
             DeviceKind slow = DeviceKind.Unknown;
@@ -107,23 +108,24 @@ namespace Choppy.Engine
                 {
                     p.PipeWays.Add(Way(32, 16, true, 1));
                     p.PipeWays.Add(Way(16, 8, true, 1));
-                    p.PipeWays.Add(Way(32, 8, false, 1));
                 }
                 else if (srcSlow && !dstSlow)
                 {
                     p.PipeWays.Add(Way(4, 16, false, 1));
                     p.PipeWays.Add(Way(8, 8, false, 1));
-                    p.PipeWays.Add(Way(32, 8, false, 1));
                 }
                 else
                 {
                     p.PipeWays.Add(Way(1, 32, false, 32));    // small reads, joined into 32 MB writes
                     p.PipeWays.Add(Way(8, 8, false, 4));
-                    p.PipeWays.Add(Way(32, 8, false, 1));
                 }
-                // many small files: one at a time to begin with; it measures two (and four) and keeps what is faster
-                p.CanTune = files > 1;
+                // many small files: one at a time to begin with; it measures two (and four) and keeps what is faster.
+                // One disk at both ends: always one - small files go in read-then-write batches instead
+                p.CanTune = files > 1 && !oneDisk;
                 p.MaxWorkers = 4;
+                // a hard disk's speed swings over short stretches: longer trials, and another way must win by 8%
+                p.TuneSeconds = 2.0;
+                p.TuneMargin = 1.08;
                 return Aligned(p);
             }
             p.Kind = (dst != null && dst.Kind == DeviceKind.Ssd) || (src != null && src.Kind == DeviceKind.Ssd) ? "SSD" : "Disk";
@@ -140,6 +142,8 @@ namespace Choppy.Engine
         }
 
         public int MaxWorkers = 32;          // the most files in flight tuning may go to
+        public double TuneSeconds = 0.75;    // length of one trial stretch
+        public double TuneMargin = 1.03;     // how much faster another way must be to take over
 
         static PipeTuning Way(int mb, int slots, bool phased, int batch)
         {

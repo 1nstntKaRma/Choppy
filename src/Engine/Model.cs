@@ -32,6 +32,8 @@ namespace Choppy.Engine
         public string Engine;                                // tests: null = Adaptive, "copyfile" = CopyFileEx only, "nobuf" = the old unbuffered CopyFileEx
         public int PipeChunkMB, PipeSlots, PipeBatch, CachedWriteMB;                   // tests: pipeline piece size / pieces in flight (0 = Adaptive)
         public bool NoPrealloc;                              // tests: no size reserved up front
+        public string SmallMode;                             // tests: small files - "unbuf", "cached", "tiny" (cache under 64 KB), "off" (no batches), "batch" (batches on any hard disk)
+        public bool ForcePrealloc;                           // tests: reserve the size up front even on a hard disk
         public bool NoTune;                                  // tests: keep the first guess, measure nothing
         public bool NoCachedTail;                            // tests: the last file's end goes straight to the disk too
         public int TailMB = -1;                              // tests: how much of each big file's end goes through the cache (-1 = Adaptive)

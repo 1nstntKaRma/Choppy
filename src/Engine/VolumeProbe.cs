@@ -19,6 +19,7 @@ namespace Choppy.Engine
         public double RttMs = -1;    // network round trip of a metadata call (min of 3)
         public int Disk = -1;        // physical disk number (-1 = unknown / network)
         public int Sector = 512;     // bytes per sector: unbuffered reads and writes go in multiples of it
+        public bool Removable;       // can be pulled out (USB, cards): nothing may wait in memory for it
 
         public bool IsNetwork { get { return Kind == DeviceKind.Network; } }
         public bool IsSlowSeek { get { return Kind == DeviceKind.Hdd || Kind == DeviceKind.Usb || Kind == DeviceKind.Optical; } }
@@ -81,7 +82,7 @@ namespace Choppy.Engine
 
                 if (type == Native.DRIVE_CDROM) v.Kind = DeviceKind.Optical;
                 else if (type == Native.DRIVE_RAMDISK) v.Kind = DeviceKind.Ram;
-                else v.Kind = ProbeDisk(root, type, out v.Disk);
+                else v.Kind = ProbeDisk(root, type, out v.Disk, out v.Removable);
                 uint spc, bps, fc, tc;
                 if (Native.GetDiskFreeSpaceW(root, out spc, out bps, out fc, out tc) && bps >= 512) v.Sector = (int)bps;
             }
@@ -114,9 +115,10 @@ namespace Choppy.Engine
             return a != null && b != null && !a.IsNetwork && !b.IsNetwork && (a.Id == b.Id || (a.Disk >= 0 && a.Disk == b.Disk));
         }
 
-        static DeviceKind ProbeDisk(string root, uint driveType, out int disk)
+        static DeviceKind ProbeDisk(string root, uint driveType, out int disk, out bool removable)
         {
             disk = -1;
+            removable = driveType == Native.DRIVE_REMOVABLE;
             // Open the volume device itself (no access rights needed for these queries).
             string dev = null;
             if (root.Length == 3 && root[1] == ':') dev = @"\\.\" + root.Substring(0, 2);
@@ -140,14 +142,18 @@ namespace Choppy.Engine
                 Native.STORAGE_DEVICE_DESCRIPTOR_HEADER dd;
                 int ret;
                 bool ok = Native.DeviceIoControl(h, Native.IOCTL_STORAGE_QUERY_PROPERTY, ref q, Marshal.SizeOf(q), out dd, Marshal.SizeOf(typeof(Native.STORAGE_DEVICE_DESCRIPTOR_HEADER)), out ret, IntPtr.Zero);
-                if ((ok || ret >= 32) && (dd.BusType == 7 /*USB*/ || dd.BusType == 12 /*SD*/ || dd.BusType == 13 /*MMC*/))
-                    return DeviceKind.Usb;
-                if (driveType == Native.DRIVE_REMOVABLE) return DeviceKind.Usb;
-
                 var sq = new Native.STORAGE_PROPERTY_QUERY { PropertyId = 7 /*StorageDeviceSeekPenaltyProperty*/, QueryType = 0 };
                 Native.DEVICE_SEEK_PENALTY_DESCRIPTOR sp;
-                if (Native.DeviceIoControl(h, Native.IOCTL_STORAGE_QUERY_PROPERTY, ref sq, Marshal.SizeOf(sq), out sp, Marshal.SizeOf(typeof(Native.DEVICE_SEEK_PENALTY_DESCRIPTOR)), out ret, IntPtr.Zero))
-                    return sp.IncursSeekPenalty ? DeviceKind.Hdd : DeviceKind.Ssd;
+                int sret;
+                bool knowsSeek = Native.DeviceIoControl(h, Native.IOCTL_STORAGE_QUERY_PROPERTY, ref sq, Marshal.SizeOf(sq), out sp, Marshal.SizeOf(typeof(Native.DEVICE_SEEK_PENALTY_DESCRIPTOR)), out sret, IntPtr.Zero);
+                if (((ok || ret >= 32) && (dd.BusType == 7 /*USB*/ || dd.BusType == 12 /*SD*/ || dd.BusType == 13 /*MMC*/)) || driveType == Native.DRIVE_REMOVABLE)
+                {
+                    // pluggable: a USB SSD that says it has no seek delay is copied like an SSD (still removable: nothing
+                    // waits in memory for it); USB hard disks, sticks and cards stay one steady stream
+                    removable = true;
+                    return knowsSeek && !sp.IncursSeekPenalty && dd.BusType == 7 ? DeviceKind.Ssd : DeviceKind.Usb;
+                }
+                if (knowsSeek) return sp.IncursSeekPenalty ? DeviceKind.Hdd : DeviceKind.Ssd;
                 if (ok && dd.BusType == 17 /*NVMe*/) return DeviceKind.Ssd;
                 return DeviceKind.Unknown;
             }

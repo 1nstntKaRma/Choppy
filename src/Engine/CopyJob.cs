@@ -435,9 +435,10 @@ namespace Choppy.Engine
             Plan = Plan.Choose(new JobSpec { Op = OpKind.Copy }, SrcVol, DstVol, Scan);
             if (Spec.ForceWorkers > 0) { Plan.Workers = Spec.ForceWorkers; Plan.CanTune = false; }
             if (Spec.NoTune) Plan.CanTune = false;
-            bool fixedPipe = Spec.PipeChunkMB > 0 || Spec.PipeSlots > 0 || Spec.PipeBatch > 0 || Spec.NoTune;
+            if (Spec.SmallMode == "batch") Plan.CanTune = false;   // batches are read and written by one worker
+            bool fixedPipe = Spec.PipeChunkMB > 0 || Spec.PipeSlots > 0 || Spec.PipeBatch > 0 || Spec.NoTune || Spec.NoPrealloc || Spec.ForcePrealloc;
             // with a speed limit the trials would measure the limit, not the drives
-            pipeTuner = Plan.Pipeline && !fixedPipe && limitBps <= 0 && Plan.PipeWays.Count > 0 ? new PipeTuner(Plan.Pipe, Plan.PipeWays) : null;
+            pipeTuner = Plan.Pipeline && !fixedPipe && limitBps <= 0 && Plan.PipeWays.Count > 0 ? new PipeTuner(Plan.Pipe, Plan.PipeWays, Plan.TuneSeconds, Plan.TuneMargin) : null;
             int da = Native.GetFileAttributesW(Spec.Dest);
             pipeOffAtDest = da != Native.INVALID_FILE_ATTRIBUTES && ((uint)da & (Native.FILE_ATTRIBUTE_COMPRESSED | Native.FILE_ATTRIBUTE_ENCRYPTED)) != 0;
 
@@ -473,6 +474,7 @@ namespace Choppy.Engine
                 workers[i].Start();
             }
             foreach (var w in workers) w.Join();
+            if (batch != null) { Native.VirtualFree(batch.Mem, UIntPtr.Zero, Native.MEM_RELEASE); batch = null; }
 
             if (handOff && !canceled)
             {
@@ -512,6 +514,8 @@ namespace Choppy.Engine
                         bigInFlight++;
                     }
                 }
+                // one disk at both ends: small files are read ahead in batches (read everything, then write everything)
+                if (BatchOn && f.Size < Plan.PipeThreshold && (batch == null || i >= batch.End)) FillBatch(i);
                 try { ProcessFile(f); }
                 catch (Exception ex) { MarkFailed(f, "Unexpected error: " + ex.Message); }
                 finally
@@ -732,9 +736,116 @@ namespace Choppy.Engine
             }
         }
 
+        // ---------- one disk at both ends, many small files: read a batch, then write it ----------
+
+        /// <summary>Small files read ahead into memory: where each one sits in the batch buffer.</summary>
+        sealed class SmallBatch
+        {
+            public IntPtr Mem;
+            public long Cap;
+            public int End;                                              // index after the batch's last file
+            public readonly Dictionary<FileItem, long> At = new Dictionary<FileItem, long>();
+        }
+        SmallBatch batch;
+
+        bool BatchOn
+        {
+            get { return Plan != null && Plan.Pipeline && (Plan.Pipe.Phased || Spec.SmallMode == "batch") && Plan.Workers == 1 && Spec.Engine == null && !pipeOffAtDest && Spec.SmallMode != "off"; }
+        }
+
+        /// <summary>
+        /// Reads the small files from index i on (up to 256 MB, 1,024 files) into memory, in the order they sit on the
+        /// disk: the heads sweep once over the sources, then the writes follow without a single read in between.
+        /// </summary>
+        unsafe void FillBatch(int i)
+        {
+            if (batch == null)
+            {
+                var m = new Native.MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf(typeof(Native.MEMORYSTATUSEX)) };
+                long cap = 256L << 20;
+                if (Native.GlobalMemoryStatusEx(ref m)) cap = Math.Max(32L << 20, Math.Min(cap, (long)(m.ullAvailPhys / 8)));
+                batch = new SmallBatch { Cap = cap, Mem = Native.VirtualAlloc(IntPtr.Zero, (UIntPtr)cap, Native.MEM_COMMIT | Native.MEM_RESERVE, Native.PAGE_READWRITE) };
+                if (batch.Mem == IntPtr.Zero) { batch = null; return; }
+            }
+            batch.At.Clear();
+            int align = Math.Max(4096, Plan.Pipe.Align);
+            var open = new List<KeyValuePair<FileItem, Microsoft.Win32.SafeHandles.SafeFileHandle>>();
+            var place = new Dictionary<FileItem, long>();
+            var lcns = new Dictionary<FileItem, long>();
+            long used = 0;
+            int j = i;
+            try
+            {
+                for (; j < files.Count && open.Count < 1024 && !canceled; j++)
+                {
+                    var f = files[j];
+                    if (f.Size >= Plan.PipeThreshold || (f.Attr & BigCopy.SkipAttrs) != 0) break;   // a big one: the batch ends here
+                    long room = (f.Size + align - 1) / align * align;
+                    if (used + room > batch.Cap) break;
+                    long size, lcn;
+                    var h = BigCopy.OpenSmall(f.Src, out size, out lcn);
+                    if (h == null) continue;                                     // this one goes the usual way
+                    room = (size + align - 1) / align * align;
+                    if (size != f.Size && used + room > batch.Cap) { h.Dispose(); break; }
+                    place[f] = used;
+                    lcns[f] = lcn;
+                    used += room;
+                    open.Add(new KeyValuePair<FileItem, Microsoft.Win32.SafeHandles.SafeFileHandle>(f, h));
+                }
+                batch.End = j;
+                // in disk order: one sweep of the heads instead of a jump per file
+                open.Sort((a, b) => lcns[a.Key].CompareTo(lcns[b.Key]));
+                foreach (var kv in open)
+                {
+                    if (canceled) break;
+                    WaitToRun();
+                    long size;
+                    Native.GetFileSizeEx(kv.Value, out size);
+                    if (BigCopy.ReadSmall(kv.Value, (byte*)batch.Mem + place[kv.Key], size, align))
+                    {
+                        if (size != kv.Key.Size) { Interlocked.Add(ref TotalBytes, size - kv.Key.Size); kv.Key.Size = size; }
+                        batch.At[kv.Key] = place[kv.Key];
+                    }
+                }
+            }
+            finally { foreach (var kv in open) kv.Value.Dispose(); }
+        }
+
+        /// <summary>A file of the batch: written from memory in one go (else false: the usual way).</summary>
+        unsafe bool CopyFromBatch(FileItem f, string temp, Transfer t, out int err)
+        {
+            err = 0;
+            long at;
+            if (batch == null || !batch.At.TryGetValue(f, out at)) return false;
+            batch.At.Remove(f);
+            byte* data = (byte*)batch.Mem + at;
+            if (canceled || t.Skip) { err = Native.ERROR_REQUEST_ABORTED; return true; }
+            bool renamed;
+            // through the cache (measured on one disk: 67-69 MB/s, straight to the disk 51, Explorer 52-55): the cache's own
+            // writer puts many small files out in one sweep while the next batch is read
+            bool cached = Spec.SmallMode == null || Spec.SmallMode == "cached" || Spec.SmallMode == "batch" || (Spec.SmallMode == "tiny" && f.Size < (64 << 10));
+            err = BigCopy.WriteSmall(temp, data, f.Size, Math.Max(4096, Plan.Pipe.Align), f.CTime, f.MTime, f.Attr, t.RenameTo, out renamed, cached);
+            if (err == BigCopy.NotSupported) { err = 0; return false; }
+            if (err != 0) return true;
+            t.Renamed = renamed;
+            t.TimesSet = true;
+            if (Verify)
+            {
+                var x = new XxHash64();
+                x.Update(data, (int)f.Size);
+                t.HasSrcHash = true;
+                t.SrcHash = x.Digest();
+            }
+            t.Done = f.Size;
+            Interlocked.Add(ref DoneBytes, f.Size);
+            Throttle(f.Size);
+            return true;
+        }
+
         /// <summary>Big local files take the pipeline; everything else (and whatever the pipeline can't take) CopyFileEx.</summary>
         bool CopyFile(FileItem f, string temp, Transfer t, out int err)
         {
+            if (CopyFromBatch(f, temp, t, out err)) return err == 0;
             if (UsePipe(f))
             {
                 if (CopyBig(f, temp, t, out err)) return true;
@@ -761,8 +872,8 @@ namespace Choppy.Engine
         bool CopyBig(FileItem f, string temp, Transfer t, out int err)
         {
             var tune = Plan.Pipe;
-            if (Spec.PipeChunkMB > 0 || Spec.PipeSlots > 0 || Spec.PipeBatch > 0 || Spec.NoPrealloc || Spec.CachedWriteMB > 0)
-                tune = new PipeTuning { Align = tune.Align, Chunk = Spec.PipeChunkMB > 0 ? Spec.PipeChunkMB << 20 : tune.Chunk, Slots = Spec.PipeSlots > 0 ? Spec.PipeSlots : tune.Slots, WriteBatch = Spec.PipeBatch > 0 ? Spec.PipeBatch : tune.WriteBatch, Phased = tune.Phased, Prealloc = tune.Prealloc && !Spec.NoPrealloc, CachedWriteChunk = Spec.CachedWriteMB > 0 ? Spec.CachedWriteMB << 20 : tune.CachedWriteChunk };
+            if (Spec.PipeChunkMB > 0 || Spec.PipeSlots > 0 || Spec.PipeBatch > 0 || Spec.NoPrealloc || Spec.ForcePrealloc || Spec.CachedWriteMB > 0)
+                tune = new PipeTuning { Align = tune.Align, Chunk = Spec.PipeChunkMB > 0 ? Spec.PipeChunkMB << 20 : tune.Chunk, Slots = Spec.PipeSlots > 0 ? Spec.PipeSlots : tune.Slots, WriteBatch = Spec.PipeBatch > 0 ? Spec.PipeBatch : tune.WriteBatch, Phased = tune.Phased, Prealloc = Spec.ForcePrealloc || (tune.Prealloc && !Spec.NoPrealloc), CachedWriteChunk = Spec.CachedWriteMB > 0 ? Spec.CachedWriteMB << 20 : tune.CachedWriteChunk };
             Func<long, bool> progress = done =>
             {
                 long delta = done - t.Done;
@@ -785,7 +896,7 @@ namespace Choppy.Engine
             long tail = 0;
             if (Spec.TailMB >= 0) tail = (long)Spec.TailMB << 20;
             // never for a USB stick: it may be pulled out right after "done"
-            else if (!Verify && Spec.Op == OpKind.Copy && !Spec.NoCachedTail && (DstVol == null || DstVol.Kind != DeviceKind.Usb))
+            else if (!Verify && Spec.Op == OpKind.Copy && !Spec.NoCachedTail && (DstVol == null || (DstVol.Kind != DeviceKind.Usb && !DstVol.Removable)))
             {
                 long after = Interlocked.Read(ref TotalBytes) - Interlocked.Read(ref DoneBytes) - (f.Size - t.Done);
                 if (after < (64L << 20)) tail = CacheBudget();

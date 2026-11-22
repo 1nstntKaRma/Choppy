@@ -238,6 +238,14 @@ namespace Choppy.Engine
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX buffer);
 
+        // where a file's data starts on the disk (no admin rights needed): read many small files in disk order
+        public const uint FSCTL_GET_RETRIEVAL_POINTERS = 0x00090073;
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern unsafe bool DeviceIoControl(SafeFileHandle device, uint ioControlCode, ref long inBuffer, int inBufferSize,
+            byte* outBuffer, int outBufferSize, out int bytesReturned, IntPtr overlapped);
+
         public const int ERROR_IO_PENDING = 997;
         public const uint FILE_FLAG_OVERLAPPED = 0x40000000;
         public const uint GENERIC_WRITE = 0x40000000;
