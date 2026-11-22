@@ -1,10 +1,11 @@
-# Builds Choppy on every push and pull request, exactly as build.ps1 does on a user's PC (build + self-test).
+# Builds Choppy on pushes to other branches and on pull requests, exactly as build.ps1 does on a user's PC (build +
+# self-test). Pushes to main are built (and released when VERSION is new) by release.yml.
 # The built exe is kept as a workflow artifact for 14 days.
 name: Build
 
 on:
   push:
-    branches: ['**']
+    branches-ignore: [main]
   pull_request:
   workflow_dispatch:
 

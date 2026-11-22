@@ -1,35 +1,54 @@
-# Publishes a release when a version tag is pushed (git tag v1.1 && git push origin v1.1):
-# builds on GitHub's servers, packages Choppy-v<VERSION>.zip with SHA256SUMS.txt, records build provenance
-# (gh attestation verify) and creates the GitHub release. The tag must match the VERSION file.
+# Publishes a release for every push to main that brings a new VERSION (1.25 -> 1.26 = release v1.26 with
+# Choppy-v1.26.zip): builds on GitHub's servers with the self-test, packages the zip with SHA256SUMS.txt, records
+# build provenance (gh attestation verify) and creates the release and its tag.
+# A push that keeps the version only builds and runs the self-test.
 name: Release
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: write       # create the release
+  contents: write       # create the release and its tag
   id-token: write       # build provenance attestation
   attestations: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0    # the tags: is this version released already?
 
-      - name: Tag must match VERSION
+      - name: New version?
+        id: ver
         shell: pwsh
         run: |
           $v = (Get-Content VERSION -TotalCount 1).Trim()
-          if ("v$v" -ne '${{ github.ref_name }}') { throw "Tag ${{ github.ref_name }} does not match VERSION ($v)." }
           "VERSION=$v" >> $env:GITHUB_ENV
+          if (git tag --list "v$v") { "v$v is released already: build and self-test only."; "new=false" >> $env:GITHUB_OUTPUT }
+          else { "Releasing v$v."; "new=true" >> $env:GITHUB_OUTPUT }
 
       - name: Build + self-test
         shell: powershell
         run: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\build.ps1 -Shell Cancel
 
+      - name: Check the version stamp
+        shell: powershell
+        run: |
+          $v = [version]$env:VERSION
+          $want = "$($v.Major).$($v.Minor).$([Math]::Max(0, $v.Build)).0"
+          $got = (Get-Item bin\Choppy.exe).VersionInfo.FileVersion
+          if ($got -ne $want) { throw "bin\Choppy.exe has version $got, VERSION says $want" }
+
       - name: Package
+        if: steps.ver.outputs.new == 'true'
         shell: pwsh
         run: |
           $stage = Join-Path $env:RUNNER_TEMP 'package'
@@ -47,12 +66,14 @@ jobs:
           Get-Content SHA256SUMS.txt
 
       - uses: actions/attest-build-provenance@v4
+        if: steps.ver.outputs.new == 'true'
         with:
           subject-path: |
             Choppy-v*.zip
             Choppy.exe
 
       - name: Publish the release
+        if: steps.ver.outputs.new == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -61,8 +82,8 @@ jobs:
           if (Test-Path .github\RELEASE_NOTES.md) { Get-Content .github\RELEASE_NOTES.md -Raw | Set-Content $notes } else { '' | Set-Content $notes }
           $rows = Get-Content SHA256SUMS.txt | ForEach-Object { $h, $n = $_ -split '\s+', 2; "| $n | ``$h`` |" }
           $tail = @('', '### SHA-256 Checksums', '| File | SHA-256 |', '|---|---|') + $rows + @(
-            '', 'Built on GitHub Actions from this tag. Verify with:',
+            '', 'Built on GitHub Actions from this commit. Verify with:',
             '```', "gh attestation verify Choppy-v$env:VERSION.zip --repo ${{ github.repository }}", '```')
           Add-Content $notes $tail
-          gh release create '${{ github.ref_name }}' "Choppy-v$env:VERSION.zip" SHA256SUMS.txt Choppy.exe `
-            --title "Choppy v$env:VERSION" --notes-file $notes --verify-tag
+          gh release create "v$env:VERSION" "Choppy-v$env:VERSION.zip" SHA256SUMS.txt Choppy.exe `
+            --target '${{ github.sha }}' --title "Choppy v$env:VERSION" --notes-file $notes
