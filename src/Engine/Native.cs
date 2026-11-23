@@ -397,6 +397,14 @@ namespace Choppy.Engine
 
         public const uint MEM_COMMIT = 0x1000, MEM_RESERVE = 0x2000, MEM_RELEASE = 0x8000, PAGE_READWRITE = 0x04;
 
+        /// <summary>Keeps the PC from sleeping while the calling thread asks for it (the screen may still turn off).</summary>
+        [DllImport("kernel32.dll")]
+        public static extern uint SetThreadExecutionState(uint flags);
+        public const uint ES_CONTINUOUS = 0x80000000, ES_SYSTEM_REQUIRED = 0x1;
+
+        public const uint FILE_SUPPORTS_BLOCK_REFCOUNTING = 0x08000000;   // ReFS: a copy can share the original's blocks
+        public const int ERROR_FILE_TOO_LARGE = 223;
+
         public static string ErrorText(int code)
         {
             switch (code)
@@ -408,6 +416,7 @@ namespace Choppy.Engine
                 case ERROR_LOCK_VIOLATION: return "Part of the file is locked by another program.";
                 case ERROR_DISK_FULL:
                 case ERROR_HANDLE_DISK_FULL: return "The destination is full.";
+                case ERROR_FILE_TOO_LARGE: return "Too big for the destination's file system.";
                 case ERROR_BAD_NETPATH:
                 case ERROR_BAD_NET_NAME:
                 case ERROR_NETNAME_DELETED:

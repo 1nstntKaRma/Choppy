@@ -67,6 +67,7 @@ namespace Choppy.Explorer
         static IntPtr hook = IntPtr.Zero;
         static LowLevelKeyboardProc proc;
         static int swallowUp;   // the key whose release is taken too (the press was)
+        static long pressedAt;  // when the last paste taken was pressed (Stopwatch ticks)
         static bool observeOnly;
         static Dispatcher ui;
         static readonly StringBuilder cls = new StringBuilder(64);   // the hook thread's own (no allocation per key)
@@ -166,6 +167,7 @@ namespace Choppy.Explorer
                             string why = Check(vk, out fg);
                             if (why == null && !observeOnly)
                             {
+                                pressedAt = System.Diagnostics.Stopwatch.GetTimestamp();
                                 swallowUp = vk;
                                 var d = ui;
                                 if (d != null) d.BeginInvoke(new Action(() => { var h = OnPaste; if (h != null) h(fg); }));
@@ -180,6 +182,12 @@ namespace Choppy.Explorer
             }
             catch { }
             return CallNextHookEx(hook, nCode, wParam, lParam);
+        }
+
+        /// <summary>Milliseconds since the last paste Choppy took was pressed (the paste log notes how quick the window was).</summary>
+        public static long MsSincePress()
+        {
+            return (System.Diagnostics.Stopwatch.GetTimestamp() - pressedAt) * 1000 / System.Diagnostics.Stopwatch.Frequency;
         }
 
         static bool Down(int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; }

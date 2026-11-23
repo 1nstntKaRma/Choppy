@@ -80,13 +80,18 @@ namespace Choppy
             string hookDir = Environment.GetEnvironmentVariable("CHOPPY_TESTHOOK");
             if (!string.IsNullOrEmpty(hookDir)) testHook = new TestHook(this, hookDir);
 
-            if (!Elevated) Takeover.Refresh();
+            // the installer's own steps (--menu, --uninstall...) find the registry entries checked before they run
+            bool step = args.Length > 0 && args[0].StartsWith("--");
+            if (!Elevated && step) Takeover.Refresh();
             // "Default file manager" on: any start of Choppy for a copy, a paste or the settings stays in the tray watching
             // Ctrl+V - a right-click paste brings the takeover back even if the tray copy was closed (not for the
-            // installer's own steps like --menu, which wait for it to exit)
-            bool step = args.Length > 0 && args[0].StartsWith("--");
-            if (!Elevated && !AppPaths.TestMode && !step && Settings.Current.ExplorerTakeover) ApplyTakeover();
+            // installer's own steps like --menu, which wait for it to exit). The copy's window comes first: the tray,
+            // the hook and the registry check follow right after it
+            bool takeover = !Elevated && !AppPaths.TestMode && !step && Settings.Current.ExplorerTakeover;
+            if (takeover) resident = true;
             HandleArgs(args);
+            if (!Elevated && !step)
+                Dispatcher.BeginInvoke(new Action(() => { Takeover.Refresh(); if (takeover) ApplyTakeover(); }), DispatcherPriority.Background);
             if (!Elevated) Dispatcher.BeginInvoke(new Action(OfferResume), DispatcherPriority.ApplicationIdle);
         }
 
@@ -186,8 +191,8 @@ namespace Choppy
             }
             if (dest == null)
             {
-                // This PC, Libraries, Quick access...: Explorer's own paste
-                PasteLog.Write(isVirtual ? "Pasted by Windows: the window shows a virtual place (This PC, a library...)" : "Pasted by Windows: Explorer didn't say which folder the window shows");
+                // This PC, Libraries, a zip folder...: Explorer's own paste
+                PasteLog.Write(isVirtual ? "Pasted by Windows: the window shows a place that isn't a folder (This PC, a library, a zip...)" : "Pasted by Windows: Explorer didn't say which folder the window shows");
                 PasteHook.ReplayPaste();
                 return;
             }
@@ -198,11 +203,12 @@ namespace Choppy
                 PasteHook.ReplayPaste();
                 return;
             }
-            PasteLog.Write("Choppy: " + (move ? "move " : "copy ") + files.Length + (files.Length == 1 ? " item" : " items") + " to " + dest);
+            string what = "Choppy: " + (move ? "move " : "copy ") + files.Length + (files.Length == 1 ? " item" : " items") + " to " + dest;
             var spec = NewSpec(move ? OpKind.Move : OpKind.Copy, files, dest, "Explorer");
-            if (spec == null) return;
+            if (spec == null) { PasteLog.Write(what); return; }
             Manager.Enqueue(spec);
             ShowMain(true);
+            PasteLog.Write(what + " (window up " + PasteHook.MsSincePress() + " ms after the key)");
             if (move && !AppPaths.TestMode) try { Clipboard.Clear(); } catch { }
         }
 
@@ -218,6 +224,7 @@ namespace Choppy
         {
             if (main == null)
             {
+                windowBuilt = true;
                 main = new MainWindow(Manager);
                 main.Closed += (s, e) => { main = null; MaybeExit(); };
                 if (TestHook.Park) { main.WindowStartupLocation = WindowStartupLocation.Manual; main.Left = -32000; main.Top = 0; main.ShowInTaskbar = false; main.ShowActivated = false; }
@@ -236,6 +243,38 @@ namespace Choppy
                 t.Tick += (s, e) => { t.Stop(); if (w == main) w.Topmost = false; };
                 t.Start();
             }
+        }
+
+        // ---------- a quick first window ----------
+
+        bool windowBuilt;   // a copy window was built in this process: the next ones come up in a few hundredths
+
+        /// <summary>
+        /// The first window of a process is slow to build: WPF sets up its controls, fonts and renderer then (measured:
+        /// about 1.2 s from a paste to the window, every later window 0.1 s). A Choppy that waits in the tray builds
+        /// one off-screen a few seconds after it starts and closes it again, so the first copy's window is as quick as
+        /// the rest. The Explorer folder lookup is run once too.
+        /// </summary>
+        void ScheduleWarmUp()
+        {
+            if (windowBuilt || Elevated) return;
+            var t = new DispatcherTimer(DispatcherPriority.ApplicationIdle) { Interval = TimeSpan.FromSeconds(3) };
+            t.Tick += (s, e) => { t.Stop(); WarmUp(); };
+            t.Start();
+        }
+
+        void WarmUp()
+        {
+            if (windowBuilt || main != null) return;
+            windowBuilt = true;
+            try
+            {
+                var w = UI.MainWindow.ForWarmUp(Manager);
+                w.ContentRendered += (s, e) => w.Close();
+                w.Show();
+            }
+            catch { }
+            if (!AppPaths.TestMode) try { bool v; ShellLocation.FolderOf(IntPtr.Zero, out v); } catch { }
         }
 
         public void ShowSettings(Window owner)
@@ -364,6 +403,7 @@ namespace Choppy
                 resident = true;
                 EnsureTray();
                 if (!AppPaths.TestMode) PasteHook.Start(Dispatcher, OnExplorerPaste);
+                ScheduleWarmUp();
             }
             else
             {

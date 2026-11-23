@@ -59,6 +59,7 @@ namespace Choppy
                         case "--wchunk": spec.CachedWriteMB = int.Parse(args[++i]); break;
                         case "--no-tail": spec.NoCachedTail = true; break;
                         case "--tail": spec.TailMB = int.Parse(args[++i]); break;
+                        case "--max-file": spec.MaxFileTest = long.Parse(args[++i]); break;
                         default: rest.Add(a); break;
                     }
                 }
@@ -177,7 +178,10 @@ namespace Choppy
             while ((h = FindWindowEx(IntPtr.Zero, h, "CabinetWClass", null)) != IntPtr.Zero)
             {
                 n++;
-                sb.AppendLine("window " + h.ToInt64().ToString("X") + " -> " + (Explorer.ShellLocation.FolderOf(h) ?? "(not a folder - Explorer keeps that paste)"));
+                bool isVirtual;
+                var sw = Stopwatch.StartNew();
+                string dest = Explorer.ShellLocation.FolderOf(h, out isVirtual);
+                sb.AppendLine("window " + h.ToInt64().ToString("X") + " -> " + (dest ?? (isVirtual ? "(not a folder - Explorer keeps that paste)" : "(Explorer didn't answer)")) + "  [" + sw.ElapsedMilliseconds + " ms]");
             }
             IntPtr desk = FindWindowEx(IntPtr.Zero, IntPtr.Zero, "Progman", null);
             sb.AppendLine("desktop -> " + Explorer.ShellLocation.FolderOf(desk));
@@ -326,6 +330,15 @@ namespace Choppy
             string longName = new string('n', 252) + ".bin";
             check("temp long", CopyJob.TempName(@"\\?\C:\x\" + longName).EndsWith(".chpart") && Paths.FileName(CopyJob.TempName(@"\\?\C:\x\" + longName)).Length < 255);
             PipelineChecks(check);
+            // the way per drive: the same ReFS volume goes to Windows' own copy (it clones the blocks); FAT32 caps a file at 4 GB
+            var refs = new VolumeInfo { Id = "vol:1", Kind = DeviceKind.Ssd, FileSystem = "ReFS", FsFlags = Native.FILE_SUPPORTS_BLOCK_REFCOUNTING };
+            var ntfs = new VolumeInfo { Id = "vol:2", Kind = DeviceKind.Ssd, FileSystem = "NTFS" };
+            var pr = Plan.Choose(new JobSpec { Op = OpKind.Copy }, refs, refs, null);
+            check("same ReFS drive: Windows' own copy (block clone)", pr.Clone && !pr.Pipeline && !pr.InstantMove);
+            check("ReFS to another drive: the pipeline", Plan.Choose(new JobSpec { Op = OpKind.Copy }, refs, ntfs, null).Pipeline);
+            check("same ReFS drive, a move: renamed in place", Plan.Choose(new JobSpec { Op = OpKind.Move }, refs, refs, null).InstantMove);
+            check("FAT32 holds files up to 4 GB", new VolumeInfo { FileSystem = "FAT32" }.MaxFileSize == uint.MaxValue
+                && new VolumeInfo { FileSystem = "exFAT" }.MaxFileSize == 0 && ntfs.MaxFileSize == 0 && new VolumeInfo().MaxFileSize == 0);
             // the Ctrl+V hook: its own thread, put in again on time (observe only: it never takes a key here)
             if (Choppy.Explorer.PasteHook.Start(null, null, true))
             {

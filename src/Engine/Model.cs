@@ -27,6 +27,7 @@ namespace Choppy.Engine
         public List<DirItem> ExplicitDirs;                   // folders that come with them (an administrator copy finishes them)
         public bool Elevated;                                // runs as administrator for the user's own Choppy
         public string HandoffPath;                           // its record: progress, result and control files sit next to it
+        public System.Threading.Tasks.Task Recorded;         // the job record being written (see Journal.SaveSoon)
         public int ForceWorkers;                             // tests: fixed number of files in flight (0 = Adaptive)
         public bool NoFastPath;                              // tests: always rename with a separate call
         public string Engine;                                // tests: null = Adaptive, "copyfile" = CopyFileEx only, "nobuf" = the old unbuffered CopyFileEx
@@ -37,6 +38,7 @@ namespace Choppy.Engine
         public bool NoTune;                                  // tests: keep the first guess, measure nothing
         public bool NoCachedTail;                            // tests: the last file's end goes straight to the disk too
         public int TailMB = -1;                              // tests: how much of each big file's end goes through the cache (-1 = Adaptive)
+        public long MaxFileTest;                             // tests: the destination takes no file bigger than this (as FAT32 does at 4 GB)
 
         public string Title
         {

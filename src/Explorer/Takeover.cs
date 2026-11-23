@@ -23,6 +23,46 @@ namespace Choppy.Explorer
         static readonly Guid SID_STopLevelBrowser = new Guid("4C96BE40-915C-11CF-99D3-00AA004AE837");
         static readonly Guid IID_IShellBrowser = new Guid("000214E2-0000-0000-C000-000000000046");
 
+        // the same questions asked through the shell's own interfaces (each one call into Explorer), not by name
+        // through IDispatch (two calls each, and the first use of `dynamic` loads a compiler)
+        static readonly Guid CLSID_ShellWindows = new Guid("9BA05972-F6A8-11CF-A442-00A0C90A8F39");
+        static readonly Guid IID_IPersistFolder2 = new Guid("1AC3D9F0-175C-11D1-95BE-00609797EA4F");
+
+        [ComImport, Guid("85CB6900-4D95-11CF-960C-0080C7F4EE85"), InterfaceType(ComInterfaceType.InterfaceIsDual)]
+        interface IShellWindows
+        {
+            int Count { get; }
+            [return: MarshalAs(UnmanagedType.IDispatch)] object Item([MarshalAs(UnmanagedType.Struct)] object index);
+        }
+
+        // only the slots up to the one called are declared: the others just keep the order
+        [ComImport, Guid("000214E2-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IShellBrowser
+        {
+            [PreserveSig] int GetWindow(out IntPtr hwnd);
+            void ContextSensitiveHelp(); void InsertMenusSB(); void SetMenuSB(); void RemoveMenusSB(); void SetStatusTextSB(); void EnableModelessSB();
+            void TranslateAcceleratorSB(); void BrowseObject(); void GetViewStateStream(); void GetControlWindow(); void SendControlMsg();
+            [PreserveSig] int QueryActiveShellView([MarshalAs(UnmanagedType.IUnknown)] out object view);
+        }
+
+        [ComImport, Guid("CDE725B0-CCC9-4519-917E-325D72FAB4CE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IFolderView
+        {
+            void GetCurrentViewMode(); void SetCurrentViewMode();
+            [PreserveSig] int GetFolder(ref Guid riid, [MarshalAs(UnmanagedType.IUnknown)] out object folder);
+        }
+
+        [ComImport, Guid("1AC3D9F0-175C-11D1-95BE-00609797EA4F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IPersistFolder2
+        {
+            void GetClassID(); void Initialize();
+            [PreserveSig] int GetCurFolder(out IntPtr pidl);
+        }
+
+        [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+        [DllImport("shell32.dll")] static extern int SHGetNameFromIDList(IntPtr pidl, uint sigdn, out IntPtr name);
+        const uint GA_ROOT = 2, SIGDN_FILESYSPATH = 0x80058000;
+
         public static string FolderOf(IntPtr hwnd)
         {
             bool isVirtual;
@@ -30,8 +70,8 @@ namespace Choppy.Explorer
         }
 
         /// <summary>
-        /// A real folder path, or null. isVirtual = the window shows a virtual place (This PC, a library: Explorer keeps
-        /// those pastes); null without it = Explorer didn't answer (ask again).
+        /// A real folder path, or null. isVirtual = the window shows a place that isn't a folder (This PC, a library, a
+        /// zip: Explorer keeps those pastes); null without it = Explorer didn't answer (ask again).
         /// </summary>
         public static string FolderOf(IntPtr hwnd, out bool isVirtual)
         {
@@ -42,6 +82,71 @@ namespace Choppy.Explorer
             if (cls == "Progman" || cls == "WorkerW") return Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
 
             IntPtr activeTab = FindWindowEx(hwnd, IntPtr.Zero, "ShellTabWindowClass", null);
+            bool answered;
+            string p = Ask(hwnd, activeTab, out answered);
+            if (!answered) p = AskByName(hwnd, activeTab, out answered);   // the old way, in case this Windows answers only that one
+            if (!answered) return null;
+            isVirtual = !IsFolder(p);
+            return isVirtual ? null : p;
+        }
+
+        /// <summary>The folder the window's active tab shows (null: no file system path). answered = the window was found and said.</summary>
+        static string Ask(IntPtr hwnd, IntPtr activeTab, out bool answered)
+        {
+            answered = false;
+            IShellWindows windows = null;
+            try
+            {
+                windows = (IShellWindows)Activator.CreateInstance(Type.GetTypeFromCLSID(CLSID_ShellWindows));
+                int count = windows.Count;
+                for (int i = 0; i < count; i++)
+                {
+                    object w = null, sb = null, view = null, folder = null;
+                    try
+                    {
+                        w = windows.Item(i);
+                        var sp = w as IServiceProvider;
+                        if (sp == null) continue;
+                        Guid sid = SID_STopLevelBrowser, iid = IID_IShellBrowser;
+                        IntPtr p;
+                        if (sp.QueryService(ref sid, ref iid, out p) != 0 || p == IntPtr.Zero) continue;
+                        try { sb = Marshal.GetObjectForIUnknown(p); } finally { Marshal.Release(p); }
+                        var browser = (IShellBrowser)sb;
+                        IntPtr h;
+                        if (browser.GetWindow(out h) != 0) continue;
+                        // the browser's window is the tab (Windows 11 has several per window; the active one comes first)
+                        if (h != hwnd && GetAncestor(h, GA_ROOT) != hwnd) continue;
+                        if (activeTab != IntPtr.Zero && h != hwnd && h != activeTab) continue;
+                        if (browser.QueryActiveShellView(out view) != 0 || view == null) return null;
+                        Guid pf = IID_IPersistFolder2;
+                        if (((IFolderView)view).GetFolder(ref pf, out folder) != 0 || folder == null) return null;
+                        IntPtr pidl;
+                        if (((IPersistFolder2)folder).GetCurFolder(out pidl) != 0 || pidl == IntPtr.Zero) return null;
+                        try
+                        {
+                            answered = true;
+                            IntPtr name;
+                            if (SHGetNameFromIDList(pidl, SIGDN_FILESYSPATH, out name) != 0 || name == IntPtr.Zero) return null;   // This PC, a library...
+                            try { return Marshal.PtrToStringUni(name); } finally { Marshal.FreeCoTaskMem(name); }
+                        }
+                        finally { Marshal.FreeCoTaskMem(pidl); }
+                    }
+                    catch { }
+                    finally
+                    {
+                        foreach (var o in new[] { folder, view, sb, w }) if (o != null) try { Marshal.ReleaseComObject(o); } catch { }
+                    }
+                }
+            }
+            catch { }
+            finally { if (windows != null) try { Marshal.ReleaseComObject(windows); } catch { } }
+            return null;
+        }
+
+        /// <summary>The same through Shell.Application, by name (the way Choppy asked before 1.36).</summary>
+        static string AskByName(IntPtr hwnd, IntPtr activeTab, out bool answered)
+        {
+            answered = false;
             string first = null;
             object shell = null, windows = null;
             try
@@ -64,7 +169,7 @@ namespace Choppy.Explorer
                         if (activeTab != IntPtr.Zero)
                         {
                             IntPtr tab = TabOf((object)w);
-                            if (tab == activeTab) { isVirtual = IsVirtual(p); return Usable(p); }
+                            if (tab == activeTab) { answered = p != null; return p; }
                         }
                         if (first == null) first = p;
                     }
@@ -78,11 +183,9 @@ namespace Choppy.Explorer
                 if (windows != null) try { Marshal.ReleaseComObject(windows); } catch { }
                 if (shell != null) try { Marshal.ReleaseComObject(shell); } catch { }
             }
-            isVirtual = IsVirtual(first);
-            return Usable(first);
+            answered = first != null;
+            return first;
         }
-
-        static bool IsVirtual(string p) { return p != null && p.StartsWith("::"); }
 
         static string PathOf(dynamic w)
         {
@@ -108,10 +211,11 @@ namespace Choppy.Explorer
             catch { return IntPtr.Zero; }
         }
 
-        static string Usable(string p)
+        /// <summary>A folder Choppy can paste into ("::{...}" is a virtual place, a zip or an FTP place isn't a folder on a disk).</summary>
+        static bool IsFolder(string p)
         {
-            if (string.IsNullOrEmpty(p) || p.StartsWith("::")) return null;
-            try { return Directory.Exists(p) ? p : null; } catch { return null; }
+            if (string.IsNullOrEmpty(p) || p.StartsWith("::")) return false;
+            try { return Directory.Exists(p); } catch { return false; }
         }
     }
 
@@ -130,7 +234,8 @@ namespace Choppy.Explorer
         const string VerbName = "ChoppyPaste";
         static readonly string[] VerbParents = { @"Software\Classes\Directory\Background\shell", @"Software\Classes\Directory\shell", @"Software\Classes\Drive\shell" };
 
-        public static string ExePath { get { return Process.GetCurrentProcess().MainModule.FileName; } }
+        static string exePath;
+        public static string ExePath { get { return exePath ?? (exePath = Process.GetCurrentProcess().MainModule.FileName); } }
 
         public static bool UltracopierInstalled()
         {

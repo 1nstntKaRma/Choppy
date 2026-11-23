@@ -211,6 +211,9 @@ namespace Choppy.Engine
                 Verify = Spec.Verify;
                 SetPhase(JobPhase.Analyzing);
                 monitor.Start();
+                // its record is on the disk before any file is touched (a crash can then be resumed)
+                var rec = Spec.Recorded;
+                if (rec != null) try { rec.Wait(15000); } catch { }
 
                 SrcVol = Spec.Sources.Count > 0 ? VolumeProbe.Probe(Spec.Sources[0]) : null;
                 bool allAsAdmin = false;
@@ -458,14 +461,21 @@ namespace Choppy.Engine
                 foreach (var d in Scan.Dirs) if (d.DestExisted) knownDirs[Paths.Combine(Spec.Dest, d.Rel)] = true;
             }
 
+            // FAT32 (USB sticks, cards) holds no file of 4 GB or more: such a file fails now, with the reason, instead of
+            // after 4 GB were written; the others are copied as usual
+            long maxFile = Spec.MaxFileTest > 0 ? Spec.MaxFileTest : DstVol != null ? DstVol.MaxFileSize : 0;
+            if (maxFile > 0)
+                foreach (var f in files)
+                    if (f.Size > maxFile) MarkFailed(f, "Too big for this drive: its " + (DstVol != null ? DstVol.FileSystem : "FAT32") + " file system holds files of up to 4 GB (NTFS and exFAT have no such limit).");
+
             // space check (bytes that will land there; conflicts may overwrite, count them anyway)
-            ulong free, total, totalFree;
-            if (Native.GetDiskFreeSpaceExW(Paths.ToShort(Spec.Dest).TrimEnd('\\') + "\\", out free, out total, out totalFree))
+            long free = FreeAtDest();
+            if (free >= 0)
             {
-                long need = TotalBytes;
-                if (need > 0 && (ulong)need > free && AskLowSpace != null)
+                long need = TotalBytes - FailedBytes;
+                if (need > 0 && need > free && AskLowSpace != null)
                 {
-                    if (!AskLowSpace(need, (long)free)) { canceled = true; return; }
+                    if (!AskLowSpace(need, free)) { canceled = true; return; }
                 }
             }
 
@@ -524,6 +534,7 @@ namespace Choppy.Engine
                 var f = files[i];
                 bool big = f.Size >= Plan.BigThreshold;
                 if (big) Interlocked.Decrement(ref pendingBig); else Interlocked.Decrement(ref pendingSmall);
+                if (f.St == FileState.Failed) continue;   // failed before it started (too big for the drive)
                 if (big)
                 {
                     lock (bigLock)
@@ -657,9 +668,17 @@ namespace Choppy.Engine
                     if (err == Native.ERROR_DISK_FULL || err == Native.ERROR_HANDLE_DISK_FULL)
                     {
                         DeleteQuiet(temp);
-                        Status = "The destination is full - free some space, then press Resume.";
-                        Pause();
-                        continue;
+                        // really full: wait for room. Room enough and still refused is a limit of the drive (the largest
+                        // file it takes, a quota): pausing would never help - this file fails, the rest go on
+                        long room = FreeAtDest();
+                        if (room < 0 || room < f.Size + (64L << 20))
+                        {
+                            Status = "The destination is full - free some space, then press Resume.";
+                            Pause();
+                            continue;
+                        }
+                        MarkFailed(f, "The destination refused the file as too big, though it has room for it.");
+                        return;
                     }
                     if (IsNetError(err) && attempt < 6)
                     {
@@ -962,6 +981,13 @@ namespace Choppy.Engine
                 f.Size = r.Bytes;
             }
             return true;
+        }
+
+        /// <summary>Free bytes at the destination for this user (quotas count); -1 = couldn't tell.</summary>
+        long FreeAtDest()
+        {
+            ulong free, total, totalFree;
+            return Native.GetDiskFreeSpaceExW(Paths.ToShort(Spec.Dest).TrimEnd('\\') + "\\", out free, out total, out totalFree) ? (long)Math.Min(free, long.MaxValue) : -1;
         }
 
         /// <summary>How much of a file's end may wait in memory: a quarter of the free memory, at most 2 GB.</summary>
@@ -1751,8 +1777,15 @@ namespace Choppy.Engine
             double lastT = 0;
             var small = new Probe();
             var bigP = new Probe();
+            bool awake = false;
             while (!IsFinished)
             {
+                // the PC doesn't go to sleep in the middle of a copy (the screen may turn off); a paused copy lets it
+                if (awake == paused)
+                {
+                    awake = !paused;
+                    Native.SetThreadExecutionState(awake ? Native.ES_CONTINUOUS | Native.ES_SYSTEM_REQUIRED : Native.ES_CONTINUOUS);
+                }
                 Thread.Sleep(250);
                 double t = sw.Elapsed.TotalSeconds;
                 long b = Interlocked.Read(ref DoneBytes);
@@ -1793,6 +1826,7 @@ namespace Choppy.Engine
                     if (Plan.Network) TuneBig(bigP, t, b);   // local big files tune inside the pipeline
                 }
             }
+            if (awake) Native.SetThreadExecutionState(Native.ES_CONTINUOUS);
         }
 
         // small files are limited by round trips, not bandwidth: measure files per second

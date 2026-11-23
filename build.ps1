@@ -1,6 +1,6 @@
 # Builds Choppy -> bin\Choppy.exe, then installs it for the signed-in user.
 #
-# Choppy targets .NET Framework 4.8, which is part of every Windows 10 / 11 installation: one ~250 KB exe,
+# Choppy targets .NET Framework 4.8, which is part of every Windows 10 / 11 installation: one small exe (under 1 MB),
 # nothing extra to install. Building from source needs the .NET SDK (WPF); without it build.ps1 downloads the
 # ready-made exe of the latest release and checks it against the release's SHA-256.
 #

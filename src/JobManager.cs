@@ -37,7 +37,7 @@ namespace Choppy
         {
             var s = Settings.Current;
             if (spec.SpeedLimitMbps <= 0) spec.SpeedLimitMbps = s.SpeedLimitMbps;
-            Journal.Save(spec);
+            Journal.SaveSoon(spec);
             bool start;
             lock (gate)
             {

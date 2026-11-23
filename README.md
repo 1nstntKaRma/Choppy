@@ -26,7 +26,8 @@ It never leaves a half-written file behind, a move removes the original only aft
 - **Fast where it counts:** big files between local drives are read and written at the same time - large pieces, several reads queued at the disk, past the Windows cache - so a busy disk (a torrent client, an indexer) doesn't slow it down. Small files and network shares go through Windows' own copy engine (`CopyFileEx`), many at once. *Adaptive* picks per copy.
 - **Clear:** a compact view (from / to, progress, sizes, times, current file) and an extended view (speed graph, current file, largest files, quick toggles, queue). Color code: blue = speed right now, lavender = average, green = done, peach = total, amber = time.
 - **Never loses a file:** each file is written under a temporary name and gets its real name only when it is complete (and checked, when verify is on). Cancel, skip or a crash leaves nothing half-written.
-- **Zero dependencies:** one `Choppy.exe` (~280 KB) on **.NET Framework 4.8**, part of every Windows 10/11. Installs per user - no administrator rights.
+- **Quick:** with Choppy in the tray, its window is up 0.1-0.2 s after Ctrl+V or a right-click paste - the first copy after it starts too.
+- **Zero dependencies:** one `Choppy.exe` (under 1 MB) on **.NET Framework 4.8**, part of every Windows 10/11. Installs per user - no administrator rights.
 
 ---
 
@@ -65,9 +66,11 @@ Non-interactive: `-Shell Apply`, `-Shell RightClick`, `-Shell Install` (keeps th
 
 ## Default File Manager
 
-**On:** Ctrl+V of files in an Explorer window or on the desktop is handed to Choppy (a small keyboard hook in Choppy itself - nothing is loaded into Explorer). So is Shift+Insert, the paste a clipboard manager sends. Ctrl+V while renaming a file, in the address bar or in search stays a normal paste; virtual places like *This PC* keep Explorer's own paste. Drag and drop stays Windows' own copy.
+**On:** Ctrl+V of files in an Explorer window or on the desktop is handed to Choppy (a small keyboard hook in Choppy itself - nothing is loaded into Explorer). So is Shift+Insert, the paste a clipboard manager sends. Ctrl+V while renaming a file, in the address bar or in search stays a normal paste; places that aren't folders - *This PC*, a library, a zip folder - keep Explorer's own paste. Drag and drop stays Windows' own copy.
 
-The hook runs on a thread of its own and is put in again every few seconds, so a busy moment never hands a paste to Windows. Any start of Choppy (a right-click paste, the settings) brings it back to the tray, and a Choppy that closes on an error starts again. Each paste of files in Explorer is noted in `%LOCALAPPDATA%\Choppy\Logs\ctrl-v.txt`, with the reason whenever Windows did it instead.
+The hook runs on a thread of its own and is put in again every few seconds, so a busy moment never hands a paste to Windows. Any start of Choppy (a right-click paste, the settings) brings it back to the tray, and a Choppy that closes on an error starts again. Each paste of files in Explorer is noted in `%LOCALAPPDATA%\Choppy\Logs\ctrl-v.txt`, with how quick the window was, or the reason whenever Windows did it instead.
+
+The first window a program builds is slow (Windows and WPF set up their controls, fonts and drawing then - about a second). The tray copy builds one off-screen a few seconds after it starts and closes it again, so the first copy's window is as quick as every later one.
 
 **Off:** Windows is left alone. Choppy works through right-click **Paste with Choppy** on folders, folder backgrounds and drives.
 
@@ -113,6 +116,7 @@ The administrator copy keeps every rule: temporary names, verify (when on) befor
 | Hard disk / USB stick | One stream, in order - no seeking; big files through the pipeline (32 MB pieces, 8 reads queued at the disk; writes to a hard disk joined up to 128 MB) |
 | Two hard disks | Big files: 512 MB read ahead in 2 MB reads (4 at the disk at once), written in 64 MB pieces; once the source is fully read, what's left goes through the Windows cache |
 | Both ends on one hard disk | Big files: 256 MB read, then written - not both at once, so the heads don't run back and forth |
+| Copy within one ReFS drive (a Dev Drive) | Windows' own copy, which shares the original's blocks instead of writing them again (Windows 11 24H2 and later) |
 
 **The pipeline** (big files between local drives): one thread reads, one writes, at the same time; the next pieces are already queued at the source disk, so another program reading that disk can't send its heads away between them. With verify on, the source is hashed on the way in, so the check reads only the copy back. Extra data streams (`Zone.Identifier` of downloads), dates and attributes come along. The badge shows the choice: *Adaptive · 1 stream*.
 
@@ -122,7 +126,9 @@ The administrator copy keeps every rule: temporary names, verify (when on) befor
 - **Moves:** an original is deleted only once its copy is on the disk itself - flushed, not just in memory - so a power cut right after can't lose both. Small files are flushed in batches, many at once. An original that changed while it was being moved is kept.
 - **Verify** (xxHash64) reads each copy back and compares; with it on, a move removes the original only after its copy matches. The check proves the drive returns the same bytes.
 - A job record stays on disk until a copy ends: after a crash or power cut the next start offers **Resume** - files already there with the same size and date are kept, only the rest is copied. Resuming a move checks each such copy's content before its original goes.
-- Network dropped: it waits (up to 15 min) and goes on. File in use: tried again, then listed for **Retry failed**. Destination full: it pauses.
+- Network dropped: it waits (up to 15 min) and goes on. File in use: tried again, then listed for **Retry failed**. Destination full: it pauses. A drive that refuses a file although it has room (a size limit) fails that file and goes on.
+- A file of 4 GB or more for a **FAT32** drive (USB sticks, cards) is listed as failed at once, with the reason, instead of after 4 GB were written; the rest are copied.
+- The PC doesn't go to sleep in the middle of a copy (the screen may still turn off); a paused copy lets it.
 - Created and modified dates, read-only / hidden attributes and paths longer than 260 characters are kept.
 - A file that only looks like Choppy's (`<name>.chpart` already there) is never touched: another temporary name is used.
 
@@ -143,6 +149,8 @@ On one setup (Windows 10, NAS over Tailscale, ~9 ms, ~100 Mbps upload):
 | 1,000 small files, hard disk to hard disk / within one hard disk | **90-93 / 67-69 MB/s** |
 | Move of 2,000 files (1 GB), NVMe to hard disk, every copy on the disk before its original goes | **10.9-11.1 s** |
 | Move of 400 small files to the NAS, same | **12.8-13.1 s** |
+| Window on screen after a right-click paste, Choppy in the tray (the first copy after it starts too) | **0.14-0.20 s** |
+| Window on screen when Choppy wasn't running | **~1.1 s** |
 
 ---
 

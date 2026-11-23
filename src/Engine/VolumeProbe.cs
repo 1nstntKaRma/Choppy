@@ -20,9 +20,19 @@ namespace Choppy.Engine
         public int Disk = -1;        // physical disk number (-1 = unknown / network)
         public int Sector = 512;     // bytes per sector: unbuffered reads and writes go in multiples of it
         public bool Removable;       // can be pulled out (USB, cards): nothing may wait in memory for it
+        public uint FsFlags;         // the file system's FILE_* capability flags
 
         public bool IsNetwork { get { return Kind == DeviceKind.Network; } }
         public bool IsSlowSeek { get { return Kind == DeviceKind.Hdd || Kind == DeviceKind.Usb || Kind == DeviceKind.Optical; } }
+
+        /// <summary>The largest file this file system holds (FAT32: 4 GB less a byte); 0 = no limit that matters.</summary>
+        public long MaxFileSize
+        {
+            get { return FileSystem != null && FileSystem.StartsWith("FAT", StringComparison.OrdinalIgnoreCase) ? uint.MaxValue : 0; }
+        }
+
+        /// <summary>ReFS (a Dev Drive, for one): a copy on the same volume can share the original's blocks.</summary>
+        public bool CanClone { get { return (FsFlags & Native.FILE_SUPPORTS_BLOCK_REFCOUNTING) != 0; } }
 
         public string KindText
         {
@@ -77,6 +87,7 @@ namespace Choppy.Engine
                 {
                     v.Id = "vol:" + serial.ToString("X8");
                     v.FileSystem = fs.ToString();
+                    v.FsFlags = fsFlags;
                 }
                 else v.Id = "root:" + root.ToUpperInvariant();
 

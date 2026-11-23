@@ -40,7 +40,9 @@ namespace Choppy.UI
         };
         static readonly Color OtherColor = Color.FromRgb(0x5F, 0x67, 0x72);
 
-        internal MainWindow(JobManager mgr)
+        internal MainWindow(JobManager mgr) : this(mgr, false) { }
+
+        MainWindow(JobManager mgr, bool warmUp)
         {
             InitializeComponent();
             WholeNumberBox.Attach(LimitBox);
@@ -55,11 +57,30 @@ namespace Choppy.UI
             SyncQuick();
             timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(100) };
             timer.Tick += (s, e) => Tick();
+            Closed += (s, e) => { timer.Stop(); Manager.Changed -= OnManagerChanged; };
+            if (warmUp) return;
             Manager.Changed += OnManagerChanged;
             Loaded += (s, e) => { Native2.Rounded(this); OnManagerChanged(); timer.Start(); };
-            Closed += (s, e) => { timer.Stop(); Manager.Changed -= OnManagerChanged; };
             MouseLeftButtonDown += (s, e) => { if (e.ButtonState == MouseButtonState.Pressed && e.GetPosition(this).Y < 46) { try { DragMove(); } catch { } } };
             KeyDown += OnKey;
+        }
+
+        /// <summary>
+        /// A window that is only drawn once, off-screen and never focused, so WPF has everything ready for the first real
+        /// one (see App.WarmUp). Both views are shown in it, so the controls of each get built.
+        /// </summary>
+        internal static MainWindow ForWarmUp(JobManager mgr)
+        {
+            var w = new MainWindow(mgr, true)
+            {
+                WindowStartupLocation = WindowStartupLocation.Manual, Left = -32000, Top = -32000,
+                ShowInTaskbar = false, ShowActivated = false
+            };
+            foreach (var e in new UIElement[] { w.Badge, w.PercentExt, w.PercentCompact, w.CompactSpeeds, w.CompactLine, w.FilesText, w.ExtPanel,
+                w.BtnSkip, w.BtnQueue, w.ReportSection, w.DoneButtons, w.BtnLog, w.RepNote })
+                e.Visibility = Visibility.Visible;
+            w.CNow.Text = "93.8 MB/s"; w.SizeDone.Text = "1.2 GB"; w.ElapsedVal.Text = "12 s";
+            return w;
         }
 
         void OnKey(object sender, KeyEventArgs e)

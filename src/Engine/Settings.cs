@@ -134,6 +134,17 @@ namespace Choppy.Engine
             catch { }
         }
 
+        /// <summary>
+        /// Saves the record in the background: it is flushed to the disk, which takes from a few ms to a lot more on a
+        /// busy drive, and the copy's window doesn't wait for that. The copy itself does (CopyJob.Run), before it
+        /// touches a file.
+        /// </summary>
+        public static void SaveSoon(JobSpec s)
+        {
+            if (s.Elevated) return;
+            s.Recorded = System.Threading.Tasks.Task.Run(() => Save(s));
+        }
+
         /// <summary>Writes a job record (flushed to the disk, then renamed into place).</summary>
         public static void Write(JobSpec s, string path, IEnumerable<string> extra)
         {
@@ -204,6 +215,9 @@ namespace Choppy.Engine
 
         public static void Remove(JobSpec s)
         {
+            // still being written: removed right after (else it would come back as an unfinished copy)
+            var r = s.Recorded;
+            if (r != null && !r.IsCompleted) { r.ContinueWith(_ => Remove(s)); return; }
             try { File.Delete(Path.Combine(AppPaths.JobDir, s.Id + ".job")); } catch { }
         }
 

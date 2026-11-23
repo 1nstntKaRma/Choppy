@@ -16,6 +16,7 @@ namespace Choppy.Engine
         public bool InstantMove;             // same drive + move = rename only
         public bool Network;
         public bool CanTune;                 // measure once and switch to more files in flight when that is faster
+        public bool Clone;                   // the same ReFS volume: Windows' own copy shares the blocks instead of writing them
         public string Kind = "Disk";
         public bool Tuned;
         public string TuneNote;
@@ -39,6 +40,7 @@ namespace Choppy.Engine
             {
                 if (InstantMove) return "Same drive: the files are renamed in place, nothing is copied.";
                 string s = Kind + ": ";
+                if (Clone) return s + "Windows' own copy, which shares the original's blocks on ReFS (Windows 11 24H2 and later): nothing is written twice.";
                 if (Network) s += Workers + " files in flight hide the network's round trips" + (CanTune ? "; it measures and adds more when that is faster." : ".");
                 else if (Workers <= 1) s += "one file at a time, in order - no seeking back and forth.";
                 else s += Workers + " small files at once.";
@@ -73,6 +75,16 @@ namespace Choppy.Engine
                 p.BigSlots = 1;
                 p.CanTune = files > 1;
                 p.MaxWorkers = 64;   // a far NAS spends a fixed time per file: tuning may go on to 64 in flight
+                return p;
+            }
+            // the same ReFS volume (a Dev Drive): Windows' own copy clones the blocks, so a file of any size takes a moment
+            // (Windows 11 24H2 on; before that it is an ordinary copy). Nothing is faster than not writing at all.
+            if (sameVolume && src.CanClone)
+            {
+                p.Clone = true;
+                p.Kind = "Same ReFS drive";
+                p.Workers = files <= 1 ? 1 : (files > 32 && median < (1L << 20)) ? 8 : 4;
+                p.CanTune = files > 1;
                 return p;
             }
             DeviceKind slow = DeviceKind.Unknown;
