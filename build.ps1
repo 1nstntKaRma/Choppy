@@ -107,10 +107,20 @@ function Resolve-Mode([string]$m) {
 
 # ================= install / remove (always as the signed-in user) =================
 
+# the installed Choppy has quit (it asks first when a copy is running: up to a minute for that answer)
 function Wait-Gone {
-    for ($i = 0; $i -lt 50; $i++) {
+    for ($i = 0; $i -lt 300; $i++) {
         if (-not @(Get-Process Choppy -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $Installed })) { return }
         Start-Sleep -Milliseconds 200
+    }
+    throw "Choppy is still running (a copy in progress?) - let it finish or quit it from the tray, then try again."
+}
+
+# a Choppy that just quit, or a virus scanner looking at the file, can hold it a moment longer
+function Copy-Patiently([string]$From, [string]$To) {
+    for ($i = 0; ; $i++) {
+        try { Copy-Item $From $To -Force -ErrorAction Stop; return }
+        catch { if ($i -ge 40) { throw "Couldn't replace ${To}: $($_.Exception.Message)" }; Start-Sleep -Milliseconds 250 }
     }
 }
 
@@ -118,9 +128,10 @@ function Install-ForUser([string]$Mode) {
     if (-not (Test-Path $exe)) { throw "bin\Choppy.exe is missing." }
     $isNew = -not (Test-Path 'HKCU:\Software\Choppy')
     $wasDefault = (Get-ItemProperty 'HKCU:\Software\Choppy' -Name ExplorerTakeover -ErrorAction SilentlyContinue).ExplorerTakeover -eq '1'
-    if (Test-Path $Installed) { Start-Process $Installed -ArgumentList '--quit' -Wait; Wait-Gone }
+    # an installed exe that can't start any more (damaged, blocked) must not stop the update that replaces it
+    if (Test-Path $Installed) { try { Start-Process $Installed -ArgumentList '--quit' -Wait } catch { }; Wait-Gone }
     New-Item -ItemType Directory -Force $InstallDir | Out-Null
-    Copy-Item $exe $Installed -Force
+    Copy-Patiently $exe $Installed
     $s = (New-Object -ComObject WScript.Shell).CreateShortcut($Shortcut)
     $s.TargetPath = $Installed
     $s.WorkingDirectory = $InstallDir
@@ -144,7 +155,7 @@ function Install-ForUser([string]$Mode) {
 }
 
 function Remove-ForUser {
-    if (Test-Path $Installed) { Start-Process $Installed -ArgumentList '--uninstall' -Wait; Wait-Gone }
+    if (Test-Path $Installed) { try { Start-Process $Installed -ArgumentList '--uninstall' -Wait } catch { }; Wait-Gone }
     Remove-Item $Shortcut -Force -ErrorAction SilentlyContinue
     if (Test-Path $InstallDir) { Remove-Item $InstallDir -Recurse -Force }
     Remove-Item 'HKCU:\Software\Choppy' -Recurse -Force -ErrorAction SilentlyContinue
@@ -155,48 +166,109 @@ function Test-Admin {
     ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-# Elevated: hand the install to the user who owns the desktop (a one-time scheduled task in their session)
+# ---------- elevated: the install runs in the desktop user's own session ----------
+# Choppy is per user (its Ctrl+V hook, tray and clipboard live in the user's session), so an elevated run hands the
+# install to that user: a one-time scheduled task in their session, with their normal (not elevated) rights.
+
+# The user whose desktop this run belongs to: the shell of this run's own session (its oldest explorer.exe - later
+# ones are folder windows, or elevated), else the console's user (a run from a service), else whoever has a desktop.
+# Found by SID: a Microsoft or work account's name can fail to resolve, its SID can't.
+function Get-DesktopUser {
+    $mine = (Get-Process -Id $PID).SessionId
+    $console = try { (Get-CimInstance Win32_ComputerSystem).UserName } catch { $null }
+    $found = @(foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" | Sort-Object CreationDate)) {
+        $sid = try { (Invoke-CimMethod -InputObject $p -MethodName GetOwnerSid).Sid } catch { $null }
+        if ($sid -notmatch '^S-1-(5-21|12-1)-') { continue }   # a person's account: local, domain, Microsoft (5-21) or Entra ID (12-1)
+        $name = try { ([Security.Principal.SecurityIdentifier]$sid).Translate([Security.Principal.NTAccount]).Value } catch { $sid }
+        [pscustomobject]@{ Sid = $sid; Name = $name; Session = $p.SessionId }
+    })
+    @($found | Where-Object { $mine -ne 0 -and $_.Session -eq $mine }) + @($found | Where-Object { $console -and $_.Name -eq $console }) + $found |
+        Select-Object -First 1
+}
+
+# What Task Scheduler's last result means while the step hasn't said anything itself
+$TaskNotRunYet = 0x41303, 0x41301, 0x41325   # has not run yet, is running, is queued
+
 function Invoke-AsDesktopUser([string]$Mode) {
-    $user = $null
-    try {
-        $e = Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" | Select-Object -First 1
-        $o = Invoke-CimMethod -InputObject $e -MethodName GetOwner
-        if ($o.User) { $user = if ($o.Domain) { "$($o.Domain)\$($o.User)" } else { $o.User } }
-    } catch { }
-    if (-not $user) { throw "Nobody is signed in to the desktop." }
-    $stage = Join-Path $env:ProgramData 'Choppy-setup'
-    Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
-    New-Item -ItemType Directory -Force (Join-Path $stage 'bin') | Out-Null
-    & icacls.exe $stage /grant '*S-1-5-32-545:(OI)(CI)M' /T /Q | Out-Null   # the user's step writes its log here
-    Copy-Item (Join-Path $root 'build.ps1') $stage
-    if (Test-Path (Join-Path $root 'VERSION')) { Copy-Item (Join-Path $root 'VERSION') $stage }
-    if (Test-Path $exe) { Copy-Item $exe (Join-Path $stage 'bin') }
-    $log = Join-Path $stage 'setup.log'
+    $u = Get-DesktopUser
+    if (-not $u) { throw "Nobody is signed in to the desktop." }
+    $who = $u.Name
+    # staged in the user's own temp folder: only they and administrators can reach it
+    $profileDir = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$($u.Sid)" -ErrorAction SilentlyContinue).ProfileImagePath
+    if (-not $profileDir -or -not (Test-Path $profileDir)) { throw "$who has no profile folder on this PC." }
     $task = 'Choppy-setup-' + [Guid]::NewGuid().ToString('N').Substring(0, 8)
-    $arg = "/c powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$stage\build.ps1`" -NoBuild -Shell $Mode -AsUserStep > `"$log`" 2>&1"
-    $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument $arg
-    $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
-    Register-ScheduledTask -TaskName $task -Action $action -Principal $principal -Force | Out-Null
+    $stage = Join-Path $profileDir "AppData\Local\Temp\$task"
+    New-Item -ItemType Directory -Force (Join-Path $stage 'bin') | Out-Null
     try {
-        $started = Get-Date
-        Start-ScheduledTask -TaskName $task
-        $ran = $false
-        do {
-            Start-Sleep -Milliseconds 400
-            $state = (Get-ScheduledTask -TaskName $task).State
-            $info = Get-ScheduledTaskInfo -TaskName $task
-            if ($state -eq 'Running' -or $info.LastRunTime -ge $started.AddSeconds(-2)) { $ran = $true }
-        } while (($state -eq 'Running' -or -not $ran) -and (Get-Date) -lt $started.AddMinutes(3))
+        Copy-Item (Join-Path $root 'build.ps1') $stage
+        if (Test-Path (Join-Path $root 'VERSION')) { Copy-Item (Join-Path $root 'VERSION') $stage }
+        if (Test-Path $exe) { Copy-Item $exe (Join-Path $stage 'bin') }
+        $log = Join-Path $stage 'setup.log'
+        $began = Join-Path $stage 'started.txt'
+        $result = Join-Path $stage 'result.txt'
+        $arg = "/c powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$stage\build.ps1`" -NoBuild -Shell $Mode -AsUserStep > `"$log`" 2>&1"
+        # Task Scheduler's defaults would start it only on mains power, stop it if the laptop is unplugged, and run it -
+        # and the Choppy it starts in the tray - below normal priority: none of that here
+        $esc = [Security.SecurityElement]::Escape($arg)
+        $xml = @"
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Principals><Principal id="Author"><UserId>USER-ID</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
+  <Settings>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT15M</ExecutionTimeLimit><Priority>4</Priority><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+  </Settings>
+  <Actions Context="Author"><Exec><Command>cmd.exe</Command><Arguments>$esc</Arguments></Exec></Actions>
+</Task>
+"@
+        # by SID; by name if this Windows wants one
+        try { Register-ScheduledTask -TaskName $task -Xml $xml.Replace('USER-ID', $u.Sid) -Force -ErrorAction Stop | Out-Null }
+        catch {
+            $bySid = $_.Exception.Message
+            try { Register-ScheduledTask -TaskName $task -Xml $xml.Replace('USER-ID', [Security.SecurityElement]::Escape($who)) -Force -ErrorAction Stop | Out-Null }
+            catch { throw "Windows wouldn't set up the install for ${who}: $bySid / $($_.Exception.Message)" }
+        }
+        try { Start-ScheduledTask -TaskName $task -ErrorAction Stop }
+        catch { throw "Windows wouldn't start the install in ${who}'s session: $($_.Exception.Message)" }
+
+        # the step says when it starts and how it ended (started.txt, result.txt): no guessing from the task's times
+        $clock = [Diagnostics.Stopwatch]::StartNew()
+        $code = $null; $why = $null
+        while ($null -eq $code) {
+            Start-Sleep -Milliseconds 250
+            if (Test-Path $result) {
+                $lines = @(Get-Content $result -ErrorAction SilentlyContinue)
+                if ($lines.Count -ge 2 -and $lines[-1] -eq 'end') { $code = [int]$lines[0]; break }
+            }
+            $state = (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue).State
+            $last = [uint32](Get-ScheduledTaskInfo -TaskName $task -ErrorAction SilentlyContinue).LastTaskResult
+            $ran = Test-Path $began
+            if ($state -eq 'Ready' -and ($ran -or $TaskNotRunYet -notcontains $last) -and $clock.Elapsed.TotalSeconds -gt 3) {
+                # it ended without saying how (its result file is written last): a moment for the file, then the task's own code
+                Start-Sleep -Seconds 2
+                if (Test-Path $result) { continue }
+                $code = [BitConverter]::ToInt32([BitConverter]::GetBytes($last), 0)
+                $why = if ($ran) { "The step in ${who}'s session stopped before it finished" } else { "The step in ${who}'s session couldn't start" }
+                $why += " (code 0x{0:X})." -f $last
+            }
+            elseif (-not $ran -and $clock.Elapsed.TotalMinutes -ge 2) {
+                $code = 1; $why = "The install didn't start in ${who}'s session in 2 minutes (task $state, 0x{0:X})." -f $last
+            }
+            elseif ($clock.Elapsed.TotalMinutes -ge 14) {
+                $code = 1; $why = "The install in ${who}'s session didn't finish in 14 minutes."
+            }
+        }
+        # its log is complete once cmd.exe has closed it
+        for ($i = 0; $i -lt 40 -and (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue).State -eq 'Running'; $i++) { Start-Sleep -Milliseconds 250 }
         if (Test-Path $log) { Get-Content $log | Where-Object { $_.Trim() } | ForEach-Object { Say $_ $(if ($_ -match '^\s*>') { 'Red' } elseif ($_ -match '\[') { 'Green' } else { 'Gray' }) } }
-        if (-not $ran) { throw "The install didn't start in $user's session (is someone signed in?)." }
-        if ($state -eq 'Running') { throw "The install in $user's session didn't finish in 3 minutes." }
-        $code = [BitConverter]::ToInt32([BitConverter]::GetBytes([uint32]$info.LastTaskResult), 0)
-        if ($code -ne 0) { Say "  > The step in $user's session ended with code $code" Red }
+        if ($why) { Say "  > $why" Red }
+        elseif ($code -ne 0) { Say "  > The step in ${who}'s session ended with code $code" Red }
         return $code
     }
     finally {
         Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction SilentlyContinue
-        Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+        # .NET deletes a link inside the folder, never what it points to
+        for ($i = 0; $i -lt 20 -and (Test-Path $stage); $i++) { try { [IO.Directory]::Delete($stage, $true) } catch { Start-Sleep -Milliseconds 250 } }
     }
 }
 
@@ -208,6 +280,7 @@ $exitCode = 0
 try {
     $mode = Resolve-Mode $Shell
     if ($AsUserStep) {
+        Set-Content (Join-Path $root 'started.txt') $PID   # the elevated run waits for this, then for result.txt
         if ($mode -eq 'Revert') { Remove-ForUser } else { Install-ForUser $mode }
     }
     else {
@@ -226,5 +299,6 @@ catch {
     Say "  > $($_.Exception.Message)" Red
     $exitCode = 1
 }
+if ($AsUserStep) { try { Set-Content (Join-Path $root 'result.txt') "$exitCode`r`nend" } catch { } }
 if (-not $AsUserStep) { try { Stop-Transcript | Out-Null } catch { } }
 exit $exitCode

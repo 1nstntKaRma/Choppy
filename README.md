@@ -50,7 +50,9 @@ $ProgressPreference='SilentlyContinue'; $d="$env:TEMP\Choppy"; $z="$d.zip"; Remo
 | **`[3] Remove Choppy`** | Removes everything `build.ps1` added. |
 | **`[4] Cancel`** | Exits without changing anything. |
 
-Non-interactive: `-Shell Apply`, `-Shell RightClick`, `-Shell Install` (keeps the user's choices, opens the settings), `-Shell Revert`, `-Shell Cancel` (build only), plus `-NoBuild`.
+Non-interactive: `-Shell Apply`, `-Shell RightClick`, `-Shell Install` (keeps the user's choices, opens the settings), `-Shell Revert`, `-Shell Cancel` (build only), plus `-NoBuild`. Exit code 0 = done.
+
+Started as administrator (an elevated prompt, or a tool that runs as administrator), `build.ps1` still installs for the person signed in to that desktop: a one-time task in their session, with their normal rights - on battery too - and the exit code is that step's own. A step that fails says why in `%TEMP%\Choppy-setup.log`.
 
 ### Option 2: Download Pre-Built Release
 

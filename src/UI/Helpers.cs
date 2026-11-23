@@ -175,7 +175,7 @@ namespace Choppy.UI
             var sp = new StackPanel { Margin = new Thickness(24, 22, 24, 20) };
 
             var head = new StackPanel { Orientation = Orientation.Horizontal };
-            try { head.Children.Add(new Image { Source = ChoppyIcon.Frame(36), Width = 36, Height = 36, Margin = new Thickness(0, 0, 14, 0) }); } catch { }
+            try { head.Children.Add(new Image { Source = ChoppyIcon.Frame(72), Width = 72, Height = 72, Margin = new Thickness(0, 0, 18, 0) }); } catch { }
             var names = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             names.Children.Add(new TextBlock { Text = "Choppy", FontSize = 22, FontWeight = FontWeights.SemiBold });
             names.Children.Add(new TextBlock { Text = "v" + typeof(Dialogs).Assembly.GetName().Version.ToString(3) + " · fast, clear file copier for Windows", FontSize = 13.5, Foreground = (Brush)app.FindResource("B.Dim") });
