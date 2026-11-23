@@ -22,12 +22,14 @@ namespace Choppy.Engine
         public bool Renamed;
         public bool HasSrcHash;      // the pipeline hashed the source as it read it: verify reads only the copy
         public ulong SrcHash;
+        public bool Durable;         // the copy was flushed to the disk itself (a move may delete the original at once)
     }
 
     /// <summary>
     /// A copy or move job. Never loses a file:
     ///  - every file is written to "&lt;name&gt;.chpart" and renamed into place only when complete (and verified, if on),
-    ///  - a move deletes a source file only after its copy is in place (and verified, if on; a big file is flushed to the disk),
+    ///  - a move deletes a source file only after its copy is in place, on the disk (flushed) and verified, if on - and
+    ///    only if the original didn't change meanwhile,
     ///  - errors are retried with backoff; a network drop waits for the network to come back.
     /// </summary>
     internal sealed class CopyJob
@@ -290,7 +292,7 @@ namespace Choppy.Engine
                 bool isDir = (a & (int)Native.FILE_ATTRIBUTE_DIRECTORY) != 0;
                 if (Paths.SamePath(src, target)) { Notes.Add("Already in this folder: " + Paths.ToShort(src)); Interlocked.Increment(ref SkippedFiles); continue; }
                 if (isDir && Paths.IsSameOrInside(Spec.Dest, src)) { FailNote(src, "A folder can't be moved into itself."); continue; }
-                if (MoveItem(src, target, isDir, fallback)) Interlocked.Increment(ref DoneFiles);
+                if (MoveItem(src, target, isDir, fallback, true)) Interlocked.Increment(ref DoneFiles);
                 else asAdmin.Add(src);
             }
             if (asAdmin.Count > 0 && !canceled)
@@ -307,7 +309,7 @@ namespace Choppy.Engine
         }
 
         /// <summary>False = the destination needs administrator rights and the user said yes: an administrator copy moves it.</summary>
-        bool MoveItem(string src, string target, bool isDir, List<string> fallback)
+        bool MoveItem(string src, string target, bool isDir, List<string> fallback, bool top)
         {
             if (canceled) return true;
             int ta = Native.GetFileAttributesW(target);
@@ -315,7 +317,14 @@ namespace Choppy.Engine
             {
                 if (Native.MoveFileExW(src, target, 0)) return true;
                 int e = Marshal.GetLastWin32Error();
-                if (e == 17 /*ERROR_NOT_SAME_DEVICE*/) { fallback.Add(src); return true; }
+                if (e == 17 /*ERROR_NOT_SAME_DEVICE*/)
+                {
+                    // copied + deleted instead - only a top item: the fallback copy lands in the destination folder itself,
+                    // so an item from deeper in a merged folder would land in the wrong place. That one stays put, said so.
+                    if (top) fallback.Add(src);
+                    else FailNote(src, "It is on another drive mounted inside this folder - move it on its own.");
+                    return true;
+                }
                 if (e == Native.ERROR_ACCESS_DENIED && DestRefuses(Paths.Parent(target)) && HandOver(null)) return false;
                 FailNote(src, Native.ErrorText(e));
                 return true;
@@ -328,7 +337,7 @@ namespace Choppy.Engine
                 foreach (var child in ListNames(src))
                 {
                     if (canceled) return true;
-                    if (!MoveItem(Paths.Combine(src, child.Key), Paths.Combine(target, child.Key), child.Value, fallback)) return false;
+                    if (!MoveItem(Paths.Combine(src, child.Key), Paths.Combine(target, child.Key), child.Value, fallback, false)) return false;
                 }
                 Native.RemoveDirectoryW(src);
                 return true;
@@ -475,6 +484,15 @@ namespace Choppy.Engine
             }
             foreach (var w in workers) w.Join();
             if (batch != null) { Native.VirtualFree(batch.Mem, UIntPtr.Zero, Native.MEM_RELEASE); batch = null; }
+            // a move: the last copies onto the disk, then their originals go (also when canceled: those files are done)
+            if (Spec.Op == OpKind.Move)
+            {
+                bool waiting;
+                lock (flushLock) waiting = flusher != null;
+                if (waiting && !canceled) Status = "Making sure the moved files are on the disk...";
+                FinishDurable();
+                if (waiting) Status = null;
+            }
 
             if (handOff && !canceled)
             {
@@ -554,7 +572,11 @@ namespace Choppy.Engine
             bool replace = false;
             if (f.DestExists)
             {
-                if (Spec.ResumeMode && !f.DestIsDir && f.DestSize == f.Size && f.DestMTime == f.MTime)
+                bool resumed = Spec.ResumeMode && !f.DestIsDir && f.DestSize == f.Size && f.DestMTime == f.MTime;
+                // a move deletes the original: there, size and date aren't enough (a power cut can leave a copy with its
+                // name and dates but not its data) - the copy must read back the same as the original
+                if (resumed && Spec.Op == OpKind.Move && !SameContent(f.Src, final)) { resumed = false; replace = true; Interlocked.Decrement(ref ConflictsLeft); }
+                if (resumed)
                 {
                     // already copied by the interrupted run
                     f.AlreadyThere = true;
@@ -565,22 +587,32 @@ namespace Choppy.Engine
                     Interlocked.Increment(ref AlreadyThereFiles);
                     Interlocked.Increment(ref DoneFiles);
                     f.St = FileState.Done;
-                    if (Spec.Op == OpKind.Move) DeleteSource(f);
+                    if (Spec.Op == OpKind.Move) Moved(f, false);
                     return;
                 }
-                var choice = ResolveConflict(f, final);
-                if (canceled) return;
-                if (choice == ConflictPolicy.Skip) { MarkSkipped(f); return; }
-                if (choice == ConflictPolicy.KeepBoth) final = FreeName(final, false);
-                else
+                if (!replace)
                 {
-                    if (f.DestIsDir) { MarkFailed(f, "A folder with this name is already there."); return; }
-                    replace = true;
+                    var choice = ResolveConflict(f, final);
+                    if (canceled) return;
+                    if (choice == ConflictPolicy.Skip) { MarkSkipped(f); return; }
+                    if (choice == ConflictPolicy.KeepBoth) final = FreeName(final, false);
+                    else
+                    {
+                        if (f.DestIsDir) { MarkFailed(f, "A folder with this name is already there."); return; }
+                        replace = true;
+                    }
                 }
             }
 
+            // "<name>.chpart" taken already: a leftover of this very job's interrupted run goes; anything else (a file that
+            // only looks like one, e.g. copied from a folder that held one) is never touched - another temp name is used
             string temp = TempName(final);
-            if (f.TempExists) DeleteQuiet(temp);
+            int alt = 0;
+            if (f.TempExists)
+            {
+                if (Spec.ResumeMode && !IsJobDest(temp)) DeleteQuiet(temp);
+                else temp = FreeTemp(final, ref alt);
+            }
 
             int attempt = 0;
             bool verifyRetried = false;
@@ -590,10 +622,12 @@ namespace Choppy.Engine
                 WaitToRun();
                 if (canceled) return;
 
+                // whether this file is checked: decided once per try (the switch can change while it copies)
+                bool check = Verify;
                 var t = new Transfer { File = f, Started = Stopwatch.GetTimestamp() };
                 // fast path for a brand-new file without verify: one rename through the copy's own handle
                 // instead of open + rename + close afterwards (saves round trips per file on a NAS)
-                if (!replace && !Verify && !Spec.NoFastPath && !fastPathOff) t.RenameTo = final;
+                if (!replace && !check && !Spec.NoFastPath && !fastPathOff) t.RenameTo = final;
                 lock (activeLock) active.Add(t);
                 int err = 0;
                 bool ok;
@@ -616,8 +650,8 @@ namespace Choppy.Engine
                     }
                     if (err == Native.ERROR_FILE_EXISTS || err == Native.ERROR_ALREADY_EXISTS)
                     {
-                        // a leftover temp from an earlier run: remove it and go again
-                        DeleteQuiet(temp);
+                        // the temp name got taken (not by this try - it never replaces): another one, the file there stays
+                        temp = FreeTemp(final, ref alt);
                         if (attempt++ < 3) continue;
                     }
                     if (err == Native.ERROR_DISK_FULL || err == Native.ERROR_HANDLE_DISK_FULL)
@@ -648,7 +682,7 @@ namespace Choppy.Engine
                 }
 
                 // verify before the file gets its real name
-                if (Verify)
+                if (check)
                 {
                     t.Verifying = true;
                     lock (activeLock) active.Add(t);
@@ -699,7 +733,7 @@ namespace Choppy.Engine
                     f.St = FileState.Done;
                     Interlocked.Add(ref CopiedBytes, f.Size);
                     Interlocked.Increment(ref DoneFiles);
-                    if (Spec.Op == OpKind.Move) DeleteSource(f);
+                    if (Spec.Op == OpKind.Move) Moved(f, t.Durable);
                     return;
                 }
 
@@ -731,7 +765,7 @@ namespace Choppy.Engine
                 Interlocked.Add(ref CopiedBytes, f.Size);
                 Interlocked.Increment(ref DoneFiles);
                 if (replace) Interlocked.Decrement(ref ConflictsLeft);
-                if (Spec.Op == OpKind.Move) DeleteSource(f);
+                if (Spec.Op == OpKind.Move) Moved(f, t.Durable);
                 return;
             }
         }
@@ -821,15 +855,15 @@ namespace Choppy.Engine
             batch.At.Remove(f);
             byte* data = (byte*)batch.Mem + at;
             if (canceled || t.Skip) { err = Native.ERROR_REQUEST_ABORTED; return true; }
-            bool renamed;
+            bool renamed, timesSet;
             // through the cache (measured on one disk: 67-69 MB/s, straight to the disk 51, Explorer 52-55): the cache's own
             // writer puts many small files out in one sweep while the next batch is read
             bool cached = Spec.SmallMode == null || Spec.SmallMode == "cached" || Spec.SmallMode == "batch" || (Spec.SmallMode == "tiny" && f.Size < (64 << 10));
-            err = BigCopy.WriteSmall(temp, data, f.Size, Math.Max(4096, Plan.Pipe.Align), f.CTime, f.MTime, f.Attr, t.RenameTo, out renamed, cached);
+            err = BigCopy.WriteSmall(temp, data, f.Size, Math.Max(4096, Plan.Pipe.Align), f.CTime, f.MTime, f.Attr, t.RenameTo, out renamed, out timesSet, cached);
             if (err == BigCopy.NotSupported) { err = 0; return false; }
             if (err != 0) return true;
             t.Renamed = renamed;
-            t.TimesSet = true;
+            t.TimesSet = timesSet;
             if (Verify)
             {
                 var x = new XxHash64();
@@ -918,8 +952,9 @@ namespace Choppy.Engine
             }
             err = r.Error;
             if (err != 0) return false;
-            t.TimesSet = true;
+            t.TimesSet = r.TimesSet;
             t.Renamed = r.Renamed;
+            t.Durable = Spec.Op == OpKind.Move;   // a move's big file was flushed before it got its name
             if (Verify) { t.HasSrcHash = true; t.SrcHash = r.Hash; }
             if (r.Bytes != f.Size)
             {
@@ -1038,12 +1073,164 @@ namespace Choppy.Engine
 
         void DeleteSource(FileItem f)
         {
+            // another program saved the original after it was read: the copy is older, so the original stays
+            Native.WIN32_FILE_ATTRIBUTE_DATA d;
+            if (Native.GetFileAttributesExW(f.Src, 0, out d))
+            {
+                long size = ((long)d.nFileSizeHigh << 32) | d.nFileSizeLow;
+                if (size != f.Size || d.ftLastWriteTime != f.MTime)
+                {
+                    f.SourceKept = true;
+                    lock (Notes) Notes.Add("Moved, but the original changed meanwhile - it was kept: " + Paths.ToShort(f.Src));
+                    return;
+                }
+            }
             if (Native.DeleteFileW(f.Src)) return;
             int e = Marshal.GetLastWin32Error();
-            if (e == Native.ERROR_ACCESS_DENIED && ClearReadOnly(f.Src) && Native.DeleteFileW(f.Src)) return;
             if (e == Native.ERROR_FILE_NOT_FOUND) return;
+            if (e == Native.ERROR_ACCESS_DENIED)
+            {
+                int a = Native.GetFileAttributesW(f.Src);
+                if (ClearReadOnly(f.Src))
+                {
+                    if (Native.DeleteFileW(f.Src)) return;
+                    e = Marshal.GetLastWin32Error();
+                    Native.SetFileAttributesW(f.Src, (uint)a);   // still there: read-only again, as it was
+                }
+            }
             f.SourceKept = true;
             lock (Notes) Notes.Add("Moved, but the original couldn't be removed: " + Paths.ToShort(f.Src) + " - " + Native.ErrorText(e));
+        }
+
+        // ---------- moves: an original goes only once its copy is on the disk ----------
+        // Small copies are written through the Windows cache, and every drive writes its cache out on its own schedule:
+        // a power cut right after the original's delete could leave neither. So the copies wait here and are flushed in
+        // big batches, many flushes at once - the disk merges them - and only then are their originals deleted.
+        // Measured, 2,000 files (1 GB) onto a hard disk, until all of it is on the disk: 8 flushes at once 27 s after the
+        // copy, 32 19 s, 128 10 s; flushing while copying slows the copy (11.7-12.9 s in all); copy, then 256 at once:
+        // 10.0 s - about what the disk needs to write it anyway. In Choppy: batches of 2,000 / 256 at once 12.1-12.6 s,
+        // 500 / 512 at once 10.9-11.1 s, 250 / 1,024 12.0 s (Explorer: 11.0-11.6 s, with the originals gone before that).
+
+        readonly List<FileItem> toFlush = new List<FileItem>();
+        readonly object flushLock = new object();
+        Thread flusher;
+        bool flusherEnd;
+        long flushBytes;
+        DateTime flushOldest;
+        int FlushBatchFiles { get { return Spec.FlushFiles > 0 ? Spec.FlushFiles : 500; } }
+        long FlushBatchBytes { get { return (long)FlushBatchFiles << 19; } }   // 500 files or 256 MB
+
+        /// <summary>A move's copy is complete: its original goes now (durable = the copy was flushed already) or after the flush.</summary>
+        void Moved(FileItem f, bool durable)
+        {
+            if (durable) { DeleteSource(f); return; }
+            lock (flushLock)
+            {
+                if (toFlush.Count == 0) flushOldest = DateTime.UtcNow;
+                toFlush.Add(f);
+                flushBytes += f.Size;
+                if (flusher == null)
+                {
+                    flusher = new Thread(FlushLoop) { IsBackground = true, Name = "move flush" };
+                    flusher.Start();
+                }
+                if (toFlush.Count >= FlushBatchFiles || flushBytes >= FlushBatchBytes) Monitor.PulseAll(flushLock);
+                // never far ahead of the disk: at most two batches wait
+                while ((toFlush.Count >= 2 * FlushBatchFiles || flushBytes >= 2 * FlushBatchBytes) && !flusherEnd) Monitor.Wait(flushLock, 500);
+            }
+        }
+
+        void FlushLoop()
+        {
+            while (true)
+            {
+                List<FileItem> work;
+                lock (flushLock)
+                {
+                    // a full batch, the end of the move, or copies waiting 10 s already (a slow source)
+                    while (!flusherEnd && toFlush.Count < FlushBatchFiles && flushBytes < FlushBatchBytes
+                        && (toFlush.Count == 0 || DateTime.UtcNow - flushOldest < TimeSpan.FromSeconds(10)))
+                        Monitor.Wait(flushLock, 1000);
+                    if (toFlush.Count == 0)
+                    {
+                        if (flusherEnd) return;
+                        continue;
+                    }
+                    work = new List<FileItem>(toFlush);
+                    toFlush.Clear();
+                    flushBytes = 0;
+                    Monitor.PulseAll(flushLock);   // room again for a worker that waits
+                }
+                FlushThenDelete(work);
+            }
+        }
+
+        void FlushThenDelete(List<FileItem> work)
+        {
+            // many at once: the disk merges flushes that arrive together (a network share: fewer, each one is a round trip)
+            int threads = Math.Min(work.Count, Spec.FlushThreads > 0 ? Spec.FlushThreads : DstVol != null && DstVol.IsNetwork ? 32 : 512);
+            int next = -1;
+            ThreadStart one = () =>
+            {
+                int k;
+                while ((k = Interlocked.Increment(ref next)) < work.Count)
+                {
+                    var f = work[k];
+                    int e = FlushPath(f.FinalPath);
+                    if (e == 0) DeleteSource(f);
+                    else
+                    {
+                        f.SourceKept = true;
+                        lock (Notes) Notes.Add("Moved, but the copy couldn't be confirmed on the disk - the original was kept: " + Paths.ToShort(f.Src) + " - " + Native.ErrorText(e));
+                    }
+                }
+            };
+            var ts = new List<Thread>();
+            for (int i = 1; i < threads; i++) { var th = new Thread(one, 256 * 1024) { IsBackground = true }; th.Start(); ts.Add(th); }
+            one();
+            foreach (var th in ts) th.Join();
+        }
+
+        /// <summary>Writes a file's data and its entry to the disk itself (FlushFileBuffers). 0 or the error.</summary>
+        static int FlushPath(string path)
+        {
+            for (int tries = 0; tries < 2; tries++)
+            {
+                using (var h = Native.CreateFileW(path, Native.GENERIC_WRITE, Native.FILE_SHARE_READ | Native.FILE_SHARE_WRITE | Native.FILE_SHARE_DELETE, IntPtr.Zero, Native.OPEN_EXISTING, 0, IntPtr.Zero))
+                {
+                    if (!h.IsInvalid) return Native.FlushFileBuffers(h) ? 0 : Marshal.GetLastWin32Error();
+                    int e = Marshal.GetLastWin32Error();
+                    // a read-only copy can't be opened for writing: briefly not, then read-only again
+                    int a = Native.GetFileAttributesW(path);
+                    if (e != Native.ERROR_ACCESS_DENIED || a == Native.INVALID_FILE_ATTRIBUTES || (a & (int)Native.FILE_ATTRIBUTE_READONLY) == 0)
+                    {
+                        if (IsBusy(e) && tries == 0) { Thread.Sleep(200); continue; }   // a scanner has it open for a moment
+                        return e;
+                    }
+                    if (!Native.SetFileAttributesW(path, (uint)a & ~Native.FILE_ATTRIBUTE_READONLY)) return e;
+                    int r;
+                    using (var h2 = Native.CreateFileW(path, Native.GENERIC_WRITE, Native.FILE_SHARE_READ | Native.FILE_SHARE_WRITE | Native.FILE_SHARE_DELETE, IntPtr.Zero, Native.OPEN_EXISTING, 0, IntPtr.Zero))
+                        r = h2.IsInvalid ? Marshal.GetLastWin32Error() : Native.FlushFileBuffers(h2) ? 0 : Marshal.GetLastWin32Error();
+                    Native.SetFileAttributesW(path, (uint)a);
+                    if (r == 0) return 0;
+                    if (!IsBusy(r)) return r;
+                }
+                Thread.Sleep(200);
+            }
+            return Native.ERROR_ACCESS_DENIED;
+        }
+
+        /// <summary>Waits until every copy of this move is on the disk and its original handled.</summary>
+        void FinishDurable()
+        {
+            Thread t;
+            lock (flushLock)
+            {
+                flusherEnd = true;
+                Monitor.PulseAll(flushLock);
+                t = flusher;
+            }
+            if (t != null) t.Join();
         }
 
         // ---------- administrator rights ----------
@@ -1275,10 +1462,54 @@ namespace Choppy.Engine
 
         public static string TempName(string final)
         {
+            return TempName(final, 0);
+        }
+
+        /// <summary>The copy's name while it is written; n > 0 = another one, for when "&lt;name&gt;.chpart" is taken.</summary>
+        public static string TempName(string final, int n)
+        {
             string name = Paths.FileName(final);
-            if (name.Length + TempSuffix.Length <= 255) return final + TempSuffix;
+            string extra = n > 0 ? ".~" + n : "";
+            if (name.Length + extra.Length + TempSuffix.Length <= 255) return final + extra + TempSuffix;
             ulong h = XxHash64.OfBytes(Encoding.UTF8.GetBytes(name));
-            return Paths.Combine(Paths.Parent(final), "~ch" + h.ToString("x16") + TempSuffix);
+            return Paths.Combine(Paths.Parent(final), "~ch" + h.ToString("x16") + extra + TempSuffix);
+        }
+
+        /// <summary>A temp name nothing has (the next free one after alt).</summary>
+        static string FreeTemp(string final, ref int alt)
+        {
+            for (int n = alt + 1; n < 1000; n++)
+            {
+                string cand = TempName(final, n);
+                if (!Paths.Exists(cand)) { alt = n; return cand; }
+            }
+            alt = 1000 + (int)(DateTime.Now.Ticks % 100000);
+            return TempName(final, alt);
+        }
+
+        HashSet<string> jobDests;
+        readonly object jobDestsLock = new object();
+
+        /// <summary>A file of this job lands under this name (so it is a real file, not a leftover temp).</summary>
+        bool IsJobDest(string path)
+        {
+            lock (jobDestsLock)
+            {
+                if (jobDests == null)
+                {
+                    jobDests = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    if (files != null) foreach (var x in files) jobDests.Add(Paths.Combine(Spec.Dest, x.Rel));
+                }
+                return jobDests.Contains(path);
+            }
+        }
+
+        /// <summary>The copy reads back the same as the original (xxHash64 of both; the copy past the cache).</summary>
+        bool SameContent(string src, string copy)
+        {
+            ulong a, b; int e;
+            Func<long, bool> go = n => !canceled;
+            return XxHash64.HashFile(src, false, go, out a, out e) && XxHash64.HashFile(copy, true, go, out b, out e) && a == b;
         }
 
         // ---------- bookkeeping ----------
@@ -1391,8 +1622,9 @@ namespace Choppy.Engine
             if (Spec.Op == OpKind.Move)
             {
                 // remove the now-empty source folders, deepest first (a folder that still holds anything stays)
+                // (not one whose place was taken by a file: it wasn't moved, so it stays even when empty)
                 var order = dirs.OrderByDescending(d => d.Depth).ToList();
-                foreach (var d in order) Native.RemoveDirectoryW(d.Src);
+                foreach (var d in order) if (!d.DestIsFile) Native.RemoveDirectoryW(d.Src);
             }
         }
 

@@ -50,6 +50,8 @@ namespace Choppy
                         case "--slots": spec.PipeSlots = int.Parse(args[++i]); break;
                         case "--batch": spec.PipeBatch = int.Parse(args[++i]); break;
                         case "--depth": spec.PipeDepth = int.Parse(args[++i]); break;
+                        case "--flush-files": spec.FlushFiles = int.Parse(args[++i]); break;
+                        case "--flush-threads": spec.FlushThreads = int.Parse(args[++i]); break;
                         case "--no-prealloc": spec.NoPrealloc = true; break;
                         case "--no-tune": spec.NoTune = true; break;
                         case "--prealloc": spec.ForcePrealloc = true; break;

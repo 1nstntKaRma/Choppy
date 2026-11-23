@@ -343,6 +343,7 @@ namespace Choppy.Engine
         public long Bytes;              // bytes copied
         public ulong Hash;              // xxHash64 of the source as it was read (when asked)
         public bool Renamed;            // already under its final name
+        public bool TimesSet;           // dates + attributes are on the copy (else they are set by name afterwards)
     }
 
     /// <summary>
@@ -412,7 +413,9 @@ namespace Choppy.Engine
                         var x = hash ? new XxHash64() : null;
                         long done = 0;
                         var mem = new Native.MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf(typeof(Native.MEMORYSTATUSEX)) };
-                        long memCap = Native.GlobalMemoryStatusEx(ref mem) ? (long)(mem.ullAvailPhys / 8) : long.MaxValue;
+                        // the buffers are committed memory: an eighth of the free RAM and of the free commit (a PC with a
+                        // small page file runs out of commit before RAM)
+                        long memCap = Native.GlobalMemoryStatusEx(ref mem) ? (long)(Math.Min(mem.ullAvailPhys, mem.ullAvailPageFile) / 8) : long.MaxValue;
                         // stretch by stretch: with a tuner the first stretches try other ways, then the fastest copies the rest
                         while (done < size && r.Error == 0)
                         {
@@ -493,7 +496,7 @@ namespace Choppy.Engine
                         // dates + attributes, set on the open handle (nothing changes them after this)
                         var bi = new Native.FILE_BASIC_INFO { CreationTime = ctime, LastWriteTime = mtime, FileAttributes = attrs & KeepAttrs };
                         if (bi.FileAttributes == 0) bi.FileAttributes = Native.FILE_ATTRIBUTE_NORMAL;
-                        Native.SetFileInformationByHandle(fin, Native.FileBasicInfo, &bi, Marshal.SizeOf(typeof(Native.FILE_BASIC_INFO)));
+                        r.TimesSet = Native.SetFileInformationByHandle(fin, Native.FileBasicInfo, &bi, Marshal.SizeOf(typeof(Native.FILE_BASIC_INFO)));
                         if (flush && !Native.FlushFileBuffers(fin)) { r.Error = Marshal.GetLastWin32Error(); return r; }
                         if (x != null) r.Hash = x.Digest();
                         if (renameTo != null) r.Renamed = Native.RenameByHandle(fin.DangerousGetHandle(), renameTo);
@@ -543,9 +546,10 @@ namespace Choppy.Engine
         /// Writes a file from memory to a new name in one go, past the cache, with its dates and attributes; renamed
         /// through its own handle to renameTo when given. Returns 0 or the error. buf must have room for the sector padding.
         /// </summary>
-        public static int WriteSmall(string dst, byte* buf, long size, int align, long ctime, long mtime, uint attrs, string renameTo, out bool renamed, bool cached = false)
+        public static int WriteSmall(string dst, byte* buf, long size, int align, long ctime, long mtime, uint attrs, string renameTo, out bool renamed, out bool timesSet, bool cached = false)
         {
             renamed = false;
+            timesSet = false;
             using (var hd = Native.CreateFileW(dst, Native.GENERIC_READ | Native.GENERIC_WRITE | Native.DELETE, Native.FILE_SHARE_READ, IntPtr.Zero,
                 Native.CREATE_NEW, (cached ? 0 : Native.FILE_FLAG_NO_BUFFERING) | Native.FILE_ATTRIBUTE_NORMAL, IntPtr.Zero))
             {
@@ -558,7 +562,7 @@ namespace Choppy.Engine
                 if (!cached && !SetLength(hd, Native.FileEndOfFileInfo, size)) return Marshal.GetLastWin32Error();   // only the padded unbuffered write needs trimming
                 var bi = new Native.FILE_BASIC_INFO { CreationTime = ctime, LastWriteTime = mtime, FileAttributes = attrs & KeepAttrs };
                 if (bi.FileAttributes == 0) bi.FileAttributes = Native.FILE_ATTRIBUTE_NORMAL;
-                Native.SetFileInformationByHandle(hd, Native.FileBasicInfo, &bi, Marshal.SizeOf(typeof(Native.FILE_BASIC_INFO)));
+                timesSet = Native.SetFileInformationByHandle(hd, Native.FileBasicInfo, &bi, Marshal.SizeOf(typeof(Native.FILE_BASIC_INFO)));
                 if (renameTo != null) renamed = Native.RenameByHandle(hd.DangerousGetHandle(), renameTo);
             }
             return 0;

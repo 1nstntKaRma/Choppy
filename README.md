@@ -119,10 +119,12 @@ The administrator copy keeps every rule: temporary names, verify (when on) befor
 ## Never Loses A File
 
 - Written as `<name>.chpart`, renamed into place when complete - a half file never has the real name.
-- **Verify** (xxHash64) reads each copy back and compares; with it on, a move removes the original only after its copy matches. Without it, a big file is flushed to the disk before its original goes.
-- A job record stays on disk until a copy ends: after a crash or power cut the next start offers **Resume** - files already there with the same size and date are kept, only the rest is copied.
+- **Moves:** an original is deleted only once its copy is on the disk itself - flushed, not just in memory - so a power cut right after can't lose both. Small files are flushed in batches, many at once. An original that changed while it was being moved is kept.
+- **Verify** (xxHash64) reads each copy back and compares; with it on, a move removes the original only after its copy matches. The check proves the drive returns the same bytes.
+- A job record stays on disk until a copy ends: after a crash or power cut the next start offers **Resume** - files already there with the same size and date are kept, only the rest is copied. Resuming a move checks each such copy's content before its original goes.
 - Network dropped: it waits (up to 15 min) and goes on. File in use: tried again, then listed for **Retry failed**. Destination full: it pauses.
 - Created and modified dates, read-only / hidden attributes and paths longer than 260 characters are kept.
+- A file that only looks like Choppy's (`<name>.chpart` already there) is never touched: another temporary name is used.
 
 ## Measured
 
@@ -139,6 +141,8 @@ On one setup (Windows 10, NAS over Tailscale, ~9 ms, ~100 Mbps upload):
 | One big file, hard disk to another hard disk (4 GB) | **172-182 MB/s** on disk |
 | One big file within one hard disk (4 GB) | **95-102 MB/s** (the disk streams ~180: every byte is read and written by the same heads) |
 | 1,000 small files, hard disk to hard disk / within one hard disk | **90-93 / 67-69 MB/s** |
+| Move of 2,000 files (1 GB), NVMe to hard disk, every copy on the disk before its original goes | **10.9-11.1 s** |
+| Move of 400 small files to the NAS, same | **12.8-13.1 s** |
 
 ---
 
