@@ -78,28 +78,28 @@ Started as administrator (an elevated prompt, or a tool that runs as administrat
 
 ### On This PC
 
-Ryzen 5 5600X, 16 GB, Windows 10 22H2 - an NVMe SSD (C:) and two SATA hard disks (D:, X:) about 80% full. Choppy v1.43, *Quick*, 7 min 28 s:
+Ryzen 5 5600X, 16 GB, Windows 10 22H2 - an NVMe SSD (C:) and two SATA hard disks (D:, X:) about 80% full. Choppy v1.44, *Quick*, 7 min 12 s:
 
-**Choppy is Faster 10 of 14 · Marginal Tie 3 of 14 · Slower 1 of 14**
+**Choppy is Faster 9 of 14 · Marginal Tie 5 of 14 · Never Slower**
 
 | Route | What | Choppy | Windows | Time saved | Result |
 |---|---|---|---|---|---|
-| C: → C: *within one NVMe SSD* | One big file, 2 GB | 0.80 s | 0.97 s | +18% | Faster |
-| | 1,000 small files, 190 MB | 0.74 s | 4.27 s | +83% | Faster |
-| C: → D: *NVMe → hard disk* | One big file, 1 GB | 4.80 s | 4.80 s | 0% | Tie |
-| | 500 small files, 94 MB | 1.88 s | 4.18 s | +55% | Faster |
-| D: → C: *hard disk → NVMe* | One big file, 1 GB | 5.74 s | 5.57 s | −3% | Tie |
-| | 500 small files, 94 MB | 2.18 s | 6.32 s | +65% | Faster |
-| D: → D: *within one hard disk* | One big file, 1 GB | 10.84 s | 11.95 s | +9% | Faster |
-| | 500 small files, 94 MB | 3.48 s | 7.94 s | +56% | Faster |
-| C: → X: *NVMe → hard disk* | One big file, 1 GB | 5.07 s | 5.11 s | +1% | Tie |
-| | 500 small files, 94 MB | 3.14 s | 4.89 s | +36% | Faster |
-| X: → C: *hard disk → NVMe* | One big file, 1 GB | 6.18 s | 5.89 s | −5% | Slower |
-| | 500 small files, 94 MB | 3.32 s | 10.19 s | +67% | Faster |
-| X: → X: *within one hard disk* | One big file, 1 GB | 11.53 s | 12.13 s | +5% | Faster |
-| | 500 small files, 94 MB | 5.29 s | 12.88 s | +59% | Faster |
+| C: → C: *within one NVMe SSD* | One big file, 2 GB | 0.78 s | 0.88 s | +12% | Faster |
+| | 1,000 small files, 190 MB | 0.63 s | 3.18 s | +80% | Faster |
+| C: → D: *NVMe → hard disk* | One big file, 1 GB | 4.83 s | 4.87 s | +1% | Tie |
+| | 500 small files, 94 MB | 1.83 s | 3.43 s | +47% | Faster |
+| D: → C: *hard disk → NVMe* | One big file, 1 GB | 5.61 s | 5.58 s | 0% | Tie |
+| | 500 small files, 94 MB | 1.98 s | 6.17 s | +68% | Faster |
+| D: → D: *within one hard disk* | One big file, 1 GB | 10.65 s | 10.48 s | −2% | Tie |
+| | 500 small files, 94 MB | 3.37 s | 8.01 s | +58% | Faster |
+| C: → X: *NVMe → hard disk* | One big file, 1 GB | 5.12 s | 5.35 s | +4% | Faster |
+| | 500 small files, 94 MB | 2.31 s | 4.69 s | +51% | Faster |
+| X: → C: *hard disk → NVMe* | One big file, 1 GB | 6.06 s | 5.96 s | −2% | Tie |
+| | 500 small files, 94 MB | 3.17 s | 9.74 s | +67% | Faster |
+| X: → X: *within one hard disk* | One big file, 1 GB | 11.28 s | 11.47 s | +2% | Tie |
+| | 500 small files, 94 MB | 5.10 s | 12.79 s | +60% | Faster |
 
-Each time is the average of two runs, until the copies are on the disk (flushed). Small files are 4 KB-1 MB each.
+Each time is the average of two runs, until the copies are on the disk (flushed). Small files are 4 KB-1 MB each. On a nearly full hard disk, where a big file lands can move its time by up to 20% from one run to the next, for both.
 
 ### How It Measures
 

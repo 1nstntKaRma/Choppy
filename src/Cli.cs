@@ -613,6 +613,12 @@ namespace Choppy
             check("one USB drive: 32 MB batches with trials", oneUsb.Pipe.Phased && oneUsb.Pipe.Chunk == 32 << 20 && oneUsb.PipeWays.Count > 0);
             var two = Plan.Choose(new JobSpec { Op = OpKind.Copy }, hdd1, hdd2, null);
             check("two hard disks unchanged", !two.Pipe.Phased && two.Pipe.Chunk == 2 << 20 && two.Pipe.Slots == 256 && two.Pipe.ReadDepth == 4 && two.Pipe.TailAfterRead);
+            // a hard disk into a fast drive: 1 MB reads, only 4 out at the disk at once, no trials; the other way round unchanged
+            var hddToSsd = Plan.Choose(new JobSpec { Op = OpKind.Copy }, hdd1, ntfs, null);
+            var ssdToHdd = Plan.Choose(new JobSpec { Op = OpKind.Copy }, ntfs, hdd1, null);
+            check("hard disk into an SSD: 1 MB reads, 4 out at once, no trials", !hddToSsd.Pipe.Phased && hddToSsd.Pipe.Chunk == 1 << 20 && hddToSsd.Pipe.Slots == 32
+                && hddToSsd.Pipe.ReadDepth == 4 && hddToSsd.PipeWays.Count == 0);
+            check("SSD into a hard disk unchanged", ssdToHdd.Pipe.Chunk == 32 << 20 && ssdToHdd.Pipe.ReadDepth == 0 && ssdToHdd.PipeWays.Count == 2);
             check("FAT32 holds files up to 4 GB", new VolumeInfo { FileSystem = "FAT32" }.MaxFileSize == uint.MaxValue
                 && new VolumeInfo { FileSystem = "exFAT" }.MaxFileSize == 0 && ntfs.MaxFileSize == 0 && new VolumeInfo().MaxFileSize == 0);
             // the Ctrl+V hook: its own thread, put in again on time (observe only: it never takes a key here)

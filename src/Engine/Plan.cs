@@ -105,9 +105,14 @@ namespace Choppy.Engine
                 // them (measured with a torrent-like load: 32 MB x 4 = 157 MB/s, 16 MB x 4 = 152, Explorer 146).
                 p.Pipe.Chunk = 32 << 20;
                 p.Pipe.Slots = 8;
-                // a hard disk read into a fast drive: many small reads queued keep it streaming (1 MB x 32 measured
-                // ahead of 32 MB x 8 and of Explorer, two rounds out of two)
-                if (srcSlow && !dstSlow) { p.Pipe.Chunk = 1 << 20; p.Pipe.Slots = 32; }
+                // a hard disk read into a fast drive: small reads queued keep it streaming (1 MB x 32 measured ahead of
+                // 32 MB x 8 and of Explorer, two rounds out of two), but only 4 out at the disk at once: with all 32 out,
+                // some copies took 0.3-0.4 s longer (the disk likely serves them out of order and loses a turn). 1 GB from
+                // two hard disks about 80% full to the NVMe, five runs each, time to the disk against Windows' copy:
+                // 32 out -1% to -4%; 8 out -1% / -1%; 4 out +1% / -1% and -1% / -1%, every run within 0.16 s; 2 out -1% /
+                // -1%; 2 MB x 4 -2% / -2%; 4 MB x 4 -1% / -2%; read through the Windows cache -1% / -1%; Windows' own
+                // engine run by Choppy -1% / +1%. 2 GB: 4 out 0% / -1%, 32 out -2% / -1%.
+                if (srcSlow && !dstSlow) { p.Pipe.Chunk = 1 << 20; p.Pipe.Slots = 32; p.Pipe.ReadDepth = 4; }
                 // one disk at both ends: read a batch, then write it - not both at once (the heads would go back and forth every piece)
                 p.Pipe.Phased = oneDisk;
                 // writing to a hard disk: pieces already read go out together (up to 128 MB), no gap for the platter to pass

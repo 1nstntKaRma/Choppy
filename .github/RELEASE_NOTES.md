@@ -1,15 +1,15 @@
-## Choppy v1.43
+## Choppy v1.44
 
 📋⚡ Windows 10 / 11 - fast, clear file copier ⚡ everything that matters in one plain, dark window.
 
-### What's in v1.43
-- **Big files from an SSD or NVMe to a hard disk, any size:** the last file of a copy goes through the Windows cache in 4 MB writes with its size reserved first, the way Explorer's copy sends it - now whatever its size. Before, a file bigger than a quarter of the free memory (2 GB on a 16 GB PC) went straight to the disk and first tried a few ways of writing, which took longer on a nearly full disk. Measured from the NVMe to two hard disks about 80% full, five runs each, time until the copy is on the disk against Windows' copy:
-  - 2 GB: **+5% / −1%** (before −8% / −22%)
-  - 4 GB: **0% / −2%** (before +10% / −20%)
-  - Faster or a Marginal Tie on both disks; small files and mixed folders are copied as before.
-- As before: never for a USB drive, a move or a copy with Verify; from a hard disk only a file that fits in memory.
+### What's in v1.44
+- **Big files from a hard disk to an SSD or NVMe, steady:** still read in 1 MB pieces, but only 4 of them are out at the disk at once instead of 32. With all 32 queued, some copies took 0.3-0.4 s longer for 1 GB - in the v1.43 Benchmark one such run made X: → C: *Slower* (−5%). Measured from two hard disks about 80% full to the NVMe, five runs each, time until the copy is on the disk against Windows' copy:
+  - 1 GB: **+1% / −1%**, again **−1% / −1%** (before between −1% and −4%)
+  - 2 GB: **0% / −1%** (before −2% / −1%)
+  - every run within 0.16 s of the others (before up to 0.47 s apart); bigger pieces, 2 or 8 at once, or reading through the Windows cache did no better.
+- **Benchmark on that PC (Quick):** *Choppy is Faster 9 of 14 · Marginal Tie 5 of 14 · Never Slower* - small files 47-80% less time on every route.
 
 ### Install / Update
-1. Download **Choppy-v1.43.zip** and extract all files (or use the PowerShell one-liner from the README).
+1. Download **Choppy-v1.44.zip** and extract all files (or use the PowerShell one-liner from the README).
 2. Double-click **Activate Choppy.cmd** (or run `build.ps1` and choose **[1]**).
 3. Remove at any time with **Revert to Windows Copy.cmd**.
