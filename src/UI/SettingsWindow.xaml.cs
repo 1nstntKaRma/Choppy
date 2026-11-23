@@ -105,18 +105,25 @@ namespace Choppy.UI
 
         void UnitHelp_Click(object sender, RoutedEventArgs e) { UnitHelp.IsOpen = !UnitHelp.IsOpen; }
 
+        /// <summary>
+        /// A line of the chart: Mbps | bar | MB/s. The two number columns share one width (the widest number of either),
+        /// so the bars sit in the middle of the card and both sides mirror each other.
+        /// </summary>
         static System.Windows.Controls.Grid ChartRow(double bottom)
         {
             var g = new System.Windows.Controls.Grid { Margin = new Thickness(0, 0, 0, bottom) };
-            g.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(96) });
+            g.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "Side" });
             g.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            g.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(92) });
+            g.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = GridLength.Auto, SharedSizeGroup = "Side" });
             return g;
         }
 
+        const double BarGap = 16;   // between the numbers and the bars (and the arrow, which spans the bars exactly)
+
         /// <summary>
         /// The "?" card: 10 / 100 / 1,000 / 10,000 Mbps in MB/s, bars on a log scale (each step ten times the last). The
-        /// header sits on the same columns: "Mbps" above the Mbps values, a long arrow, "MB/s" above the MB/s values.
+        /// header sits on the same columns: "Mbps" above the Mbps values, an arrow as long as the bars, "MB/s" above the
+        /// MB/s values - each unit right above the units under it.
         /// </summary>
         void BuildUnitChart()
         {
@@ -124,9 +131,11 @@ namespace Choppy.UI
             string[] what = { "Slow Upload", "Home Internet", "Gigabit Network", "10-Gigabit Network" };
             var app = Application.Current;
             System.Func<string, System.Windows.Media.Brush> res = k => (System.Windows.Media.Brush)app.FindResource(k);
-            var head = ChartRow(4);
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            System.Windows.Controls.Grid.SetIsSharedSizeScope(UnitRows, true);
+            var head = ChartRow(2);
             head.Children.Add(new System.Windows.Controls.TextBlock { Text = "Mbps", FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = res("B.AccentText"), HorizontalAlignment = HorizontalAlignment.Right });
-            var arrow = new System.Windows.Controls.Grid { Margin = new Thickness(14, 2, 14, 0), VerticalAlignment = VerticalAlignment.Center };
+            var arrow = new System.Windows.Controls.Grid { Margin = new Thickness(BarGap, 1, BarGap, 0), VerticalAlignment = VerticalAlignment.Center };
             arrow.Children.Add(new System.Windows.Controls.Border { Height = 2, CornerRadius = new CornerRadius(1), Background = res("B.Faint"), Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center });
             arrow.Children.Add(new System.Windows.Shapes.Path { Data = System.Windows.Media.Geometry.Parse("M0,0 L9,5 L0,10 Z"), Fill = res("B.Faint"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center });
             System.Windows.Controls.Grid.SetColumn(arrow, 1);
@@ -135,30 +144,33 @@ namespace Choppy.UI
             System.Windows.Controls.Grid.SetColumn(mbsHead, 2);
             head.Children.Add(mbsHead);
             UnitRows.Children.Add(head);
-            UnitRows.Children.Add(new System.Windows.Controls.TextBlock { Text = "8 bits make a byte: divide Mbps by about 8.4 for MB/s", FontSize = 12.5, Foreground = res("B.Dim"), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 2, 0, 12) });
+            UnitRows.Children.Add(new System.Windows.Controls.TextBlock { Text = "8 bits make a byte: divide Mbps by about 8.4 for MB/s", FontSize = 12.5, Foreground = res("B.Dim"), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 14) });
             for (int i = 0; i < mbps.Length; i++)
             {
                 double mbs = mbps[i] * 1e6 / 8 / (1024 * 1024);
-                var g = ChartRow(i < mbps.Length - 1 ? 9 : 0);
-                // right-aligned: every "Mbps" under the header's "Mbps", every "MB/s" under "MB/s"
-                var left = new System.Windows.Controls.TextBlock { FontSize = 13.5, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right };
-                left.Inlines.Add(new System.Windows.Documents.Run(mbps[i].ToString("N0", System.Globalization.CultureInfo.InvariantCulture)) { FontWeight = FontWeights.SemiBold, Foreground = (System.Windows.Media.Brush)app.FindResource("B.AccentText") });
-                left.Inlines.Add(new System.Windows.Documents.Run(" Mbps") { Foreground = (System.Windows.Media.Brush)app.FindResource("B.Dim") });
+                var g = ChartRow(i < mbps.Length - 1 ? 10 : 0);
+                // right-aligned on both sides: every "Mbps" under the header's "Mbps", every "MB/s" under "MB/s"
+                var left = new System.Windows.Controls.TextBlock { FontSize = 13.5, VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Right };
+                left.Inlines.Add(new System.Windows.Documents.Run(mbps[i].ToString("N0", inv)) { FontWeight = FontWeights.SemiBold, Foreground = res("B.AccentText") });
+                left.Inlines.Add(new System.Windows.Documents.Run(" Mbps") { Foreground = res("B.Dim") });
                 g.Children.Add(left);
-                var track = new System.Windows.Controls.Grid { Height = 8, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 14, 0) };
-                track.Children.Add(new System.Windows.Controls.Border { CornerRadius = new CornerRadius(4), Background = (System.Windows.Media.Brush)app.FindResource("B.Track") });
-                var bar = new System.Windows.Controls.Border { CornerRadius = new CornerRadius(4), Background = (System.Windows.Media.Brush)app.FindResource("B.Progress"), HorizontalAlignment = HorizontalAlignment.Left };
+                // the bar on the numbers' line, what it stands for under it
+                var track = new System.Windows.Controls.Grid { Height = 8, VerticalAlignment = VerticalAlignment.Center };
+                track.Children.Add(new System.Windows.Controls.Border { CornerRadius = new CornerRadius(4), Background = res("B.Track") });
+                var bar = new System.Windows.Controls.Border { CornerRadius = new CornerRadius(4), Background = res("B.Progress"), HorizontalAlignment = HorizontalAlignment.Left };
                 int k = i;
                 track.SizeChanged += (o, e) => bar.Width = e.NewSize.Width * (k + 1) / mbps.Length;
                 track.Children.Add(bar);
-                var mid = new System.Windows.Controls.StackPanel { VerticalAlignment = VerticalAlignment.Center };
-                mid.Children.Add(track);
-                mid.Children.Add(new System.Windows.Controls.TextBlock { Text = what[i], FontSize = 11, Foreground = (System.Windows.Media.Brush)app.FindResource("B.Faint"), Margin = new Thickness(14, 3, 0, 0) });
+                var line = new System.Windows.Controls.Grid { Height = 18 };   // the numbers' line height: the bar is centered on it
+                line.Children.Add(track);
+                var mid = new System.Windows.Controls.StackPanel { Margin = new Thickness(BarGap, 0, BarGap, 0) };
+                mid.Children.Add(line);
+                mid.Children.Add(new System.Windows.Controls.TextBlock { Text = what[i], FontSize = 11, Foreground = res("B.Faint"), Margin = new Thickness(0, 1, 0, 0) });
                 System.Windows.Controls.Grid.SetColumn(mid, 1);
                 g.Children.Add(mid);
-                var right = new System.Windows.Controls.TextBlock { FontSize = 13.5, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right };
-                right.Inlines.Add(new System.Windows.Documents.Run(mbs >= 100 ? mbs.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) : mbs.ToString(mbs >= 10 ? "0.0" : "0.00", System.Globalization.CultureInfo.InvariantCulture)) { FontWeight = FontWeights.SemiBold, Foreground = (System.Windows.Media.Brush)app.FindResource("B.AvgSpeed") });
-                right.Inlines.Add(new System.Windows.Documents.Run(" MB/s") { Foreground = (System.Windows.Media.Brush)app.FindResource("B.Dim") });
+                var right = new System.Windows.Controls.TextBlock { FontSize = 13.5, VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Right };
+                right.Inlines.Add(new System.Windows.Documents.Run(mbs >= 100 ? mbs.ToString("N0", inv) : mbs.ToString(mbs >= 10 ? "0.0" : "0.00", inv)) { FontWeight = FontWeights.SemiBold, Foreground = res("B.AvgSpeed") });
+                right.Inlines.Add(new System.Windows.Documents.Run(" MB/s") { Foreground = res("B.Dim") });
                 System.Windows.Controls.Grid.SetColumn(right, 2);
                 g.Children.Add(right);
                 UnitRows.Children.Add(g);

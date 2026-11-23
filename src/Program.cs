@@ -23,7 +23,7 @@ namespace Choppy
                 Environment.CurrentDirectory = AppPaths.DataDir;
             }
             catch { }
-            if (args.Length > 0 && (args[0] == "--cli" || args[0] == "--selftest" || args[0] == "--where" || args[0] == "--benchmark" || args[0] == "--shellcopy"))
+            if (args.Length > 0 && (args[0] == "--cli" || args[0] == "--selftest" || args[0] == "--where" || args[0] == "--usb" || args[0] == "--benchmark" || args[0] == "--shellcopy"))
             {
                 Profile(args[0] == "--shellcopy" ? "shellcopy.jit" : "cli.jit");   // the benchmark's child runs beside it
                 return RunCli(args);

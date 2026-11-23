@@ -34,11 +34,15 @@
                     <ColumnDefinition Width="14"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <!-- incoming -->
-                <Border x:Name="InCard" CornerRadius="9" BorderThickness="1" BorderBrush="#FF2D6FB4" Background="#FF172230" Padding="16,14">
+                <!-- incoming (a click on a card picks the file that stays: incoming = Replace, already there = Skip) -->
+                <Border x:Name="InCard" CornerRadius="9" BorderThickness="1" BorderBrush="#FF2D6FB4" Background="#FF172230" Padding="16,14" Cursor="Hand"
+                        MouseLeftButtonUp="InCard_Click" MouseEnter="Card_Hover" MouseLeave="Card_Hover">
                     <StackPanel>
-                        <TextBlock Text="INCOMING" FontSize="12" FontWeight="Bold" Foreground="#FF4FA8F0"/>
-                        <Border CornerRadius="6" Height="124" Margin="0,10,0,0" Background="#FF1E2833" ClipToBounds="True">
+                        <Grid>
+                            <TextBlock x:Name="InHead" Text="INCOMING" FontSize="12" FontWeight="Bold" Foreground="#FF4FA8F0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="InCheck" Text="&#xE73E;" FontFamily="{StaticResource F.Icons}" FontSize="13" Foreground="#FF4FA8F0" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                        </Grid>
+                        <Border x:Name="InBox" CornerRadius="6" Height="124" Margin="0,10,0,0" Background="#FF1E2833" ClipToBounds="True">
                             <Grid>
                                 <TextBlock x:Name="InExt" FontSize="22" FontWeight="SemiBold" Foreground="#FF4C5A6B" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 <Image x:Name="InImg" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality"/>
@@ -54,10 +58,14 @@
                     </StackPanel>
                 </Border>
                 <!-- already there -->
-                <Border Grid.Column="2" CornerRadius="9" BorderThickness="1" BorderBrush="#FF2A2F37" Background="#FF191C21" Padding="16,14">
+                <Border x:Name="ExCard" Grid.Column="2" CornerRadius="9" BorderThickness="1" BorderBrush="#FF2A2F37" Background="#FF191C21" Padding="16,14" Cursor="Hand"
+                        MouseLeftButtonUp="ExCard_Click" MouseEnter="Card_Hover" MouseLeave="Card_Hover">
                     <StackPanel>
-                        <TextBlock Text="ALREADY THERE" FontSize="12" FontWeight="Bold" Foreground="{StaticResource B.Label}"/>
-                        <Border CornerRadius="6" Height="124" Margin="0,10,0,0" Background="#FF22272E" ClipToBounds="True">
+                        <Grid>
+                            <TextBlock x:Name="ExHead" Text="ALREADY THERE" FontSize="12" FontWeight="Bold" Foreground="{StaticResource B.Label}" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="ExCheck" Text="&#xE73E;" FontFamily="{StaticResource F.Icons}" FontSize="13" Foreground="#FF4FA8F0" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="Hidden"/>
+                        </Grid>
+                        <Border x:Name="ExBox" CornerRadius="6" Height="124" Margin="0,10,0,0" Background="#FF22272E" ClipToBounds="True">
                             <Grid>
                                 <TextBlock x:Name="ExExt" FontSize="22" FontWeight="SemiBold" Foreground="#FF4C535C" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 <Image x:Name="ExImg" Stretch="UniformToFill" Opacity="0.55" RenderOptions.BitmapScalingMode="HighQuality"/>
@@ -88,10 +96,10 @@
             <Grid Margin="0,18,0,0">
                 <StackPanel Orientation="Horizontal">
                     <Button x:Name="BtnCompare" Style="{StaticResource Btn}" Content="Compare" Click="Compare_Click" ToolTip="Check whether both files have the same content (xxHash64)"/>
-                    <Button x:Name="BtnSkip" Style="{StaticResource Btn}" Content="Skip" Margin="10,0,0,0" Click="Skip_Click"/>
+                    <Button x:Name="BtnSkip" Style="{StaticResource Btn}" Content="Skip" Margin="10,0,0,0" Click="Second_Click"/>
                     <Button x:Name="BtnBoth" Style="{StaticResource Btn}" Content="Keep both" Margin="10,0,0,0" Click="Both_Click"/>
                 </StackPanel>
-                <Button x:Name="BtnReplace" Style="{StaticResource Btn.Primary}" Content="Replace" MinWidth="110" HorizontalAlignment="Right" Click="Replace_Click"/>
+                <Button x:Name="BtnReplace" Style="{StaticResource Btn.Primary}" Content="Replace" MinWidth="110" HorizontalAlignment="Right" Click="Primary_Click"/>
             </Grid>
         </StackPanel>
     </Grid>

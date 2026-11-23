@@ -15,6 +15,7 @@ namespace Choppy
     ///   Choppy.exe --cli copy|move &lt;src...&gt; &lt;destDir&gt; [--verify] [--policy ask|replace|skip|keepboth|newer]
     ///                 [--limit Mbps] [--resume] [--json out.json] [--log progress.txt] [--cancel-after sec] [--pause-at sec,sec]
     ///   Choppy.exe --selftest out.txt
+    ///   Choppy.exe --usb [out.txt]       how each USB drive is connected (runs at, can do, port, UASP)
     ///   Choppy.exe --benchmark [out.json] [--thorough] [--network] [--drives C,D] [--list] [--log progress.txt] [--cancel-after sec] [--tiny]
     ///                 tests: [--routes C>D,D>D] [--cases big|small] [--big MB] [--rounds N] [--choppy "--chunk 1 --slots 512 ..."]
     /// Exit code: 0 = all done, 2 = some files failed/skipped, 3 = canceled, 1 = error.
@@ -27,6 +28,7 @@ namespace Choppy
             {
                 if (args.Length >= 1 && args[0] == "--selftest") return SelfTest(args.Length > 1 ? args[1] : null);
                 if (args.Length >= 1 && args[0] == "--where") return Where(args.Length > 1 ? args[1] : null);
+                if (args.Length >= 1 && args[0] == "--usb") return Usb(args.Length > 1 ? args[1] : null);
                 if (args.Length >= 1 && args[0] == "--benchmark") return BenchCli(args);
                 if (args.Length >= 2 && args[0] == "--shellcopy") return Bench.ShellCopy.Child(args[1]);
                 var rest = new List<string>();
@@ -251,6 +253,25 @@ namespace Choppy
         [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
         static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string title);
 
+        /// <summary>Read-only check: how each USB drive is connected (the speed it runs at, the most it can do, the port).</summary>
+        static int Usb(string outFile)
+        {
+            var sb = new StringBuilder();
+            foreach (var di in DriveInfo.GetDrives())
+            {
+                if (di.DriveType == DriveType.Network || di.DriveType == DriveType.CDRom) continue;
+                var sw = Stopwatch.StartNew();
+                var v = VolumeProbe.Probe(Paths.ToLong(di.Name));
+                var link = UsbLink.ForDisk(v.Disk);
+                sb.AppendLine(di.Name + " disk " + v.Disk + " " + v.KindText + ": " + (link == null ? "not USB"
+                    : link.SpeedText + ", can do " + UsbLink.Short(link.Capable) + (link.CapableKnown ? "" : " (unknown)") + ", port " + (link.PortKnown ? (link.PortUsb3 ? "USB 3" : "USB 2") : "?")
+                      + ", bcdUSB " + link.BcdUsb.ToString("X4") + (link.Uasp ? ", UASP" : ", Bulk-Only") + (link.HeldBack ? " - HELD BACK: " + link.Advice : ""))
+                    + "  [" + sw.ElapsedMilliseconds + " ms]");
+            }
+            if (outFile != null) File.WriteAllText(outFile, sb.ToString(), Encoding.UTF8); else Console.Write(sb.ToString());
+            return 0;
+        }
+
         /// <summary>Read-only check: every open Explorer window and the folder a paste would go to.</summary>
         static int Where(string outFile)
         {
@@ -419,13 +440,14 @@ namespace Choppy
             var r2 = new Bench.BenchResult { From = d, To = c, Case = new Bench.BenchCase { Key = "small", Smalls = s1 }, Error = "test error" };
             r2.Score();
             rep.Results.Add(r1); rep.Results.Add(r2);
-            check("bench: scored (on the disk faster, done slower; averages)", r1.Scored && r1.Verdict == 1 && r1.DoneVerdict == -1 && !r2.Scored && rep.Summary == "Choppy is Faster [1 of 1]"
+            check("bench: scored (on the disk faster, done slower; averages)", r1.Scored && r1.Verdict == 1 && r1.DoneVerdict == -1 && !r2.Scored && rep.Summary == "Choppy is Faster 1 of 1"
                 && Math.Abs(r1.ChoppySecs - 5.15) < 1e-9 && Math.Abs(r1.WindowsSecs - 6.05) < 1e-9);
-            check("bench: summary line", Bench.BenchReport.SummaryOf(9, 2, 1, true) == "Choppy is Faster [9 of 12] · Marginal Tie [2 of 12] · Slower [1 of 12]");
+            check("bench: summary line", Bench.BenchReport.SummaryOf(9, 2, 1, true) == "Choppy is Faster 9 of 12 · Marginal Tie 2 of 12 · Slower 1 of 12");
+            check("bench: each case says Tie, the summary Marginal Tie", Bench.BenchReport.Word(0) == "Tie" && Bench.BenchReport.Word(1) == "Faster" && Bench.BenchReport.Word(-1) == "Slower");
             check("bench: Never Slower only when a whole run ended without one",
-                Bench.BenchReport.SummaryOf(10, 9, 0, true) == "Choppy is Faster [10 of 19] · Marginal Tie [9 of 19] · Never Slower"
-                && Bench.BenchReport.SummaryOf(10, 9, 0, false) == "Choppy is Faster [10 of 19] · Marginal Tie [9 of 19]"
-                && Bench.BenchReport.SummaryOf(5, 0, 0, true) == "Choppy is Faster [5 of 5]");
+                Bench.BenchReport.SummaryOf(10, 9, 0, true) == "Choppy is Faster 10 of 19 · Marginal Tie 9 of 19 · Never Slower"
+                && Bench.BenchReport.SummaryOf(10, 9, 0, false) == "Choppy is Faster 10 of 19 · Marginal Tie 9 of 19"
+                && Bench.BenchReport.SummaryOf(5, 0, 0, true) == "Choppy is Faster 5 of 5");
             string json = rep.ToJson(), html = rep.ToHtml("x.json"), text = rep.ToText();
             int depth = 0; bool inStr = false, esc = false, balanced = true;
             foreach (char ch in json)
@@ -434,7 +456,7 @@ namespace Choppy
                 if (ch == '"') inStr = true; else if (ch == '{' || ch == '[') depth++; else if (ch == '}' || ch == ']') { depth--; if (depth < 0) balanced = false; }
             }
             check("bench: JSON well formed", balanced && depth == 0 && !inStr && json.Contains("\"verdict\": \"faster\"") && json.Contains("\\\"NVMe\\\"") && json.Contains("\"error\": \"test error\""));
-            check("bench: HTML escaped", html.Contains("&lt;b&gt;&amp;amp;") && !html.Contains("<b>&amp;</b>") && html.Contains("Faster [1 of 1]") && html.Contains("Choppy VS Windows")
+            check("bench: HTML escaped", html.Contains("&lt;b&gt;&amp;amp;") && !html.Contains("<b>&amp;</b>") && html.Contains("Faster 1 of 1") && html.Contains("Choppy VS Windows")
                 && html.Contains("not a disk of this PC") && !html.Contains(">done "));
             check("bench: text table", text.Contains("| C: → D: (NVMe → HDD) | One big file, 1 GB | 199 MB/s, 5.15 s | 169 MB/s, 6.05 s | +15% | Faster |") && text.Contains("error: test error"));
 

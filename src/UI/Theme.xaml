@@ -22,10 +22,11 @@
     <!-- speed color code: right now = the graph's blue, average = lavender (also the dashed line in the graph) -->
     <SolidColorBrush x:Key="B.NowSpeed" Color="#FF5AC8FA"/>
     <SolidColorBrush x:Key="B.AvgSpeed" Color="#FFC4A7FF"/>
-    <!-- sizes: done = green, total = peach; times (elapsed, remaining) = amber -->
+    <!-- sizes: done = green, total = peach; times: elapsed = amber, remaining = pink -->
     <SolidColorBrush x:Key="B.SizeDone" Color="#FF7DD3A0"/>
     <SolidColorBrush x:Key="B.SizeTotal" Color="#FFF0B68C"/>
     <SolidColorBrush x:Key="B.Time" Color="#FFF2C46D"/>
+    <SolidColorBrush x:Key="B.Remain" Color="#FFF59BC6"/>
     <!-- quick toggles: green dot = on, red dot = off -->
     <SolidColorBrush x:Key="B.On" Color="#FF3DD27A"/>
     <SolidColorBrush x:Key="B.Off" Color="#FFF0645F"/>
@@ -144,6 +145,37 @@
         <Setter Property="Background" Value="#FF23272D"/>
         <Setter Property="BorderBrush" Value="#FF3A4048"/>
         <Setter Property="Foreground" Value="#FFF4B8B3"/>
+    </Style>
+
+    <!-- a solid red button: stops something that runs (the Benchmark) -->
+    <Style x:Key="Btn.Stop" TargetType="Button" BasedOn="{StaticResource Btn}">
+        <Setter Property="Background" Value="#FFB3261E"/>
+        <Setter Property="BorderBrush" Value="#FFCF3D33"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="#FFC42B1C"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="#FF961F18"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="b" Property="BorderBrush" Value="#FFFFC9C4"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- title bar buttons -->

@@ -114,7 +114,7 @@
                     </TextBlock>
                     <TextBlock x:Name="FilesText" Grid.Column="1" FontSize="14" Foreground="{StaticResource B.Dim}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="10,0"/>
                     <TextBlock Grid.Column="2" FontSize="14" VerticalAlignment="Center">
-                        <Run x:Name="ElapsedLabel" Text="Elapsed " Style="{StaticResource Dim}"/><Run x:Name="ElapsedVal" Text="" Foreground="{StaticResource B.Time}" FontWeight="SemiBold"/><Run x:Name="RemainLabel" Text="" Style="{StaticResource Dim}"/><Run x:Name="RemainVal" Text="" Foreground="{StaticResource B.Time}" FontWeight="SemiBold"/>
+                        <Run x:Name="ElapsedLabel" Text="Elapsed " Style="{StaticResource Dim}"/><Run x:Name="ElapsedVal" Text="" Foreground="{StaticResource B.Time}" FontWeight="SemiBold"/><Run x:Name="RemainLabel" Text="" Style="{StaticResource Dim}"/><Run x:Name="RemainVal" Text="" Foreground="{StaticResource B.Remain}" FontWeight="SemiBold"/>
                     </TextBlock>
                 </Grid>
             </Grid>

@@ -197,18 +197,35 @@ namespace Choppy.UI
             return string.IsNullOrEmpty(label) ? letter : letter + " " + label;
         }
 
+        /// <summary>
+        /// The drive's name, and after it a warning when its USB port (or cable, or a hub) holds it back: "H: Stick  ⚠ USB 2.0,
+        /// can do 5 Gbps". Returns what helps (for the tooltip), or null.
+        /// </summary>
+        string ShowDrive(TextBlock t, string name, VolumeInfo v)
+        {
+            t.Inlines.Clear();
+            t.Inlines.Add(new System.Windows.Documents.Run(name));
+            var link = v != null ? v.Usb : null;
+            if (link == null || !link.HeldBack) return null;
+            var warn = (Brush)FindResource("B.Warn");
+            t.Inlines.Add(new System.Windows.Documents.Run("    ") { FontFamily = (FontFamily)FindResource("F.Icons"), FontSize = 12, FontWeight = FontWeights.Normal, Foreground = warn });
+            t.Inlines.Add(new System.Windows.Documents.Run(UsbLink.Short(link.Speed) + ", can do " + UsbLink.Short(link.Capable)) { FontSize = 13, FontWeight = FontWeights.Normal, Foreground = warn });
+            return link.Advice;
+        }
+
         void ShowRoute(CopyJob j)
         {
             string from = SourceFolder(j), to = Paths.ToShort(j.Spec.Dest);
-            FromName.Text = DriveName(from, j.SrcVol);
-            ToName.Text = DriveName(to, j.DstVol);
+            string fromLink = ShowDrive(FromName, DriveName(from, j.SrcVol), j.SrcVol);
+            string toLink = ShowDrive(ToName, DriveName(to, j.DstVol), j.DstVol);
             FromPath.SetPath(from);
             ToPath.SetPath(to);
             bool fromNet = from.StartsWith(@"\\") || (j.SrcVol != null && j.SrcVol.IsNetwork);
             bool toNet = to.StartsWith(@"\\") || (j.DstVol != null && j.DstVol.IsNetwork);
             FromIcon.Data = (Geometry)FindResource(fromNet ? "G.Server" : "G.Drive");
             ToIcon.Data = (Geometry)FindResource(toNet ? "G.Server" : "G.Drive");
-            FromName.ToolTip = string.Join("\n", j.Spec.Sources.Take(12).Select(Paths.ToShort)) + (j.Spec.Sources.Count > 12 ? "\n…" : "");
+            FromName.ToolTip = (fromLink != null ? fromLink + "\n\n" : "") + string.Join("\n", j.Spec.Sources.Take(12).Select(Paths.ToShort)) + (j.Spec.Sources.Count > 12 ? "\n…" : "");
+            ToName.ToolTip = toLink;
             routeLabeled = j.SrcVol != null && j.DstVol != null;
         }
 

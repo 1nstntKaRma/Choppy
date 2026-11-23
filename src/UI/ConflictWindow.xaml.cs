@@ -35,9 +35,10 @@ namespace Choppy.UI
             else if (info.ExistingTime > info.IncomingTime.AddSeconds(2)) ShowTag(ExTag, ExTagText, "Newer");
             else if (info.IncomingSize == info.ExistingSize) { ShowTag(InTag, InTagText, "Same size + date"); }
 
+            ExCard.ToolTip = info.ExistingPath;
             if (info.Remaining > 1) ApplyAllText.Text = "Apply to all " + info.Remaining + " remaining conflicts";
             else ApplyAll.Visibility = Visibility.Collapsed;
-            if (info.Op == OpKind.Move) BtnSkip.ToolTip = "Leave both where they are (the original is not moved)";
+            Pick(false);
 
             Loaded += (s, e) =>
             {
@@ -48,6 +49,65 @@ namespace Choppy.UI
             Closed += (s, e) => { closed = true; if (Answer == null) Answer = new ConflictAnswer { Choice = ConflictPolicy.Skip }; };
             MouseLeftButtonDown += (s, e) => { if (e.GetPosition(this).Y < 40) try { DragMove(); } catch { } };
             KeyDown += (s, e) => { if (e.Key == Key.Escape) Skip_Click(null, null); };
+            // left / right: the other card
+            PreviewKeyDown += (s, e) =>
+            {
+                if (e.Key == Key.Left && keepExisting) { Pick(false); e.Handled = true; }
+                else if (e.Key == Key.Right && !keepExisting) { Pick(true); e.Handled = true; }
+            };
+        }
+
+        bool keepExisting;   // the card picked: the file already there stays (Skip) instead of the incoming one (Replace)
+
+        /// <summary>
+        /// Picks the file that stays: its card lights up and the main button says what that does - Replace (incoming) or
+        /// Skip (already there). The other of the two moves to the button beside Compare.
+        /// </summary>
+        void Pick(bool existing)
+        {
+            keepExisting = existing;
+            Look(InCard, InHead, InCheck, InBox, InImg, InExt, !existing);
+            Look(ExCard, ExHead, ExCheck, ExBox, ExImg, ExExt, existing);
+            BtnReplace.Content = existing ? "Skip" : "Replace";
+            BtnSkip.Content = existing ? "Replace" : "Skip";
+            string skipTip = info.Op == OpKind.Move ? "Leave both where they are (the original is not moved)" : "Keep the file that is already there";
+            const string replaceTip = "Put the incoming file in place of the one already there";
+            BtnReplace.ToolTip = existing ? skipTip : replaceTip;
+            BtnSkip.ToolTip = existing ? replaceTip : skipTip;
+            if (IsLoaded && !BtnSkip.IsKeyboardFocused && !BtnBoth.IsKeyboardFocused && !BtnCompare.IsKeyboardFocused) BtnReplace.Focus();
+        }
+
+        static readonly Brush PickBorder = Frozen(0xFF2D6FB4), PickBack = Frozen(0xFF172230), PickHead = Frozen(0xFF4FA8F0), PickBox = Frozen(0xFF1E2833), PickExt = Frozen(0xFF4C5A6B);
+        static readonly Brush OffBorder = Frozen(0xFF2A2F37), OffBack = Frozen(0xFF191C21), OffBox = Frozen(0xFF22272E), OffExt = Frozen(0xFF4C535C), HoverBorder = Frozen(0xFF3E4650);
+
+        static Brush Frozen(uint argb)
+        {
+            var b = new SolidColorBrush(Color.FromArgb((byte)(argb >> 24), (byte)(argb >> 16), (byte)(argb >> 8), (byte)argb));
+            b.Freeze();
+            return b;
+        }
+
+        /// <summary>A card picked (blue, its picture bright, a check mark) or not (grey, its picture dimmed).</summary>
+        void Look(System.Windows.Controls.Border card, System.Windows.Controls.TextBlock head, UIElement check, System.Windows.Controls.Border box,
+            UIElement img, System.Windows.Controls.TextBlock ext, bool picked)
+        {
+            card.BorderBrush = picked ? PickBorder : card.IsMouseOver ? HoverBorder : OffBorder;
+            card.Background = picked ? PickBack : OffBack;
+            head.Foreground = picked ? PickHead : (Brush)FindResource("B.Label");
+            check.Visibility = picked ? Visibility.Visible : Visibility.Hidden;
+            box.Background = picked ? PickBox : OffBox;
+            ext.Foreground = picked ? PickExt : OffExt;
+            img.Opacity = picked ? 1 : 0.55;
+        }
+
+        void InCard_Click(object sender, MouseButtonEventArgs e) { Pick(false); }
+        void ExCard_Click(object sender, MouseButtonEventArgs e) { Pick(true); }
+
+        void Card_Hover(object sender, MouseEventArgs e)
+        {
+            var card = (System.Windows.Controls.Border)sender;
+            bool picked = card == ExCard ? keepExisting : !keepExisting;
+            if (!picked) card.BorderBrush = card.IsMouseOver ? HoverBorder : OffBorder;
         }
 
         static void ShowTag(FrameworkElement b, System.Windows.Controls.TextBlock t, string text)
@@ -80,6 +140,8 @@ namespace Choppy.UI
         }
 
         void Skip_Click(object sender, RoutedEventArgs e) { Done(ConflictPolicy.Skip); }
+        void Primary_Click(object sender, RoutedEventArgs e) { Done(keepExisting ? ConflictPolicy.Skip : ConflictPolicy.Replace); }
+        void Second_Click(object sender, RoutedEventArgs e) { Done(keepExisting ? ConflictPolicy.Replace : ConflictPolicy.Skip); }
         void Both_Click(object sender, RoutedEventArgs e) { Done(ConflictPolicy.KeepBoth); }
         void Replace_Click(object sender, RoutedEventArgs e) { Done(ConflictPolicy.Replace); }
 
@@ -139,6 +201,9 @@ namespace Choppy.UI
                 case "skip": Skip_Click(null, null); break;
                 case "keepboth": Both_Click(null, null); break;
                 case "compare": Compare_Click(null, null); break;
+                case "pickexisting": Pick(true); break;
+                case "pickincoming": Pick(false); break;
+                case "primary": Primary_Click(null, null); break;
             }
         }
     }

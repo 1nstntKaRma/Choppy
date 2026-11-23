@@ -94,6 +94,8 @@ namespace Choppy
             if (!Elevated && !step)
                 Dispatcher.BeginInvoke(new Action(() => { Takeover.Refresh(); if (takeover) ApplyTakeover(); }), DispatcherPriority.Background);
             if (!Elevated) Dispatcher.BeginInvoke(new Action(OfferResume), DispatcherPriority.ApplicationIdle);
+            // a new icon in this exe: Explorer's icon cache still has the old one (taskbar pins, Start menu)
+            if (!Elevated && !step) Dispatcher.BeginInvoke(new Action(() => ThreadPool.QueueUserWorkItem(_ => IconRefresh.IfChanged())), DispatcherPriority.ApplicationIdle);
             // test files a benchmark left behind (Choppy closed or the PC went off while it ran)
             if (!Elevated) Dispatcher.BeginInvoke(new Action(() => ThreadPool.QueueUserWorkItem(_ => { try { Bench.BenchFiles.CleanLeftovers(); } catch { } })), DispatcherPriority.ApplicationIdle);
         }
@@ -141,6 +143,7 @@ namespace Choppy
                     break;
                 case "--menu":
                     Takeover.EnsureMenu();
+                    IconRefresh.IfChanged();   // the installer runs this right after it replaced the exe
                     break;
                 case "--uninstall":
                     Takeover.RemoveAll();

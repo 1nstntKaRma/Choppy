@@ -95,6 +95,8 @@ namespace Choppy.UI
                 var d = order[i];
                 bool on = d.Skip == null;
                 var g = new Grid { Margin = new Thickness(0, 7, 0, 7) };
+                g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(34) });
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(190) });
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -105,6 +107,7 @@ namespace Choppy.UI
                 if (on)
                 {
                     var parts = new List<string> { d.Kind };
+                    if (d.Usb != null) parts.Add(UsbLink.Short(d.Usb.Speed));
                     if (!string.IsNullOrEmpty(d.Model)) parts.Add(d.Model);
                     if (!string.IsNullOrEmpty(d.FileSystem)) parts.Add(d.FileSystem);
                     parts.Add(Format.Size(d.Free) + " free");
@@ -114,6 +117,16 @@ namespace Choppy.UI
                 Cell(g, 2, new TextBlock { Text = detail, FontSize = 13, Foreground = on ? Res("B.Dim") : Res("B.Faint"), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, ToolTip = detail });
                 string state = !on ? "left out" : measured && d.Measured ? "read " + BenchText.Speed(d.ReadMBps) + " · write " + BenchText.Speed(d.WriteMBps) : d.System ? "system drive" : "";
                 Cell(g, 3, new TextBlock { Text = state, FontSize = 13, Foreground = on ? (measured ? Res("B.SizeDone") : Res("B.Label")) : Res("B.Faint"), Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
+                // known before it runs: a USB drive that its port (or cable, or a hub) holds back
+                if (d.Usb != null && d.Usb.HeldBack)
+                {
+                    var warn = new TextBlock { FontSize = 13, Foreground = Res("B.Warn"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0), ToolTip = UsbLink.Aka(d.Usb.Speed) };
+                    warn.Inlines.Add(new Run("  ") { FontFamily = (FontFamily)Application.Current.FindResource("F.Icons"), FontSize = 12 });
+                    warn.Inlines.Add(new Run(d.Usb.Advice));
+                    Grid.SetRow(warn, 1);
+                    Grid.SetColumnSpan(warn, 3);
+                    Cell(g, 1, warn);
+                }
                 var row = new Border { Child = g, BorderBrush = Res("B.Sep"), BorderThickness = new Thickness(0, 0, 0, i < order.Count - 1 || (compact && left.Count > 0) ? 1 : 0) };
                 DriveList.Children.Add(row);
             }
@@ -233,7 +246,7 @@ namespace Choppy.UI
             };
         }
 
-        /// <summary>"Choppy is Faster [10 of 19] · Marginal Tie [9 of 19] · Never Slower", each part in its color.</summary>
+        /// <summary>"Choppy is Faster 10 of 19 · Marginal Tie 9 of 19 · Never Slower", each part in its color.</summary>
         void ShowSummary(List<BenchResult> results, bool final, bool ended = false)
         {
             int f = results.Count(r => r.Scored && r.Verdict > 0), t = results.Count(r => r.Scored && r.Verdict == 0), s = results.Count(r => r.Scored && r.Verdict < 0), n = f + t + s;
@@ -242,9 +255,9 @@ namespace Choppy.UI
             SummaryText.Foreground = Res("B.Text");
             if (!final) SummaryText.Inlines.Add(new Run("So far: ") { Foreground = Res("B.Dim") });
             SummaryText.Inlines.Add(new Run("Choppy is "));
-            SummaryText.Inlines.Add(new Run("Faster [" + f + " of " + n + "]") { Foreground = Res("B.Good") });
-            if (t > 0) { SummaryText.Inlines.Add(new Run(" · ")); SummaryText.Inlines.Add(new Run(BenchReport.TieWord + " [" + t + " of " + n + "]") { Foreground = Res("B.Dim") }); }
-            if (s > 0) { SummaryText.Inlines.Add(new Run(" · ")); SummaryText.Inlines.Add(new Run("Slower [" + s + " of " + n + "]") { Foreground = Res("B.Bad") }); }
+            SummaryText.Inlines.Add(new Run("Faster " + BenchReport.Of(f, n)) { Foreground = Res("B.Good") });
+            if (t > 0) { SummaryText.Inlines.Add(new Run(" · ")); SummaryText.Inlines.Add(new Run(BenchReport.TieWord + " " + BenchReport.Of(t, n)) { Foreground = Res("B.Dim") }); }
+            if (s > 0) { SummaryText.Inlines.Add(new Run(" · ")); SummaryText.Inlines.Add(new Run("Slower " + BenchReport.Of(s, n)) { Foreground = Res("B.Bad") }); }
             else if (final && ended && t > 0) { SummaryText.Inlines.Add(new Run(" · ")); SummaryText.Inlines.Add(new Run("Never Slower") { Foreground = Res("B.Good") }); }
         }
 
@@ -264,7 +277,7 @@ namespace Choppy.UI
             ModeQuick.IsEnabled = ModeThorough.IsEnabled = NetworkToggle.IsEnabled = false;
             CopyBtn.Visibility = FolderBtn.Visibility = ReportBtn.Visibility = Visibility.Collapsed;
             StartBtn.Content = "Stop";
-            StartBtn.Style = (Style)Application.Current.FindResource("Btn.Cancel");
+            StartBtn.Style = (Style)Application.Current.FindResource("Btn.Stop");
             StartBtn.IsEnabled = true;
             ProgressPanel.Visibility = Visibility.Visible;
             ResultsPanel.Visibility = Visibility.Visible;

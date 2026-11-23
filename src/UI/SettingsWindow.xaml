@@ -112,11 +112,11 @@
                     </Grid>
                     <Popup x:Name="UnitHelp" PlacementTarget="{Binding ElementName=UnitHelpBtn}" Placement="Left" HorizontalOffset="-10" VerticalOffset="-14"
                            StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
-                        <Border x:Name="UnitHelpCard" Background="#FF1E2228" BorderBrush="#FF3A414B" BorderThickness="1" CornerRadius="10" Padding="18,14,18,12" Margin="0,0,12,12" Width="350">
+                        <Border x:Name="UnitHelpCard" Background="#FF1E2228" BorderBrush="#FF3A414B" BorderThickness="1" CornerRadius="10" Padding="20,14,20,14" Margin="0,0,12,12" Width="400">
                             <Border.Effect>
                                 <DropShadowEffect BlurRadius="16" ShadowDepth="3" Opacity="0.5" Color="Black"/>
                             </Border.Effect>
-                            <!-- header (Mbps above its column, a long arrow, MB/s above its column), a line, the rows: built in code -->
+                            <!-- header (Mbps above its column, an arrow as long as the bars, MB/s above its column), a line, the rows: built in code -->
                             <StackPanel x:Name="UnitRows"/>
                         </Border>
                     </Popup>
@@ -150,8 +150,7 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Style="{StaticResource Head}" Text="Close at completion" VerticalAlignment="Center"
                                ToolTip="Closes the copy window this many seconds after a copy finishes with no problems. A copy with problems stays open."/>
-                    <TextBox x:Name="CloseValue" Grid.Column="1" Style="{StaticResource Box.Small}" Width="60" Height="30" MaxLength="3" TextChanged="CloseValue_Changed"
-                             ToolTip="Whole seconds"/>
+                    <TextBox x:Name="CloseValue" Grid.Column="1" Style="{StaticResource Box.Small}" Width="60" Height="30" MaxLength="3" TextChanged="CloseValue_Changed"/>
                     <TextBlock Grid.Column="2" Text="s" FontSize="14" Foreground="{StaticResource B.Dim}" VerticalAlignment="Center" Margin="10,0,0,0"/>
                     <CheckBox x:Name="AutoClose" Grid.Column="4" Style="{StaticResource Toggle}" VerticalAlignment="Center" Checked="Changed" Unchecked="Changed"/>
                 </Grid>
