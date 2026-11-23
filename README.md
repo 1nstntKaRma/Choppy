@@ -118,7 +118,7 @@ The administrator copy keeps every rule: temporary names, verify (when on) befor
 | SSD / NVMe | 4-8 files in flight; big files through the pipeline (8 MB pieces) |
 | Hard disk / USB stick | One stream, in order - no seeking; big files through the pipeline (32 MB pieces, 8 reads queued at the disk; writes to a hard disk joined up to 128 MB) |
 | Two hard disks | Big files: 512 MB read ahead in 2 MB reads (4 at the disk at once), written in 64 MB pieces; once the source is fully read, what's left goes through the Windows cache |
-| Both ends on one hard disk | Big files: 256 MB read, then written - not both at once, so the heads don't run back and forth |
+| Both ends on one hard disk | Big files: the whole file (up to 512 MB at a time) read in 1 MB reads, then written in 64 MB writes into room reserved up front - not both at once, so the heads don't run back and forth |
 | Copy within one ReFS drive (a Dev Drive) | Windows' own copy, which shares the original's blocks instead of writing them again (Windows 11 24H2 and later) |
 
 **The pipeline** (big files between local drives): one thread reads, one writes, at the same time; the next pieces are already queued at the source disk, so another program reading that disk can't send its heads away between them. With verify on, the source is hashed on the way in, so the check reads only the copy back. Extra data streams (`Zone.Identifier` of downloads), dates and attributes come along. The badge shows the choice: *Adaptive · 1 stream*.
@@ -167,6 +167,8 @@ The administrator copy keeps every rule: temporary names, verify (when on) befor
 | USB SSD → NVMe | 353 / 346 (tie) | 184 / 47 |
 
 The second hard disk gave the same picture: small files 1.3-3.1x, big files 0.94-0.96x. Windows writes a big file to a hard disk into memory first and is "done" at once; the time until it is on the disk is what the verdict counts.
+
+Since v1.40 a big file within one hard disk is read whole (up to 512 MB at a time) before it is written: there Choppy and Windows now tie - 95 / 96 MB/s within the first disk, 90 / 80 within the second (before: 83 / 97). From and to a hard disk the two tie within the noise over ten runs each (where the file lands on the platter moves both by up to 20%).
 
 ## Measured
 

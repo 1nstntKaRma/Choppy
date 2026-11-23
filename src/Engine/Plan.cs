@@ -17,6 +17,7 @@ namespace Choppy.Engine
         public bool Network;
         public bool CanTune;                 // measure once and switch to more files in flight when that is faster
         public bool Clone;                   // the same ReFS volume: Windows' own copy shares the blocks instead of writing them
+        public bool NoCachedTail;            // the end of the last big file goes straight to the disk too (see CopyJob.CopyBig)
         public string Kind = "Disk";
         public bool Tuned;
         public string TuneNote;
@@ -108,12 +109,14 @@ namespace Choppy.Engine
                 // a hard disk read into a fast drive: many small reads queued keep it streaming (1 MB x 32 measured
                 // ahead of 32 MB x 8 and of Explorer, two rounds out of two)
                 if (srcSlow && !dstSlow) { p.Pipe.Chunk = 1 << 20; p.Pipe.Slots = 32; }
-                // one disk at both ends: read 256 MB, then write it - not both at once (the heads would go back and forth every piece)
+                // one disk at both ends: read a batch, then write it - not both at once (the heads would go back and forth every piece)
                 p.Pipe.Phased = oneDisk;
                 // writing to a hard disk: pieces already read go out together (up to 128 MB), no gap for the platter to pass
                 if (dstSlow && !oneDisk) p.Pipe.WriteBatch = 4;
                 // no size reserved up front on a hard disk: the reservation can land the file on a slower part of the
-                // platter (NVMe to hard disk: 199-206 MB/s without it, 169-170 with it)
+                // platter (NVMe to hard disk: 199-206 MB/s without it, 169-170 with it; again in v1.40, 4 GB: 179 / 170).
+                // A 512 MB file lands on a fast part more often with it (as Explorer's copy, which reserves) - both ways
+                // tie with Explorer over ten runs, so it stays off
                 if (dstSlow) p.Pipe.Prealloc = false;
                 // two hard disks: 512 MB read ahead in 2 MB reads, joined into 64 MB writes, so a write doesn't stop the
                 // reads and the source streams from the first second (4 GB on disk: 32 MB x 8 = 163 MB/s, 32 MB x 16 =
@@ -129,6 +132,23 @@ namespace Choppy.Engine
                     p.Pipe.ReadDepth = 4;
                     p.Pipe.WriteBatch = 32;
                     p.Pipe.TailAfterRead = true;
+                    return Aligned(p.WithSmallBatch());
+                }
+                // one hard disk at both ends: the whole file (up to 512 MB at a time) is read before any of it is written,
+                // in 1 MB reads with 32 at the disk at once, then written in 64 MB writes into room reserved up front (a
+                // reservation finds one stretch of free space; growing piece by piece fills the holes on a full disk).
+                // Measured, 512 MB within one hard disk, ten runs each: 256 MB batches of 32 MB 84-86 MB/s, Explorer
+                // 90-92, this 87-89 - and up to 98 when the reservation lands on a fast part of the platter; 2 GB: 89 / 91.
+                // Nothing through the cache at the end: there it competes with the reads for the heads (512 MB: 6.3 s to
+                // the disk with it, 5.9 without). No trials: one batch is longer than a trial.
+                if (oneDisk && slow == DeviceKind.Hdd)
+                {
+                    p.Pipe.Chunk = 1 << 20;
+                    p.Pipe.Slots = 512;
+                    p.Pipe.ReadDepth = 32;
+                    p.Pipe.WriteStep = 64 << 20;
+                    p.Pipe.Prealloc = true;
+                    p.NoCachedTail = true;
                     return Aligned(p.WithSmallBatch());
                 }
                 // all of the above is a first guess: the first big file measures these ways against it and keeps the fastest

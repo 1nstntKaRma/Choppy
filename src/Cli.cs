@@ -16,6 +16,7 @@ namespace Choppy
     ///                 [--limit Mbps] [--resume] [--json out.json] [--log progress.txt] [--cancel-after sec] [--pause-at sec,sec]
     ///   Choppy.exe --selftest out.txt
     ///   Choppy.exe --benchmark [out.json] [--thorough] [--network] [--drives C,D] [--list] [--log progress.txt] [--cancel-after sec] [--tiny]
+    ///                 tests: [--routes C>D,D>D] [--cases big|small] [--big MB] [--rounds N] [--choppy "--chunk 1 --slots 512 ..."]
     /// Exit code: 0 = all done, 2 = some files failed/skipped, 3 = canceled, 1 = error.
     /// </summary>
     internal static class Cli
@@ -47,24 +48,7 @@ namespace Choppy
                         case "--cancel-after": cancelAfter = double.Parse(args[++i], CultureInfo.InvariantCulture); break;
                         case "--pause": { var p = args[++i].Split(','); pauseAt = double.Parse(p[0], CultureInfo.InvariantCulture); pauseFor = double.Parse(p[1], CultureInfo.InvariantCulture); } break;
                         case "--skip-at": skipAt = args[++i]; break;
-                        case "--workers": spec.ForceWorkers = int.Parse(args[++i]); break;
-                        case "--no-fast": spec.NoFastPath = true; break;
-                        case "--engine": { string e = args[++i]; spec.Engine = e == "auto" ? null : e; } break;
-                        case "--chunk": spec.PipeChunkMB = int.Parse(args[++i]); break;
-                        case "--slots": spec.PipeSlots = int.Parse(args[++i]); break;
-                        case "--batch": spec.PipeBatch = int.Parse(args[++i]); break;
-                        case "--depth": spec.PipeDepth = int.Parse(args[++i]); break;
-                        case "--flush-files": spec.FlushFiles = int.Parse(args[++i]); break;
-                        case "--flush-threads": spec.FlushThreads = int.Parse(args[++i]); break;
-                        case "--no-prealloc": spec.NoPrealloc = true; break;
-                        case "--no-tune": spec.NoTune = true; break;
-                        case "--prealloc": spec.ForcePrealloc = true; break;
-                        case "--small": spec.SmallMode = args[++i]; break;
-                        case "--wchunk": spec.CachedWriteMB = int.Parse(args[++i]); break;
-                        case "--no-tail": spec.NoCachedTail = true; break;
-                        case "--tail": spec.TailMB = int.Parse(args[++i]); break;
-                        case "--max-file": spec.MaxFileTest = long.Parse(args[++i]); break;
-                        default: rest.Add(a); break;
+                        default: if (!EngineOption(args, ref i, spec)) rest.Add(a); break;
                     }
                 }
                 if (rest.Count < 3) { Console.Error.WriteLine("usage: --cli copy|move <src...> <dest>"); return 1; }
@@ -137,6 +121,17 @@ namespace Choppy
                     case "--list": list = true; break;
                     case "--log": log = Full(args[++i]); break;
                     case "--cancel-after": cancelAfter = double.Parse(args[++i], CultureInfo.InvariantCulture); break;
+                    // tests: Choppy's side with fixed engine switches (as --cli takes them), only some cases, a fixed big size, more rounds
+                    case "--choppy":
+                        {
+                            var opts = args[++i].Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                            b.Tweak = sp => { for (int k = 0; k < opts.Length; k++) EngineOption(opts, ref k, sp); };
+                        }
+                        break;
+                    case "--cases": b.Cases = new HashSet<string>(args[++i].Split(',')); break;
+                    case "--big": b.BigMB = int.Parse(args[++i]); break;
+                    case "--rounds": b.RoundsOverride = int.Parse(args[++i]); break;
+                    case "--routes": b.RoutesOnly = new HashSet<string>(args[++i].ToUpperInvariant().Split(',')); break;
                     case "--drives":
                         b.Only = new HashSet<string>();
                         foreach (var s in args[++i].Split(',')) if (s.Trim().Length > 0) b.Only.Add(s.Trim().TrimEnd('\\', ':').ToUpperInvariant() + ":");
@@ -170,6 +165,33 @@ namespace Choppy
 
         /// <summary>A path from the command line, against the folder Choppy was started from.</summary>
         static string Full(string p) { return Path.IsPathRooted(p) ? p : Path.Combine(Program.StartDir ?? "", p); }
+
+        /// <summary>Test switches for the engine (fixed ways instead of Adaptive's choice). False = not one of them.</summary>
+        static bool EngineOption(string[] args, ref int i, JobSpec spec)
+        {
+            switch (args[i])
+            {
+                case "--workers": spec.ForceWorkers = int.Parse(args[++i]); return true;
+                case "--no-fast": spec.NoFastPath = true; return true;
+                case "--engine": { string e = args[++i]; spec.Engine = e == "auto" ? null : e; } return true;
+                case "--chunk": spec.PipeChunkMB = int.Parse(args[++i]); return true;
+                case "--slots": spec.PipeSlots = int.Parse(args[++i]); return true;
+                case "--batch": spec.PipeBatch = int.Parse(args[++i]); return true;
+                case "--depth": spec.PipeDepth = int.Parse(args[++i]); return true;
+                case "--wstep": spec.PipeWriteStepMB = int.Parse(args[++i]); return true;
+                case "--flush-files": spec.FlushFiles = int.Parse(args[++i]); return true;
+                case "--flush-threads": spec.FlushThreads = int.Parse(args[++i]); return true;
+                case "--no-prealloc": spec.NoPrealloc = true; return true;
+                case "--no-tune": spec.NoTune = true; return true;
+                case "--prealloc": spec.ForcePrealloc = true; return true;
+                case "--small": spec.SmallMode = args[++i]; return true;
+                case "--wchunk": spec.CachedWriteMB = int.Parse(args[++i]); return true;
+                case "--no-tail": spec.NoCachedTail = true; return true;
+                case "--tail": spec.TailMB = int.Parse(args[++i]); return true;
+                case "--max-file": spec.MaxFileTest = long.Parse(args[++i]); return true;
+            }
+            return false;
+        }
 
         static ConflictPolicy ParsePolicy(string s)
         {
@@ -292,6 +314,11 @@ namespace Choppy
                     var pt = new PipeTuning { Chunk = 1 << 20, Slots = 3, Align = 4096, Phased = true };
                     var rp = BigCopy.Copy(Paths.ToLong(a), Paths.ToLong(c), 0, File.GetLastWriteTimeUtc(a).ToFileTimeUtc(), 0x20, pt, true, false, null, 2 << 20, n => true);
                     check("pipeline phased " + size + " B", rp.Error == 0 && rp.Hash == XxHash64.OfBytes(data) && System.Linq.Enumerable.SequenceEqual(File.ReadAllBytes(c), data));
+                    // one hard disk: small reads, a few at the disk at once, the batch written in bigger steps, room reserved
+                    string ph = Path.Combine(dir, "phase2-" + size + ".bin");
+                    var pt2 = new PipeTuning { Chunk = 1 << 20, Slots = 6, Align = 4096, Phased = true, ReadDepth = 2, WriteStep = 3 << 20, Prealloc = true };
+                    var rp2 = BigCopy.Copy(Paths.ToLong(a), Paths.ToLong(ph), 0, File.GetLastWriteTimeUtc(a).ToFileTimeUtc(), 0x20, pt2, true, false, null, n => true);
+                    check("pipeline phased, read depth + write step " + size + " B", rp2.Error == 0 && rp2.Hash == XxHash64.OfBytes(data) && System.Linq.Enumerable.SequenceEqual(File.ReadAllBytes(ph), data));
                     // nothing reserved up front (hard disk destinations): the file grows as it is written
                     string g = Path.Combine(dir, "grow-" + size + ".bin");
                     var gt = new PipeTuning { Chunk = 1 << 20, Slots = 4, Align = 4096, WriteBatch = 3, Prealloc = false };
@@ -542,6 +569,20 @@ namespace Choppy
                 VolumeProbe.DiskNumber(new Native.STORAGE_DEVICE_NUMBER { DeviceType = VolumeProbe.FILE_DEVICE_DISK, DeviceNumber = 2 }) == 2
                 && VolumeProbe.DiskNumber(new Native.STORAGE_DEVICE_NUMBER { DeviceType = 8, DeviceNumber = 0 }) == -1
                 && !VolumeProbe.SameDisk(new VolumeInfo { Id = "vol:g", Disk = -1 }, new VolumeInfo { Id = "vol:x", Disk = 0, Kind = DeviceKind.Hdd }));
+            // big files within one hard disk: the whole file (up to 512 MB) read in 1 MB reads, then written in 64 MB writes, room
+            // reserved, nothing through the cache, no trials; one USB drive keeps 32 MB batches with trials; two hard disks unchanged
+            var hdd1 = new VolumeInfo { Id = "vol:h1", Kind = DeviceKind.Hdd, Disk = 1, FileSystem = "NTFS" };
+            var hdd1b = new VolumeInfo { Id = "vol:h1b", Kind = DeviceKind.Hdd, Disk = 1, FileSystem = "NTFS" };
+            var hdd2 = new VolumeInfo { Id = "vol:h2", Kind = DeviceKind.Hdd, Disk = 2, FileSystem = "NTFS" };
+            var usb = new VolumeInfo { Id = "vol:u", Kind = DeviceKind.Usb, Disk = 3, FileSystem = "NTFS" };
+            var one = Plan.Choose(new JobSpec { Op = OpKind.Copy }, hdd1, hdd1b, null);
+            check("one hard disk: whole-file batches of 1 MB reads, 64 MB writes, room reserved, no cached end, no trials",
+                one.Pipe.Phased && one.Pipe.Chunk == 1 << 20 && one.Pipe.Slots == 512 && one.Pipe.ReadDepth == 32 && one.Pipe.WriteStep == 64 << 20
+                && one.Pipe.Prealloc && one.NoCachedTail && one.PipeWays.Count == 0);
+            var oneUsb = Plan.Choose(new JobSpec { Op = OpKind.Copy }, usb, usb, null);
+            check("one USB drive: 32 MB batches with trials", oneUsb.Pipe.Phased && oneUsb.Pipe.Chunk == 32 << 20 && oneUsb.PipeWays.Count > 0 && !oneUsb.NoCachedTail);
+            var two = Plan.Choose(new JobSpec { Op = OpKind.Copy }, hdd1, hdd2, null);
+            check("two hard disks unchanged", !two.Pipe.Phased && two.Pipe.Chunk == 2 << 20 && two.Pipe.Slots == 256 && two.Pipe.ReadDepth == 4 && two.Pipe.TailAfterRead && !two.NoCachedTail);
             check("FAT32 holds files up to 4 GB", new VolumeInfo { FileSystem = "FAT32" }.MaxFileSize == uint.MaxValue
                 && new VolumeInfo { FileSystem = "exFAT" }.MaxFileSize == 0 && ntfs.MaxFileSize == 0 && new VolumeInfo().MaxFileSize == 0);
             // the Ctrl+V hook: its own thread, put in again on time (observe only: it never takes a key here)

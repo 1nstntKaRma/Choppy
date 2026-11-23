@@ -121,22 +121,27 @@ namespace Choppy.Engine
         }
 
         // One disk at both ends: a whole batch (every buffer) is read with no write in between, then written with no
-        // read in between - the heads go between the two places once per batch instead of once per piece.
+        // read in between - the heads go between the two places once per batch instead of once per piece. At most
+        // depth reads are out at the disk at once (many small reads queued stream best: 1 MB x 32 = 185 MB/s on a
+        // hard disk here, 32 MB x 8 = 174).
         void ReadPhased()
         {
             long done = 0;
             while (done < pieces && !stop)
             {
                 for (int i = 0; i < slots; i++) { free.Wait(); if (stop) return; }   // the writer gave every buffer back
-                long end = Math.Min(pieces, done + slots);
-                for (long k = done; k < end; k++)
-                    if (!Issue(k, 0, chunk)) { Drain(done, k); Post(done, 0); return; }
+                long end = Math.Min(pieces, done + slots), issued = done;
                 for (; done < end; done++)
                 {
+                    while (issued < end && issued - done < depth)
+                    {
+                        if (!Issue(issued, 0, chunk)) { Drain(done, issued); Post(done, 0); return; }
+                        issued++;
+                    }
                     int n = CollectWhole(done);
                     if (n > 0 && done + 1 == pieces) AllRead = true;
                     Post(done, n);
-                    if (n <= 0) { Drain(done + 1, end); return; }
+                    if (n <= 0) { Drain(done + 1, issued); return; }
                 }
             }
         }
@@ -249,6 +254,7 @@ namespace Choppy.Engine
         public int CachedWriteChunk;    // bytes per write through the Windows cache (0 = a whole piece)
         public bool TailAfterRead;      // the cached tail starts once the source is fully read: what the buffers still hold goes through the cache
         public int ReadDepth;           // reads out at the disk at once (0 = one per free buffer): the buffers can hold far more than that
+        public int WriteStep;           // phased: bytes per write of a batch (0 = a piece at a time)
     }
 
     /// <summary>
@@ -333,7 +339,7 @@ namespace Choppy.Engine
 
         public static string Describe(PipeTuning t)
         {
-            return (t.Chunk >> 20) + "x" + t.Slots + (t.Phased ? " phased" : "") + (t.WriteBatch > 1 ? " join" + t.WriteBatch : "");
+            return (t.Chunk >> 20) + "x" + t.Slots + (t.Phased ? " phased" : "") + (t.WriteBatch > 1 ? " join" + t.WriteBatch : "") + (t.WriteStep > 0 ? " w" + (t.WriteStep >> 20) : "");
         }
     }
 
@@ -435,7 +441,7 @@ namespace Choppy.Engine
                                     // phased (one disk): the whole batch is read before any of it is written
                                     int joined = tune.Phased ? rr.Gather(rr.Slots - 1, ref n) : tune.WriteBatch > 1 ? rr.Gather(tune.WriteBatch - 1, ref n) : 0;
                                     // phased: written a piece at a time, so the progress moves smoothly (the writes follow each other on the disk)
-                                    int step = tune.Phased ? tune.Chunk : n;
+                                    int step = tune.Phased ? (tune.WriteStep > 0 ? Math.Max(tune.Chunk, tune.WriteStep) : tune.Chunk) : n;
                                     int cap = maxWrite != null ? maxWrite() : 0;
                                     if (cap > 0 && cap < step) step = Math.Max(align, cap / align * align);
                                     for (int off = 0; off < n && r.Error == 0; )

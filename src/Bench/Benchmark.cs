@@ -28,6 +28,11 @@ namespace Choppy.Bench
         public HashSet<string> Only;              // tests: only these drive letters ("C:", "D:")
         public bool Tiny;                         // tests: very small sizes
         public Action<string> Log;                // a line per step (the command line's --log)
+        public Action<JobSpec> Tweak;             // tests: engine switches for Choppy's side
+        public HashSet<string> Cases;             // tests: only these cases ("big", "small", "mixed")
+        public int BigMB;                         // tests: this big file size on every route
+        public int RoundsOverride;                // tests: more rounds
+        public HashSet<string> RoutesOnly;        // tests: only these routes ("C>D", "D>D")
 
         public readonly BenchReport Report = new BenchReport();
         volatile bool cancel;
@@ -35,7 +40,7 @@ namespace Choppy.Bench
         public bool IsCanceled { get { return cancel; } }
         bool Canceled() { return cancel; }
 
-        int Rounds { get { return Thorough ? 3 : 2; } }
+        int Rounds { get { return RoundsOverride > 0 ? RoundsOverride : Thorough ? 3 : 2; } }
 
         // ================= drives =================
 
@@ -205,6 +210,8 @@ namespace Choppy.Bench
                 r.Cases.Add(new BenchCase { Key = "big", Big = new[] { r.Big }, Smalls = new long[0] });
                 r.Cases.Add(new BenchCase { Key = "small", Big = new long[0], Smalls = BenchFiles.SmallSizes(r.Small) });
                 if (Thorough) r.Cases.Add(new BenchCase { Key = "mixed", Big = MixedBig, Smalls = BenchFiles.SmallSizes(MixedSmall) });
+                if (BigMB > 0) r.Cases[0].Big = new[] { BigMB * MB };
+                if (Cases != null) r.Cases.RemoveAll(c => !Cases.Contains(c.Key));
                 r.Est = Estimate(r);
             }
         }
@@ -386,6 +393,7 @@ namespace Choppy.Bench
                 if (usable.Count == 0) throw new InvalidOperationException("No drive of this PC can be tested (each one's reason is listed).");
 
                 var routes = PlanRoutes(usable);
+                if (RoutesOnly != null) routes.RemoveAll(r => !RoutesOnly.Contains(r.From.Letter.Substring(0, 1) + ">" + r.To.Letter.Substring(0, 1)));
                 SizeRoutes(routes);
                 lock (progLock) estTotal = estDone + stepEst + routes.Sum(r => r.Est) + usable.Count * 1.5;
                 Report.Planned = routes.Sum(r => r.Cases.Count);
@@ -469,8 +477,7 @@ namespace Choppy.Bench
                     List<string> files = MakeSource(r, c, srcDir, out src);
                     Prime(files);
                     // A-B-B-A (-A-B): each one goes first and last as often, and the next case starts with the other one
-                    string order = caseNo % 2 == 0 ? "CWWCCW" : "WCCWWC";
-                    order = order.Substring(0, 2 * Rounds);
+                    string order = string.Concat(Enumerable.Repeat(caseNo % 2 == 0 ? "CWWC" : "WCCW", Rounds)).Substring(0, 2 * Rounds);
                     double perRun = (r.Est - Enumerable.Range(0, r.Cases.Count).Sum(i => MakeSeconds(r, r.Cases[i]))) / (2.0 * Rounds * r.Cases.Count);
                     int[] seen = new int[2];
                     for (int k = 0; k < order.Length; k++)
@@ -587,6 +594,7 @@ namespace Choppy.Bench
         {
             var spec = new JobSpec { Op = OpKind.Copy, Origin = "Benchmark", Policy = ConflictPolicy.Skip, Dest = Paths.ToLong(dest) };
             spec.Sources.Add(Paths.ToLong(src));
+            if (Tweak != null) Tweak(spec);
             var job = new CopyJob(spec);
             job.AskConflict = i => new ConflictAnswer { Choice = ConflictPolicy.Skip };
             job.AskLowSpace = (need, free) => false;
