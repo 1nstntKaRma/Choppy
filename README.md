@@ -27,7 +27,7 @@ It never leaves a half-written file behind, a move removes the original only aft
 - **Clear:** a compact view (from / to, progress, sizes, times, current file) and an extended view (speed graph, current file, largest files, quick toggles, queue). Color code: blue = speed right now, lavender = average, green = done, peach = total, amber = time.
 - **Never loses a file:** each file is written under a temporary name and gets its real name only when it is complete (and checked, when verify is on). Cancel, skip or a crash leaves nothing half-written.
 - **Quick:** with Choppy in the tray, its window is up 0.1-0.2 s after Ctrl+V or a right-click paste - the first copy after it starts too.
-- **Measured on your PC:** *Settings → Benchmark* puts Choppy against Windows' own copy on every drive of the PC and saves a report with both speeds per route.
+- **Measured on your PC:** *Settings → Benchmark* runs Choppy VS Windows on every drive of the PC and saves a report with both times per route.
 - **Zero dependencies:** one `Choppy.exe` (under 1 MB) on **.NET Framework 4.8**, part of every Windows 10/11. Installs per user - no administrator rights.
 
 ---
@@ -90,7 +90,7 @@ Switch it in Choppy's settings or from its tray icon.
 - **Quick toggles** (extended view): **Close at completion**, **Verify files** and **Speed limit** (with its value, in the unit on screen) - green dot = on, red = off. They are the same switches as in Settings and work on the copy that is running.
 - **File already there:** *Incoming* vs *Already there* with previews, sizes and dates - **Compare** (same content?), **Skip**, **Keep both**, **Replace**, and *Apply to all*.
 - **Queue:** a new copy waits while one runs; finished copies stay in the list with their report.
-- **End report:** copied / verified / skipped / failed, average speed, **Retry failed**, **Log**, **Open folder**. *Close at completion* closes the window a few seconds after a clean finish; a copy with problems stays open.
+- **End report:** copied / verified / skipped / failed, average speed, **Retry failed**, **Log**, **Open folder**. *Close at completion* closes the window 2 seconds after a clean finish (the seconds are set in Settings, next to the switch); a copy with problems stays open.
 
 <p align="center">
   <img src="screenshots/settings.png" width="383" alt="Choppy - settings">
@@ -117,6 +117,7 @@ The administrator copy keeps every rule: temporary names, verify (when on) befor
 | NAS / network share / VPN | 8-16 files in flight for many small files (measures and goes up to 32 when that is faster), big files one at a time with Windows' pipelined writes |
 | SSD / NVMe | 4-8 files in flight; big files through the pipeline (8 MB pieces) |
 | Hard disk / USB stick | One stream, in order - no seeking; big files through the pipeline (32 MB pieces, 8 reads queued at the disk; writes to a hard disk joined up to 128 MB) |
+| To a hard disk, the last file fits in memory | Through the Windows cache in 4 MB writes, its size reserved first - as Explorer's copy does: done once it is in memory, Windows writes it out right after (never to a USB drive, never for a move or with Verify) |
 | Two hard disks | Big files: 512 MB read ahead in 2 MB reads (4 at the disk at once), written in 64 MB pieces; once the source is fully read, what's left goes through the Windows cache |
 | Both ends on one hard disk | Big files: the whole file (up to 512 MB at a time) read in 1 MB reads, then written in 64 MB writes into room reserved up front - not both at once, so the heads don't run back and forth |
 | Copy within one ReFS drive (a Dev Drive) | Windows' own copy, which shares the original's blocks instead of writing them again (Windows 11 24H2 and later) |
@@ -137,38 +138,32 @@ The administrator copy keeps every rule: temporary names, verify (when on) befor
 
 ## Benchmark
 
-*Settings → Benchmark → Run...* puts Choppy against Windows' own copy - the shell copy engine Explorer uses for a paste - on every drive of the PC it runs on, and shows where each one is faster.
+*Settings → Benchmark → Run...* runs **Choppy VS Windows** - Windows being its own copy engine, the one Explorer uses for a paste - on every drive of the PC it runs on, and shows which one takes less time where.
 
 <p align="center">
-  <img src="screenshots/benchmark.png" width="640" alt="Choppy - benchmark">
+  <img src="screenshots/benchmark.png" width="640" alt="Choppy - Benchmark">
 </p>
 
 - **Every drive, found by itself:** NVMe, SSD, hard disk, USB; mapped network drives on request. A drive that can't be tested is listed with the reason - read-only, a cloud drive (Google Drive and the like show up as a drive but aren't a disk of this PC), not enough free space.
 - **Routes:** from the system drive to each other drive and back, and within each drive (on a hard disk, both ends then share one set of heads).
-- **Cases:** one big file and many small files (4 KB-1 MB). The sizes go by each route's speed and stay the same on one PC, so runs of different versions compare: 1 GB and 1,000 files at 350 MB/s or more, 512 MB and 500 files below that, 256 MB and 250 files under 40 MB/s. *Thorough* doubles them, adds a mixed folder and a third round.
-- **Fair:** both copy the same source, which is never in memory - it is read once beforehand (a new file's first open is slower) and dropped from the Windows cache before every copy. They take turns (Choppy, Windows, Windows, Choppy, the next case the other way round). Each is timed until it says it's done and until its copies are on the disk (flushed); the verdict counts the second. Closer than 4%, or within a program's own run-to-run spread, is a tie.
-- **Leaves nothing behind:** test files go only into a `Choppy benchmark (temporary)` folder on each drive, removed at the end - after *Stop* too - or at Choppy's next start if it was closed in the middle. Nothing else on the drives is touched.
-- **Report:** a summary line, every route and case with both speeds, the ratio and a badge, and the PC: CPU, memory, Windows build, each drive's model, bus and file system. Saved as `%LOCALAPPDATA%\Choppy\Logs\benchmark-<date>.html` plus a `.json` with every run's raw times, to compare PCs and versions; *Copy results* puts a short table on the clipboard.
+- **Cases:** one big file and many small files (4 KB-1 MB). The sizes go by each route's speed and stay the same on one PC, so runs of different versions compare: 2 GB and 1,000 files at 350 MB/s or more, 1 GB and 500 files below that, 512 MB and 250 files under 40 MB/s. *Thorough* doubles them, adds a mixed folder and a third round.
+- **Fair:** both copy the same source, which is never in memory - it is read once beforehand (a new file's first open is slower) and dropped from the Windows cache before every copy. They take turns (Choppy, Windows, Windows, Choppy, the next case the other way round), each timed until its copies are on the disk (flushed).
+- **The time decides:** the average of each one's runs. *Time saved* shows how much less time Choppy took (green) or more (red); less than 4% apart is a **Marginal Tie**, anything more is **Faster** or **Slower**. The summary reads *Choppy is Faster [12 of 20] · Marginal Tie [6 of 20] · Slower [2 of 20]* - and adds *Never Slower* when a whole run ends with none slower.
+- **Leaves nothing behind:** test files go only into a `Choppy Benchmark (temporary)` folder on each drive, removed at the end - after *Stop* too - or at Choppy's next start if it was closed in the middle. Nothing else on the drives is touched.
+- **Report:** every route and case with both average speeds and times, the time saved and the verdict, and the PC: CPU, memory, Windows build, each drive's model, bus and file system. Saved as `%LOCALAPPDATA%\Choppy\Logs\benchmark-<date>.html` plus a `.json` with every run's raw times, to compare PCs and versions; *Copy results* puts a short table on the clipboard.
 
-*Quick* took 8 min 45 s for the five drives below; *Thorough* takes about three times as long.
-
-**On this PC** (Ryzen 5 5600X, 16 GB, Windows 10 22H2; v1.38, *Quick*): Choppy faster on 17 of 26 cases, tie on 7, slower on 2. MB/s until the copies are on the disk, Choppy / Windows:
+**On this PC** (Ryzen 5 5600X, 16 GB, Windows 10 22H2; v1.41, *Quick*, 13 min 54 s): Choppy is Faster [12 of 20] · Marginal Tie [6 of 20] · Slower [2 of 20]. Average time until the copies are on the disk, Choppy / Windows (time saved):
 
 | Route | One big file | Small files |
 |---|---|---|
-| Within the NVMe SSD (1 GB / 1,000 files) | 2.54 GB/s / 2.02 GB/s | 265 / 59 |
-| NVMe → hard disk (512 MB / 500 files) | 177 / 186 (tie) | 56 / 29 |
-| Hard disk → NVMe | 180 / 180 | 50 / 16 |
-| Within one hard disk | 83 / 97 | 31 / 13 |
-| NVMe → 10 Gbps USB drive (1 GB / 1,000 files) | 800 / 689 | 133 / 48 |
-| 10 Gbps USB drive → NVMe | 906 / 884 (tie) | 151 / 58 |
-| Within the 10 Gbps USB drive | 446 / 378 | 113 / 44 |
-| NVMe → USB SSD (1 GB / 1,000 files) | 378 / 349 | 71 / 20 |
-| USB SSD → NVMe | 353 / 346 (tie) | 184 / 47 |
+| Within the NVMe SSD (2 GB / 1,000 files) | 0.79 / 0.90 s (+13%) | 0.68 / 3.28 s (+79%) |
+| NVMe → hard disk (1 GB / 500 files) | 4.88 / 4.85 s (−1%) | 2.10 / 3.09 s (+32%) |
+| Hard disk → NVMe | 5.87 / 5.61 s (−5%) | 2.05 / 5.86 s (+65%) |
+| Within one hard disk | 10.5 / 11.0 s (+4%) | 3.13 / 7.55 s (+58%) |
+| NVMe → USB drive (here on a 40 MB/s port: 512 MB / 250 files) | 14.4 / 14.5 s (+1%) | 1.83 / 2.49 s (+26%) |
+| USB drive → NVMe (1 GB / 500 files) | 24.6 / 24.7 s (0%) | 2.94 / 4.06 s (+28%) |
 
-The second hard disk gave the same picture: small files 1.3-3.1x, big files 0.94-0.96x. Windows writes a big file to a hard disk into memory first and is "done" at once; the time until it is on the disk is what the verdict counts.
-
-Since v1.40 a big file within one hard disk is read whole (up to 512 MB at a time) before it is written: there Choppy and Windows now tie - 95 / 96 MB/s within the first disk, 90 / 80 within the second (before: 83 / 97). From and to a hard disk the two tie within the noise over ten runs each (where the file lands on the platter moves both by up to 20%).
+The second hard disk gave the same picture: small files +35% to +66%, big files −4% to +3%. The two *Slower* were hard disk → NVMe: Choppy then tried slower ways of reading the disk on every copy; without those trials (as released) it measured −3% and −1% over three runs each - Marginal Ties.
 
 ## Measured
 

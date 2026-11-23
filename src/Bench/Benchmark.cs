@@ -21,7 +21,7 @@ namespace Choppy.Bench
     internal sealed class Benchmark
     {
         public const long MB = 1L << 20;
-        public const double TieMargin = 0.04;    // closer than 4% is a tie
+        public const double TieMargin = 0.04;    // less than 4% of the time apart is a Marginal Tie
 
         public bool Thorough;                     // bigger files, a mixed folder, three rounds
         public bool Network;                      // mapped network drives too
@@ -171,12 +171,14 @@ namespace Choppy.Bench
         }
 
         // Sizes go by the route's speed in three steps (not a continuous scale): the same PC gets the same sizes every
-        // time, so runs of different versions compare. Quick: 1 GB + 1,000 small files where it goes at 350 MB/s or
-        // more, 512 MB + 500 below that, 256 MB + 250 under 40 MB/s. Thorough: twice that, a mixed folder, three rounds.
+        // time, so runs of different versions compare. Quick: 2 GB + 1,000 small files where it goes at 350 MB/s or
+        // more, 1 GB + 500 below that, 512 MB + 250 under 40 MB/s. Thorough: 4 GB / 2 GB / 1 GB and 2,000 / 1,000 / 500
+        // small files, a mixed folder, three rounds. A big file is big: a copy of a few seconds is mostly its start and
+        // where on the platter it lands (512 MB within a hard disk moved by up to 20% from one run to the next).
         const double FastMBps = 350, SlowMBps = 40;
         static readonly long[] MixedBig = { 96 * MB, 160 * MB, 256 * MB };
         const int MixedSmall = 400;
-        double BudgetSeconds { get { return Thorough ? 30 * 60 : 10 * 60; } }
+        double BudgetSeconds { get { return Thorough ? 45 * 60 : 15 * 60; } }
 
         /// <summary>Speed class of a route: 0 = fast, 1 = medium, 2 = slow.</summary>
         static int SpeedClass(Route r)
@@ -185,7 +187,7 @@ namespace Choppy.Bench
             return sp >= FastMBps ? 0 : sp >= SlowMBps ? 1 : 2;
         }
 
-        long BigFor(int step) { return Tiny ? 64 * MB : (Thorough ? 2048 * MB : 1024 * MB) >> Math.Min(step, 3); }
+        long BigFor(int step) { return Tiny ? 64 * MB : (Thorough ? 4096 * MB : 2048 * MB) >> Math.Min(step, 3); }
         int SmallFor(int step) { return Tiny ? 100 : Math.Max(125, (Thorough ? 2000 : 1000) >> Math.Min(step, 3)); }
 
         /// <summary>Space a drive needs at most: one source and one copy of everything, and room to spare.</summary>
@@ -365,7 +367,7 @@ namespace Choppy.Bench
             var held = BenchFiles.Lock();
             try
             {
-                if (held == null) throw new InvalidOperationException("Another benchmark is running (in another Choppy window or on the command line).");
+                if (held == null) throw new InvalidOperationException("Another Benchmark is running (in another Choppy window or on the command line).");
                 Step("Removing what an earlier run left behind", 1);
                 BenchFiles.CleanLeftovers();
                 Step("Looking at the drives", 2);
@@ -621,37 +623,21 @@ namespace Choppy.Bench
         // ================= the verdict =================
 
         /// <summary>
-        /// +1 = Choppy faster, -1 = slower, 0 = a tie. The ratio is Choppy's speed over Windows' (their median times).
-        /// A difference within 4%, or within the runs' own scatter, is a tie.
+        /// The time decides: saved = how much less time Choppy took than Windows, as a share of Windows' time (their
+        /// average times; below 0 = Choppy took longer). +1 = Faster, -1 = Slower, 0 = a Marginal Tie (less than 4% apart).
         /// </summary>
-        public static int Judge(IList<double> choppySecs, IList<double> windowsSecs, out double ratio, out double noise)
+        public static int Judge(IList<double> choppySecs, IList<double> windowsSecs, out double saved)
         {
-            ratio = 0; noise = TieMargin;
+            saved = 0;
             if (choppySecs.Count == 0 || windowsSecs.Count == 0) return 0;
-            double c = Median(choppySecs), w = Median(windowsSecs);
+            double c = Mean(choppySecs), w = Mean(windowsSecs);
             if (c <= 0 || w <= 0) return 0;
-            ratio = w / c;
-            noise = Math.Max(TieMargin, 0.5 * Math.Max(Spread(choppySecs), Spread(windowsSecs)));
-            double diff = ratio >= 1 ? ratio - 1 : 1 / ratio - 1;
-            if (diff < noise) return 0;
-            return ratio > 1 ? 1 : -1;
+            saved = (w - c) / w;
+            if (Math.Abs(saved) < TieMargin) return 0;
+            return saved > 0 ? 1 : -1;
         }
 
-        public static double Median(IList<double> x)
-        {
-            var s = x.OrderBy(v => v).ToArray();
-            int n = s.Length;
-            if (n == 0) return 0;
-            return n % 2 == 1 ? s[n / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
-        }
-
-        /// <summary>How far apart a program's own runs are: (slowest - fastest) / average.</summary>
-        static double Spread(IList<double> x)
-        {
-            if (x.Count < 2) return 0;
-            double avg = x.Average();
-            return avg > 0 ? (x.Max() - x.Min()) / avg : 0;
-        }
+        public static double Mean(IList<double> x) { return x.Count == 0 ? 0 : x.Average(); }
     }
 
     internal sealed class BenchStatus

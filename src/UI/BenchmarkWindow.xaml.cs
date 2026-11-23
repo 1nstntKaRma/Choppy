@@ -16,7 +16,7 @@ using Choppy.Engine;
 namespace Choppy.UI
 {
     /// <summary>
-    /// Benchmark: Choppy against Windows' own copy on every drive of this PC. Lists the drives (and why one is left
+    /// Benchmark: Choppy VS Windows (its own copy engine) on every drive of this PC. Lists the drives (and why one is left
     /// out), runs on its own thread with progress and an estimate, shows each case as it finishes, and saves the report.
     /// </summary>
     public partial class BenchmarkWindow : Window
@@ -132,7 +132,7 @@ namespace Choppy.UI
 
         // ================= results =================
 
-        static readonly double[] Cols = { 150, -1, 112, 112, 70, 152 };
+        static readonly double[] Cols = { 150, -1, 108, 108, 100, 146 };
 
         Grid RowGrid()
         {
@@ -145,7 +145,7 @@ namespace Choppy.UI
         {
             var g = ResultsHead;
             foreach (var w in Cols) g.ColumnDefinitions.Add(new ColumnDefinition { Width = w < 0 ? new GridLength(1, GridUnitType.Star) : new GridLength(w) });
-            string[] names = { "ROUTE", "WHAT", "CHOPPY", "WINDOWS", "RATIO", "RESULT" };
+            string[] names = { "ROUTE", "WHAT", "CHOPPY", "WINDOWS", "TIME SAVED", "RESULT" };
             for (int i = 0; i < names.Length; i++)
             {
                 var t = new TextBlock { Text = names[i], Style = (Style)Application.Current.FindResource("T.Cap") };
@@ -153,7 +153,7 @@ namespace Choppy.UI
                 if (i == 5) t.Margin = new Thickness(22, 0, 0, 0);
                 Cell(g, i, t);
             }
-            ResultsHead.ToolTip = "MB/s until the copies are on the disk; under it, until each one said it was done";
+            ResultsHead.ToolTip = "The average speed, and under it the average time, until the copies are on the disk. Time saved: how much less time Choppy took than Windows (green), or more (red)";
         }
 
         void AddRow(BenchResult r)
@@ -182,13 +182,14 @@ namespace Choppy.UI
             }
             else
             {
-                Cell(g, 2, Speed(r.ChoppyMBps, r.ChoppyDoneMBps, Res("B.NowSpeed")));
-                Cell(g, 3, Speed(r.WindowsMBps, r.WindowsDoneMBps, Res("B.Text")));
-                Cell(g, 4, new TextBlock { Text = BenchText.Ratio(r.Ratio), FontSize = 14, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Right, Foreground = Res("B.Text2") });
-                Cell(g, 5, Badge(r.Verdict > 0 ? "Choppy faster" : r.Verdict < 0 ? "Choppy slower" : "Tie", r.Verdict, false));
-                g.ToolTip = "Choppy: " + string.Join(", ", r.Runs.Where(x => x.Choppy).Select(x => x.OnDisk.ToString("0.00") + " s"))
-                    + "\nWindows: " + string.Join(", ", r.Runs.Where(x => !x.Choppy).Select(x => x.OnDisk.ToString("0.00") + " s"))
-                    + "\nA tie within ±" + (r.Noise * 100).ToString("0.#") + "%" + (r.Method != null ? "\nChoppy's way: " + r.Method : "");
+                Cell(g, 2, Speed(r.ChoppyMBps, r.ChoppySecs, Res("B.NowSpeed")));
+                Cell(g, 3, Speed(r.WindowsMBps, r.WindowsSecs, Res("B.Text")));
+                Cell(g, 4, new TextBlock { Text = BenchText.Saved(r.Saved), FontSize = 14, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Right,
+                    Foreground = Res(BenchText.SavedClass(r.Saved) == "good" ? "B.Good" : BenchText.SavedClass(r.Saved) == "bad" ? "B.Bad" : "B.Dim") });
+                Cell(g, 5, Badge(BenchReport.Word(r.Verdict), r.Verdict, false));
+                g.ToolTip = "Choppy: " + string.Join(", ", r.Runs.Where(x => x.Choppy).Select(x => BenchText.Secs(x.OnDisk)))
+                    + "\nWindows: " + string.Join(", ", r.Runs.Where(x => !x.Choppy).Select(x => BenchText.Secs(x.OnDisk)))
+                    + "\nLess than " + (int)(Benchmark.TieMargin * 100) + "% apart is a " + BenchReport.TieWord + (r.Method != null ? "\nChoppy's way: " + r.Method : "");
             }
             var row = new Border { Child = g, BorderBrush = Res("B.Sep"), BorderThickness = new Thickness(0, newRoute && ResultsList.Children.Count > 0 ? 1 : 0, 0, 0) };
             ResultsList.Children.Add(row);
@@ -206,11 +207,12 @@ namespace Choppy.UI
             if (Top + ActualHeight > SystemParameters.WorkArea.Bottom && !TestHook.Park) Top = Math.Max(SystemParameters.WorkArea.Top, SystemParameters.WorkArea.Bottom - ActualHeight - 12);
         }
 
-        static FrameworkElement Speed(double disk, double done, Brush color)
+        /// <summary>The average speed, and under it the average time.</summary>
+        static FrameworkElement Speed(double mbps, double secs, Brush color)
         {
             var sp = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 0, 4, 0) };
-            sp.Children.Add(new TextBlock { Text = BenchText.Speed(disk), FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = color, HorizontalAlignment = HorizontalAlignment.Right });
-            sp.Children.Add(new TextBlock { Text = "done " + BenchText.Speed(done), FontSize = 12, Foreground = Res("B.Faint"), HorizontalAlignment = HorizontalAlignment.Right });
+            sp.Children.Add(new TextBlock { Text = BenchText.Speed(mbps), FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = color, HorizontalAlignment = HorizontalAlignment.Right });
+            sp.Children.Add(new TextBlock { Text = BenchText.Secs(secs), FontSize = 12, Foreground = Res("B.Faint"), HorizontalAlignment = HorizontalAlignment.Right });
             return sp;
         }
 
@@ -231,22 +233,19 @@ namespace Choppy.UI
             };
         }
 
-        void ShowSummary(List<BenchResult> results, bool final)
+        /// <summary>"Choppy is Faster [10 of 19] · Marginal Tie [9 of 19] · Never Slower", each part in its color.</summary>
+        void ShowSummary(List<BenchResult> results, bool final, bool ended = false)
         {
             int f = results.Count(r => r.Scored && r.Verdict > 0), t = results.Count(r => r.Scored && r.Verdict == 0), s = results.Count(r => r.Scored && r.Verdict < 0), n = f + t + s;
             SummaryText.Inlines.Clear();
             if (n == 0) { SummaryText.Inlines.Add(new Run(final ? "No case was measured" : "Each case shows here as it finishes")); SummaryText.Foreground = final ? Res("B.Text") : Res("B.Dim"); return; }
             SummaryText.Foreground = Res("B.Text");
             if (!final) SummaryText.Inlines.Add(new Run("So far: ") { Foreground = Res("B.Dim") });
-            SummaryText.Inlines.Add(new Run("Choppy "));
-            if (f == n) SummaryText.Inlines.Add(new Run("faster on all " + n) { Foreground = Res("B.Good") });
-            else
-            {
-                SummaryText.Inlines.Add(new Run("faster on " + f) { Foreground = Res("B.Good") });
-                SummaryText.Inlines.Add(new Run(" of " + n));
-                if (t > 0) { SummaryText.Inlines.Add(new Run(" · ")); SummaryText.Inlines.Add(new Run("tie on " + t) { Foreground = Res("B.Dim") }); }
-                if (s > 0) { SummaryText.Inlines.Add(new Run(" · ")); SummaryText.Inlines.Add(new Run("slower on " + s) { Foreground = Res("B.Bad") }); }
-            }
+            SummaryText.Inlines.Add(new Run("Choppy is "));
+            SummaryText.Inlines.Add(new Run("Faster [" + f + " of " + n + "]") { Foreground = Res("B.Good") });
+            if (t > 0) { SummaryText.Inlines.Add(new Run(" · ")); SummaryText.Inlines.Add(new Run(BenchReport.TieWord + " [" + t + " of " + n + "]") { Foreground = Res("B.Dim") }); }
+            if (s > 0) { SummaryText.Inlines.Add(new Run(" · ")); SummaryText.Inlines.Add(new Run("Slower [" + s + " of " + n + "]") { Foreground = Res("B.Bad") }); }
+            else if (final && ended && t > 0) { SummaryText.Inlines.Add(new Run(" · ")); SummaryText.Inlines.Add(new Run("Never Slower") { Foreground = Res("B.Good") }); }
         }
 
         // ================= running =================
@@ -270,13 +269,14 @@ namespace Choppy.UI
             ProgressPanel.Visibility = Visibility.Visible;
             ResultsPanel.Visibility = Visibility.Visible;
             Intro.Visibility = Visibility.Collapsed;
+            Estimate.Visibility = Visibility.Collapsed;   // the progress line has the times now
             if (drives != null) ShowDrives(drives, false);
             SummaryNote.Text = "";
             ShowSummary(new List<BenchResult>(), false);
             FootNote.Text = "Keep other work off these drives while it runs: it measures them.";
             Bar.Width = 0;
             StepText.Text = "Starting";
-            TimeText.Text = "";
+            ElapsedVal.Text = "0 s"; RemainLabel.Text = ""; RemainVal.Text = "";
             worker = new Thread(() =>
             {
                 BenchReport rep;
@@ -296,7 +296,10 @@ namespace Choppy.UI
             else StepText.Text = s.Text;
             double track = ((FrameworkElement)Bar.Parent).ActualWidth;
             Bar.Width = Math.Max(0, track * s.Fraction);
-            TimeText.Text = Format.Short(s.Elapsed) + (s.Elapsed.TotalSeconds > 8 && !bench.IsCanceled ? " · about " + Format.Short(s.Remaining) + " left" : "");
+            // the copy window's wording and colors: Elapsed 2 min    Remaining 6 min
+            ElapsedVal.Text = Format.Short(s.Elapsed);
+            RemainLabel.Text = bench.IsCanceled ? "" : "    Remaining ";
+            RemainVal.Text = bench.IsCanceled ? "" : s.Elapsed.TotalSeconds > 8 ? Format.Short(s.Remaining) : "…";
             if (s.Results > shown) AddNew(bench.ResultsSoFar(), false);
         }
 
@@ -313,7 +316,11 @@ namespace Choppy.UI
             worker = null;
             report = rep;
             AddNew(rep.Results.ToList(), true);
-            ProgressPanel.Visibility = Visibility.Collapsed;
+            ShowSummary(rep.Results.ToList(), true, rep.Ended);
+            // the progress line stays, finished: the time it took, nothing remaining
+            StepText.Text = rep.Canceled ? "Stopped" : rep.Error != null ? "Couldn't finish" : "Finished";
+            if (rep.Ended) Bar.Width = ((FrameworkElement)Bar.Parent).ActualWidth;
+            ElapsedVal.Text = BenchText.Duration(rep.Seconds); RemainLabel.Text = ""; RemainVal.Text = "";
             string saved = null;
             try { rep.Save(null, out htmlPath, out jsonPath); saved = Path.GetFileName(htmlPath); }
             catch (Exception ex) { saved = null; rep.Notes.Add("The report couldn't be saved: " + ex.Message); }
@@ -321,13 +328,12 @@ namespace Choppy.UI
             if (rep.Canceled) notes.Add("Stopped before the end - the cases that finished are shown.");
             if (rep.Error != null) notes.Add(rep.Error);
             if (rep.Scored > 0)
-                notes.Add("Counted by the time until the copies are on the disk; within " + (int)(Benchmark.TieMargin * 100) + "% (or within each one's own spread) is a tie. "
-                    + "By the time each one says it's done: " + rep.DoneSummary.Replace("Choppy faster", "faster") + ".");
+                notes.Add("The time decides: the average of each one's runs until the copies are on the disk. Less than " + (int)(Benchmark.TieMargin * 100) + "% apart is a " + BenchReport.TieWord + ".");
             SummaryNote.Text = string.Join(" ", notes);
             if (rep.Drives != null) ShowDrives(rep.Drives, true);
             ResultsScroll.ScrollToTop();
             FitToScreen();
-            Estimate.Text = "took " + BenchText.Duration(rep.Seconds);
+            Estimate.Text = "";
             FootNote.Text = saved != null ? "Saved in Choppy's Logs folder: " + saved + " and .json" + (rep.Notes.Count > 0 ? " · " + rep.Notes[0] : "")
                 : string.Join(" ", rep.Notes);
             CopyBtn.Visibility = rep.Results.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -343,7 +349,7 @@ namespace Choppy.UI
         bool AskStop()
         {
             if (worker == null || bench.IsCanceled) return worker != null;
-            if (!Dialogs.Ask(this, "Stop the benchmark?", "Its test files are removed. The cases that finished stay in the report.", "Stop", "Keep going")) return false;
+            if (!Dialogs.Ask(this, "Stop the Benchmark?", "Its test files are removed. The cases that finished stay in the report.", "Stop", "Keep going")) return false;
             if (worker == null) return false;   // it ended while the question was up
             bench.Cancel();
             StartBtn.IsEnabled = false;

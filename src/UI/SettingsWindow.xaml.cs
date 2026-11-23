@@ -20,6 +20,8 @@ namespace Choppy.UI
             if (App.Current2 != null && App.Current2.Elevated) TakeoverRow.Visibility = Visibility.Collapsed;
             Version.Text = "v" + typeof(SettingsWindow).Assembly.GetName().Version.ToString(3);
             WholeNumberBox.Attach(LimitValue);
+            WholeNumberBox.Attach(CloseValue);
+            BuildUnitChart();
             Reload();
             Loaded += (o, e) => Native2.Rounded(this);
             MouseLeftButtonDown += (o, e) => { if (e.GetPosition(this).Y < 46) try { DragMove(); } catch { } };
@@ -48,6 +50,8 @@ namespace Choppy.UI
             LimitUnit.Text = LimitInMbps ? "Mbps" : "MB/s";
             LimitValue.IsEnabled = Limit.IsChecked == true;
             AutoClose.IsChecked = s.CloseWhenDone;
+            if (!CloseValue.IsKeyboardFocusWithin) CloseValue.Text = s.CloseAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            CloseValue.IsEnabled = s.CloseWhenDone;
             if (s.SpeedUnit == "mbps") UMbps.IsChecked = true; else if (s.SpeedUnit == "mbs") UMbs.IsChecked = true; else UAuto.IsChecked = true;
             Takeover.IsChecked = s.ExplorerTakeover;
             UcNote.Visibility = Explorer.Takeover.UltracopierInstalled() ? Visibility.Visible : Visibility.Collapsed;
@@ -62,6 +66,9 @@ namespace Choppy.UI
             s.Policy = PReplace.IsChecked == true ? ConflictPolicy.Replace : PNewer.IsChecked == true ? ConflictPolicy.ReplaceOlder
                 : PSkip.IsChecked == true ? ConflictPolicy.Skip : PBoth.IsChecked == true ? ConflictPolicy.KeepBoth : ConflictPolicy.Ask;
             s.CloseWhenDone = AutoClose.IsChecked == true;
+            CloseValue.IsEnabled = s.CloseWhenDone;
+            int secs = Format.ParseLimit(CloseValue.Text);   // whole seconds only
+            if (secs >= 1 && secs <= 999) s.CloseAfterSeconds = secs;
             string unit = UMbps.IsChecked == true ? "mbps" : UMbs.IsChecked == true ? "mbs" : "auto";
             if (unit != s.SpeedUnit)
             {
@@ -90,6 +97,76 @@ namespace Choppy.UI
         {
             if (!loading) Changed(sender, null);
         }
+
+        void CloseValue_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e)
+        {
+            if (!loading) Changed(sender, null);
+        }
+
+        void UnitHelp_Click(object sender, RoutedEventArgs e) { UnitHelp.IsOpen = !UnitHelp.IsOpen; }
+
+        static System.Windows.Controls.Grid ChartRow(double bottom)
+        {
+            var g = new System.Windows.Controls.Grid { Margin = new Thickness(0, 0, 0, bottom) };
+            g.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(96) });
+            g.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            g.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(92) });
+            return g;
+        }
+
+        /// <summary>
+        /// The "?" card: 10 / 100 / 1,000 / 10,000 Mbps in MB/s, bars on a log scale (each step ten times the last). The
+        /// header sits on the same columns: "Mbps" above the Mbps values, a long arrow, "MB/s" above the MB/s values.
+        /// </summary>
+        void BuildUnitChart()
+        {
+            int[] mbps = { 10, 100, 1000, 10000 };
+            string[] what = { "Slow Upload", "Home Internet", "Gigabit Network", "10-Gigabit Network" };
+            var app = Application.Current;
+            System.Func<string, System.Windows.Media.Brush> res = k => (System.Windows.Media.Brush)app.FindResource(k);
+            var head = ChartRow(4);
+            head.Children.Add(new System.Windows.Controls.TextBlock { Text = "Mbps", FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = res("B.AccentText"), HorizontalAlignment = HorizontalAlignment.Right });
+            var arrow = new System.Windows.Controls.Grid { Margin = new Thickness(14, 2, 14, 0), VerticalAlignment = VerticalAlignment.Center };
+            arrow.Children.Add(new System.Windows.Controls.Border { Height = 2, CornerRadius = new CornerRadius(1), Background = res("B.Faint"), Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center });
+            arrow.Children.Add(new System.Windows.Shapes.Path { Data = System.Windows.Media.Geometry.Parse("M0,0 L9,5 L0,10 Z"), Fill = res("B.Faint"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center });
+            System.Windows.Controls.Grid.SetColumn(arrow, 1);
+            head.Children.Add(arrow);
+            var mbsHead = new System.Windows.Controls.TextBlock { Text = "MB/s", FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = res("B.AvgSpeed"), HorizontalAlignment = HorizontalAlignment.Right };
+            System.Windows.Controls.Grid.SetColumn(mbsHead, 2);
+            head.Children.Add(mbsHead);
+            UnitRows.Children.Add(head);
+            UnitRows.Children.Add(new System.Windows.Controls.TextBlock { Text = "8 bits make a byte: divide Mbps by about 8.4 for MB/s", FontSize = 12.5, Foreground = res("B.Dim"), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 2, 0, 12) });
+            for (int i = 0; i < mbps.Length; i++)
+            {
+                double mbs = mbps[i] * 1e6 / 8 / (1024 * 1024);
+                var g = ChartRow(i < mbps.Length - 1 ? 9 : 0);
+                // right-aligned: every "Mbps" under the header's "Mbps", every "MB/s" under "MB/s"
+                var left = new System.Windows.Controls.TextBlock { FontSize = 13.5, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right };
+                left.Inlines.Add(new System.Windows.Documents.Run(mbps[i].ToString("N0", System.Globalization.CultureInfo.InvariantCulture)) { FontWeight = FontWeights.SemiBold, Foreground = (System.Windows.Media.Brush)app.FindResource("B.AccentText") });
+                left.Inlines.Add(new System.Windows.Documents.Run(" Mbps") { Foreground = (System.Windows.Media.Brush)app.FindResource("B.Dim") });
+                g.Children.Add(left);
+                var track = new System.Windows.Controls.Grid { Height = 8, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 14, 0) };
+                track.Children.Add(new System.Windows.Controls.Border { CornerRadius = new CornerRadius(4), Background = (System.Windows.Media.Brush)app.FindResource("B.Track") });
+                var bar = new System.Windows.Controls.Border { CornerRadius = new CornerRadius(4), Background = (System.Windows.Media.Brush)app.FindResource("B.Progress"), HorizontalAlignment = HorizontalAlignment.Left };
+                int k = i;
+                track.SizeChanged += (o, e) => bar.Width = e.NewSize.Width * (k + 1) / mbps.Length;
+                track.Children.Add(bar);
+                var mid = new System.Windows.Controls.StackPanel { VerticalAlignment = VerticalAlignment.Center };
+                mid.Children.Add(track);
+                mid.Children.Add(new System.Windows.Controls.TextBlock { Text = what[i], FontSize = 11, Foreground = (System.Windows.Media.Brush)app.FindResource("B.Faint"), Margin = new Thickness(14, 3, 0, 0) });
+                System.Windows.Controls.Grid.SetColumn(mid, 1);
+                g.Children.Add(mid);
+                var right = new System.Windows.Controls.TextBlock { FontSize = 13.5, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right };
+                right.Inlines.Add(new System.Windows.Documents.Run(mbs >= 100 ? mbs.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) : mbs.ToString(mbs >= 10 ? "0.0" : "0.00", System.Globalization.CultureInfo.InvariantCulture)) { FontWeight = FontWeights.SemiBold, Foreground = (System.Windows.Media.Brush)app.FindResource("B.AvgSpeed") });
+                right.Inlines.Add(new System.Windows.Documents.Run(" MB/s") { Foreground = (System.Windows.Media.Brush)app.FindResource("B.Dim") });
+                System.Windows.Controls.Grid.SetColumn(right, 2);
+                g.Children.Add(right);
+                UnitRows.Children.Add(g);
+            }
+        }
+
+        /// <summary>The "?" card itself (tests render it).</summary>
+        internal FrameworkElement UnitChartForTest { get { return UnitHelpCard; } }
 
         void Takeover_Changed(object sender, RoutedEventArgs e)
         {
@@ -125,6 +202,8 @@ namespace Choppy.UI
                     break;
                 case "limit": if (value == "0") Limit.IsChecked = false; else { LimitValue.Text = value; Limit.IsChecked = true; } break;
                 case "autoclose": AutoClose.IsChecked = value == "1"; break;
+                case "closeafter": CloseValue.Text = value; break;
+                case "unithelp": UnitHelp.IsOpen = value == "1"; break;
                 case "unit": if (value == "mbps") UMbps.IsChecked = true; else if (value == "mbs") UMbs.IsChecked = true; else UAuto.IsChecked = true; break;
             }
         }

@@ -950,16 +950,26 @@ namespace Choppy.Engine
             long tail = 0;
             if (Spec.TailMB >= 0) tail = (long)Spec.TailMB << 20;
             // never for a USB stick: it may be pulled out right after "done"
-            else if (!Verify && Spec.Op == OpKind.Copy && !Spec.NoCachedTail && !Plan.NoCachedTail && (DstVol == null || (DstVol.Kind != DeviceKind.Usb && !DstVol.Removable)))
+            else if (!Verify && Spec.Op == OpKind.Copy && !Spec.NoCachedTail && (DstVol == null || (DstVol.Kind != DeviceKind.Usb && !DstVol.Removable)))
             {
                 long after = Interlocked.Read(ref TotalBytes) - Interlocked.Read(ref DoneBytes) - (f.Size - t.Done);
                 if (after < (64L << 20)) tail = CacheBudget();
             }
             // a move flushes the copy to the disk before the original can go
             var tuner = pipeTuner != null && !pipeTuner.Settled ? pipeTuner : null;
-            // while it still measures, at most a quarter of the file's end waits in memory: the rest is room for the trials
-            if (tuner != null) tail = Math.Min(tail, f.Size / 4);
             if (pipeTuner != null && pipeTuner.Settled) tune = pipeTuner.Best;
+            // to a hard disk, a last file that fits in memory goes there the way Explorer's copy sends it: through the
+            // Windows cache, its size reserved first, done once it is in memory - Windows writes it out right after (512 MB
+            // NVMe to hard disk: Explorer done in 0.15 s, the copy straight to the disk 2.7-3.1 s). One hard disk: only once
+            // the whole batch is read (the plan says so), so the writing never competes with the reads. Nothing to try then.
+            if (tail >= f.Size && Spec.TailMB < 0 && DstVol != null && DstVol.Kind == DeviceKind.Hdd && Spec.PipeChunkMB == 0)
+            {
+                tuner = null;
+                tune = new PipeTuning { Align = tune.Align, Chunk = tune.Chunk, Slots = tune.Slots, WriteBatch = tune.WriteBatch, Phased = tune.Phased, Prealloc = true,
+                    CachedWriteChunk = tune.CachedWriteChunk, TailAfterRead = tune.TailAfterRead, ReadDepth = tune.ReadDepth, WriteStep = tune.WriteStep };
+            }
+            // while it still measures, at most a quarter of the file's end waits in memory: the rest is room for the trials
+            else if (tuner != null) tail = Math.Min(tail, f.Size / 4);
             var r = BigCopy.Copy(f.Src, temp, f.CTime, f.MTime, f.Attr, tune, Verify, Spec.Op == OpKind.Move, t.RenameTo, tail, progress, tuner, LimitStep);
             if (tuner != null && tuner.Settled && tuner.Changed && !Plan.Tuned)
             {

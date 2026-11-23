@@ -14,9 +14,10 @@ namespace Choppy.Bench
     /// </summary>
     internal static class BenchFiles
     {
-        public const string FolderName = "Choppy benchmark (temporary)";
-        public const string MarkerName = "Choppy benchmark - safe to delete.txt";
-        const string MarkerHead = "Choppy benchmark test data";
+        // Windows names don't care about case: folders and markers of earlier versions ("Choppy benchmark ...") are these too
+        public const string FolderName = "Choppy Benchmark (temporary)";
+        public const string MarkerName = "Choppy Benchmark - safe to delete.txt";
+        const string MarkerHead = "Choppy Benchmark test data";
         static readonly object listLock = new object();
 
         /// <summary>Every temporary folder the benchmark made and hasn't removed yet (cleaned at the next start).</summary>
@@ -49,7 +50,7 @@ namespace Choppy.Bench
                     try
                     {
                         Directory.CreateDirectory(dir);
-                        File.WriteAllText(Path.Combine(dir, MarkerName), MarkerHead + " - Choppy's benchmark writes its test files here and removes this folder"
+                        File.WriteAllText(Path.Combine(dir, MarkerName), MarkerHead + " - Choppy's Benchmark writes its test files here and removes this folder"
                             + " when it ends (or at Choppy's next start). Safe to delete." + Environment.NewLine, Encoding.UTF8);
                         return dir;
                     }
@@ -73,7 +74,7 @@ namespace Choppy.Bench
             {
                 string m = Path.Combine(dir, MarkerName);
                 if (!File.Exists(m)) return false;
-                using (var r = new StreamReader(m, Encoding.UTF8)) { string first = r.ReadLine(); return first != null && first.StartsWith(MarkerHead, StringComparison.Ordinal); }
+                using (var r = new StreamReader(m, Encoding.UTF8)) { string first = r.ReadLine(); return first != null && first.StartsWith(MarkerHead, StringComparison.OrdinalIgnoreCase); }
             }
             catch { return false; }
         }

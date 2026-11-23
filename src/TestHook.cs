@@ -62,6 +62,8 @@ namespace Choppy
                 case "shot":
                     {
                         var p = arg.Split(new[] { ' ' }, 2);
+                        // the settings' "?" card is a pop-up of its own: "set unithelp 1", then "shot unithelp file.png"
+                        if (p[0] == "unithelp") { if (app.SettingsWin == null) return "settings not open"; ShotElement(app.SettingsWin.UnitChartForTest, p[1]); return "ok"; }
                         Window w = p[0] == "conflict" ? (Window)app.OpenConflict : p[0] == "settings" ? (Window)app.SettingsWin : p[0] == "dialog" ? app.TopDialog
                             : p[0] == "benchmark" ? (Window)app.BenchWin : app.Main;
                         if (w == null) return "no window";
@@ -119,6 +121,28 @@ namespace Choppy
                     return "ok";
             }
             return "unknown command";
+        }
+
+        static void ShotElement(FrameworkElement e, string file)
+        {
+            // its shadow widens what is drawn past the card itself: left out of the picture
+            var fx = e.Effect;
+            e.Effect = null;
+            e.UpdateLayout();
+            double scale = 1.5, pad = 14, w = e.ActualWidth + 2 * pad, h = e.ActualHeight + 2 * pad;
+            var rtb = new RenderTargetBitmap((int)Math.Ceiling(w * scale), (int)Math.Ceiling(h * scale), 96 * scale, 96 * scale, PixelFormats.Pbgra32);
+            var dv = new DrawingVisual();
+            using (var dc = dv.RenderOpen())
+            {
+                dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(0x1F, 0x24, 0x2B)), null, new Rect(0, 0, w, h));
+                dc.DrawRectangle(new VisualBrush(e) { Stretch = Stretch.None, ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, e.ActualWidth, e.ActualHeight), AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top }, null, new Rect(pad, pad, e.ActualWidth, e.ActualHeight));
+            }
+            rtb.Render(dv);
+            e.Effect = fx;
+            var enc = new PngBitmapEncoder();
+            enc.Frames.Add(BitmapFrame.Create(rtb));
+            Directory.CreateDirectory(Path.GetDirectoryName(file));
+            using (var fs = File.Create(file)) enc.Save(fs);
         }
 
         static void Shot(Window w, string file)

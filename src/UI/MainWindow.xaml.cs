@@ -581,12 +581,12 @@ namespace Choppy.UI
                 BtnLog.Visibility = Extended && j.LogPath != null ? Visibility.Visible : Visibility.Collapsed;
                 BtnOpen.Visibility = canceled && j.DoneFiles == 0 ? Visibility.Collapsed : Visibility.Visible;
 
-                if (clean && Settings.Current.CloseWhenDone && !Manager.HasWaiting && AutoCloseAllowed) closeAt = DateTime.Now.AddSeconds(4);
+                if (clean && Settings.Current.CloseWhenDone && !Manager.HasWaiting && AutoCloseAllowed) closeAt = DateTime.Now.AddSeconds(Settings.Current.CloseAfterSeconds);
                 UpdateCloseButton();
             }
             if (closeAt.HasValue)
             {
-                if (IsMouseOver) closeAt = DateTime.Now.AddSeconds(4);
+                if (IsMouseOver) closeAt = DateTime.Now.AddSeconds(Settings.Current.CloseAfterSeconds);
                 else if (DateTime.Now >= closeAt.Value) { closeAt = null; Close(); return; }
             }
             string countdown = closeAt.HasValue ? "closing in " + Math.Max(1, (int)Math.Ceiling((closeAt.Value - DateTime.Now).TotalSeconds)) + " s" : null;
@@ -652,7 +652,7 @@ namespace Choppy.UI
                 if (job != null && job.IsFinished)
                 {
                     bool clean = job.Phase == JobPhase.Done && job.FailedFiles == 0 && job.SkippedFiles == 0;
-                    closeAt = s.CloseWhenDone && clean && !Manager.HasWaiting && AutoCloseAllowed ? DateTime.Now.AddSeconds(4) : (DateTime?)null;
+                    closeAt = s.CloseWhenDone && clean && !Manager.HasWaiting && AutoCloseAllowed ? DateTime.Now.AddSeconds(s.CloseAfterSeconds) : (DateTime?)null;
                 }
             }
             else if (sender == TgVerify)

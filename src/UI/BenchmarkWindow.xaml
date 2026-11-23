@@ -1,7 +1,7 @@
 <Window x:Class="Choppy.UI.BenchmarkWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Choppy benchmark" Width="860" SizeToContent="Height"
+        Title="Choppy Benchmark" Width="860" SizeToContent="Height"
         WindowStyle="None" ResizeMode="NoResize" WindowStartupLocation="CenterScreen"
         Background="{StaticResource B.Window}" BorderBrush="{StaticResource B.WinBorder}" BorderThickness="1"
         FontFamily="{StaticResource F.Ui}" Foreground="{StaticResource B.Text}"
@@ -30,7 +30,7 @@
         </Grid>
 
         <StackPanel Grid.Row="1" Margin="24,2,24,20">
-            <TextBlock Text="Choppy against Windows' own copy" FontSize="20" FontWeight="SemiBold" FontFamily="{StaticResource F.Display}"/>
+            <TextBlock Text="Choppy VS Windows" FontSize="20" FontWeight="SemiBold" FontFamily="{StaticResource F.Display}"/>
             <TextBlock x:Name="Intro" Style="{StaticResource Sub}" FontSize="13.5" Margin="0,6,0,0" LineHeight="20"
                        Text="Both copy the same test files on every drive of this PC - one big file and many small files, from the system drive to each other drive and back, and within each drive. They take turns, each one twice, and the source is never in memory. The test files go into a temporary folder on each drive and are removed at the end."/>
 
@@ -43,9 +43,9 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <RadioButton x:Name="ModeQuick" GroupName="mode" Style="{StaticResource Seg}" Margin="0,0,6,0" Content="Quick" IsChecked="True" Checked="Mode_Changed"
-                                 ToolTip="Files of 0.5-1 GB and 1,000 small files, two runs each"/>
+                                 ToolTip="Big files of 1-2 GB and up to 1,000 small files, two runs each"/>
                     <RadioButton x:Name="ModeThorough" GroupName="mode" Style="{StaticResource Seg}" Margin="0" Content="Thorough" Checked="Mode_Changed"
-                                 ToolTip="Files of 1-2 GB, 2,000 small files and a mixed folder, three runs each"/>
+                                 ToolTip="Big files of 2-4 GB, up to 2,000 small files and a mixed folder, three runs each"/>
                 </StackPanel>
                 <CheckBox x:Name="NetworkToggle" Grid.Column="1" Style="{StaticResource Toggle}" Margin="22,0,0,0" VerticalAlignment="Center" Checked="Network_Changed" Unchecked="Network_Changed"
                           ToolTip="Mapped network drives too: to and from the system drive, and within the share">
@@ -63,8 +63,11 @@
             <!-- progress -->
             <StackPanel x:Name="ProgressPanel" Margin="0,18,0,0" Visibility="Collapsed">
                 <Grid>
-                    <TextBlock x:Name="StepText" FontSize="14" Foreground="{StaticResource B.Text2}" TextTrimming="CharacterEllipsis" Margin="0,0,180,0"/>
-                    <TextBlock x:Name="TimeText" FontSize="14" Foreground="{StaticResource B.Time}" HorizontalAlignment="Right"/>
+                    <TextBlock x:Name="StepText" FontSize="14" Foreground="{StaticResource B.Text2}" TextTrimming="CharacterEllipsis" Margin="0,0,280,0"/>
+                    <!-- as in the copy window: Elapsed 2 min    Remaining 6 min -->
+                    <TextBlock FontSize="14" HorizontalAlignment="Right">
+                        <Run Text="Elapsed " Foreground="{StaticResource B.Dim}"/><Run x:Name="ElapsedVal" Foreground="{StaticResource B.Time}" FontWeight="SemiBold"/><Run x:Name="RemainLabel" Foreground="{StaticResource B.Dim}"/><Run x:Name="RemainVal" Foreground="{StaticResource B.Time}" FontWeight="SemiBold"/>
+                    </TextBlock>
                 </Grid>
                 <Grid Height="7" Margin="0,10,0,0">
                     <Border CornerRadius="3.5" Background="{StaticResource B.Track}"/>
@@ -98,7 +101,7 @@
                     <Button x:Name="CopyBtn" Style="{StaticResource Btn}" Content="Copy results" Margin="0,0,10,0" Visibility="Collapsed" Click="Copy_Click"
                             ToolTip="A short table to paste in a chat or an issue"/>
                     <Button x:Name="FolderBtn" Style="{StaticResource Btn}" Content="Open folder" Margin="0,0,10,0" Visibility="Collapsed" Click="Folder_Click"
-                            ToolTip="Choppy's Logs folder: every benchmark's page and .json"/>
+                            ToolTip="Choppy's Logs folder: every Benchmark's page and .json"/>
                     <Button x:Name="ReportBtn" Style="{StaticResource Btn}" Content="Open report" Margin="0,0,10,0" Visibility="Collapsed" Click="Report_Click"/>
                     <Button x:Name="StartBtn" Style="{StaticResource Btn.Primary}" Content="Start" Height="38" Padding="26,0" Click="Start_Click"/>
                 </StackPanel>

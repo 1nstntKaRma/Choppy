@@ -112,9 +112,11 @@ namespace Choppy.Bench
         public readonly List<BenchRun> Runs = new List<BenchRun>();
         public string Method;    // the way Choppy's Adaptive mode picked
         public string Error;
-        public double ChoppyMBps, WindowsMBps, ChoppyDoneMBps, WindowsDoneMBps;
-        public double Ratio, DoneRatio, Noise, DoneNoise;
-        public int Verdict, DoneVerdict;  // +1 Choppy faster, 0 tie, -1 Choppy slower
+        public double ChoppySecs, WindowsSecs;         // average seconds until the copies are on the disk: these decide
+        public double ChoppyMBps, WindowsMBps;         // the bytes over those average times
+        public double ChoppyDoneMBps, WindowsDoneMBps; // until each said it was done (kept in the raw data only)
+        public double Saved, DoneSaved;   // how much less time Choppy took than Windows (0.12 = 12% less; below 0 = more)
+        public int Verdict, DoneVerdict;  // +1 Faster, 0 Marginal Tie, -1 Slower
         public bool Scored;
 
         public bool Within { get { return From == To; } }
@@ -125,8 +127,10 @@ namespace Choppy.Bench
 
         public void Score()
         {
-            Verdict = Benchmark.Judge(Times(true, true), Times(false, true), out Ratio, out Noise);
-            DoneVerdict = Benchmark.Judge(Times(true, false), Times(false, false), out DoneRatio, out DoneNoise);
+            Verdict = Benchmark.Judge(Times(true, true), Times(false, true), out Saved);
+            DoneVerdict = Benchmark.Judge(Times(true, false), Times(false, false), out DoneSaved);
+            ChoppySecs = Benchmark.Mean(Times(true, true));
+            WindowsSecs = Benchmark.Mean(Times(false, true));
             ChoppyMBps = Speed(Times(true, true));
             WindowsMBps = Speed(Times(false, true));
             ChoppyDoneMBps = Speed(Times(true, false));
@@ -134,9 +138,10 @@ namespace Choppy.Bench
             Scored = Error == null && ChoppyMBps > 0 && WindowsMBps > 0;
         }
 
+        /// <summary>The average speed: the bytes over the average time of the runs.</summary>
         double Speed(List<double> secs)
         {
-            double m = Benchmark.Median(secs);
+            double m = Benchmark.Mean(secs);
             return m > 0 ? Case.Bytes / (double)Benchmark.MB / m : 0;
         }
     }
@@ -164,26 +169,39 @@ namespace Choppy.Bench
         public int Slower { get { return Results.Count(r => r.Scored && r.Verdict < 0); } }
         public int Scored { get { return Results.Count(r => r.Scored); } }
 
-        /// <summary>"Choppy faster on 9 of 12 · tie on 2 · slower on 1"</summary>
-        public string Summary { get { return SummaryOf(Faster, Ties, Slower); } }
+        /// <summary>The whole run ended (not stopped, no error): only then can it say "Never Slower".</summary>
+        public bool Ended { get { return !Canceled && Error == null; } }
 
+        /// <summary>"Choppy is Faster [9 of 12] · Marginal Tie [2 of 12] · Slower [1 of 12]"</summary>
+        public string Summary { get { return SummaryOf(Faster, Ties, Slower, Ended); } }
+
+        /// <summary>The same by the time each one said it was done (kept in the raw data).</summary>
         public string DoneSummary
         {
             get
             {
                 int f = Results.Count(r => r.Scored && r.DoneVerdict > 0), t = Results.Count(r => r.Scored && r.DoneVerdict == 0), s = Results.Count(r => r.Scored && r.DoneVerdict < 0);
-                return SummaryOf(f, t, s);
+                return SummaryOf(f, t, s, false);
             }
         }
 
-        public static string SummaryOf(int faster, int ties, int slower)
+        public const string TieWord = "Marginal Tie";
+
+        /// <summary>The verdict as the badges say it.</summary>
+        public static string Word(int verdict) { return verdict > 0 ? "Faster" : verdict < 0 ? "Slower" : TieWord; }
+
+        /// <summary>
+        /// "Choppy is Faster [10 of 19] · Marginal Tie [9 of 19] · Never Slower": a part for each verdict there is; "Never
+        /// Slower" only when a whole run ended with ties and no case slower (all faster says it already).
+        /// </summary>
+        public static string SummaryOf(int faster, int ties, int slower, bool ended)
         {
             int n = faster + ties + slower;
             if (n == 0) return "No case was measured";
-            if (faster == n) return "Choppy faster on all " + n;
-            var s = "Choppy faster on " + faster + " of " + n;
-            if (ties > 0) s += " · tie on " + ties;
-            if (slower > 0) s += " · slower on " + slower;
+            var s = "Choppy is Faster [" + faster + " of " + n + "]";
+            if (ties > 0) s += " · " + TieWord + " [" + ties + " of " + n + "]";
+            if (slower > 0) s += " · Slower [" + slower + " of " + n + "]";
+            else if (ended && ties > 0) s += " · Never Slower";
             return s;
         }
 
@@ -269,20 +287,20 @@ namespace Choppy.Bench
             return sb.Append('"').ToString();
         }
 
-        static string Verdict(int v) { return v > 0 ? "faster" : v < 0 ? "slower" : "tie"; }
+        static string Verdict(int v) { return v > 0 ? "faster" : v < 0 ? "slower" : "marginal tie"; }
 
         public string ToJson()
         {
             var j = new StringBuilder();
             j.Append("{\n");
-            j.Append("  \"tool\": \"Choppy benchmark\",\n");
+            j.Append("  \"tool\": \"Choppy Benchmark\",\n");
             j.Append("  \"version\": " + S(Version) + ",\n");
             j.Append("  \"date\": " + S(Started.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture)) + ",\n");
             j.Append("  \"mode\": " + S(Mode) + ", \"rounds\": " + Rounds + ", \"seconds\": " + N(Seconds, "0.0") + ",\n");
             j.Append("  \"canceled\": " + (Canceled ? "true" : "false") + ", \"error\": " + S(Error) + ",\n");
-            j.Append("  \"units\": \"MB/s = 1,048,576 bytes per second; seconds\",\n");
+            j.Append("  \"units\": \"seconds = the average time until the copies are on the disk; MB/s = 1,048,576 bytes per second over that time; timeSaved = how much less time Choppy took than Windows (below 0 = more)\",\n");
             j.Append("  \"machine\": { \"cpu\": " + S(Cpu) + ", \"threads\": " + Threads + ", \"ramGB\": " + N(RamGB) + ", \"windows\": " + S(Windows) + ", \"admin\": " + (Admin ? "true" : "false") + " },\n");
-            j.Append("  \"summary\": { \"text\": " + S(Summary) + ", \"cases\": " + Scored + ", \"faster\": " + Faster + ", \"tie\": " + Ties + ", \"slower\": " + Slower
+            j.Append("  \"summary\": { \"text\": " + S(Summary) + ", \"cases\": " + Scored + ", \"faster\": " + Faster + ", \"marginalTie\": " + Ties + ", \"slower\": " + Slower
                 + ", \"byDone\": " + S(DoneSummary) + " },\n");
             j.Append("  \"drives\": [");
             var ds = Drives ?? new List<BenchDrive>();
@@ -307,10 +325,10 @@ namespace Choppy.Bench
                 j.Append("    { \"from\": " + S(r.From.Letter) + ", \"to\": " + S(r.To.Letter) + ", \"route\": " + S(r.From.Letter + " -> " + r.To.Letter)
                     + ", \"kinds\": " + S(r.RouteKinds.Replace("→", "->")) + ", \"case\": " + S(r.Case.Key) + ", \"title\": " + S(r.Case.Title)
                     + ", \"files\": " + r.Case.Files + ", \"bytes\": " + r.Case.Bytes + ",\n");
-                j.Append("      \"verdict\": " + (r.Scored ? S(Verdict(r.Verdict)) : "null") + ", \"ratio\": " + N(r.Ratio) + ", \"tieWithin\": " + N(r.Noise)
-                    + ", \"doneVerdict\": " + (r.Scored ? S(Verdict(r.DoneVerdict)) : "null") + ", \"doneRatio\": " + N(r.DoneRatio) + ",\n");
-                j.Append("      \"choppy\": { \"MBps\": " + N(r.ChoppyMBps, "0.0") + ", \"doneMBps\": " + N(r.ChoppyDoneMBps, "0.0") + ", \"method\": " + S(r.Method) + ", \"runs\": " + Runs(r, true) + " },\n");
-                j.Append("      \"windows\": { \"MBps\": " + N(r.WindowsMBps, "0.0") + ", \"doneMBps\": " + N(r.WindowsDoneMBps, "0.0") + ", \"runs\": " + Runs(r, false) + " },\n");
+                j.Append("      \"verdict\": " + (r.Scored ? S(Verdict(r.Verdict)) : "null") + ", \"timeSaved\": " + N(r.Saved, "0.0000")
+                    + ", \"doneVerdict\": " + (r.Scored ? S(Verdict(r.DoneVerdict)) : "null") + ", \"doneTimeSaved\": " + N(r.DoneSaved, "0.0000") + ",\n");
+                j.Append("      \"choppy\": { \"seconds\": " + N(r.ChoppySecs, "0.000") + ", \"MBps\": " + N(r.ChoppyMBps, "0.0") + ", \"doneMBps\": " + N(r.ChoppyDoneMBps, "0.0") + ", \"method\": " + S(r.Method) + ", \"runs\": " + Runs(r, true) + " },\n");
+                j.Append("      \"windows\": { \"seconds\": " + N(r.WindowsSecs, "0.000") + ", \"MBps\": " + N(r.WindowsMBps, "0.0") + ", \"doneMBps\": " + N(r.WindowsDoneMBps, "0.0") + ", \"runs\": " + Runs(r, false) + " },\n");
                 j.Append("      \"error\": " + S(r.Error) + " }");
             }
             j.Append("\n  ],\n  \"notes\": [");
@@ -330,19 +348,20 @@ namespace Choppy.Bench
         public string ToText()
         {
             var t = new StringBuilder();
-            t.AppendLine("**Choppy v" + Version + " benchmark** - " + Started.ToString("d MMM yyyy, HH:mm", CultureInfo.InvariantCulture) + " - " + Cap(Mode) + (Canceled ? " (stopped early)" : ""));
+            t.AppendLine("**Choppy VS Windows - Choppy v" + Version + " Benchmark** - " + Started.ToString("d MMM yyyy, HH:mm", CultureInfo.InvariantCulture) + " - " + Cap(Mode) + (Canceled ? " (stopped early)" : ""));
             t.AppendLine(Machine);
             t.AppendLine();
-            t.AppendLine("**" + Summary + "** (time until the copies are on the disk; by the time each says it's done: " + Lower(DoneSummary) + ")");
+            t.AppendLine("**" + Summary + "**");
+            t.AppendLine("The average of each one's runs until the copies are on the disk; less than " + (int)(Benchmark.TieMargin * 100) + "% apart is a " + TieWord + ".");
             t.AppendLine();
-            t.AppendLine("| Route | What | Choppy | Windows | Choppy / Windows | Result |");
+            t.AppendLine("| Route | What | Choppy | Windows | Time saved | Result |");
             t.AppendLine("|---|---|---:|---:|---:|---|");
             foreach (var r in Results)
             {
                 string route = r.Route + " (" + r.RouteKinds + ")";
                 if (!r.Scored) { t.AppendLine("| " + route + " | " + r.Case.Title + ", " + r.Case.Detail + " | | | | error: " + (r.Error ?? "not measured") + " |"); continue; }
-                t.AppendLine("| " + route + " | " + r.Case.Title + ", " + BenchText.Size(r.Case.Bytes) + " | " + BenchText.Speed(r.ChoppyMBps) + " | " + BenchText.Speed(r.WindowsMBps)
-                    + " | " + BenchText.Ratio(r.Ratio) + " | " + Verdict(r.Verdict) + " |");
+                t.AppendLine("| " + route + " | " + r.Case.Title + ", " + BenchText.Size(r.Case.Bytes) + " | " + BenchText.Speed(r.ChoppyMBps) + ", " + BenchText.Secs(r.ChoppySecs)
+                    + " | " + BenchText.Speed(r.WindowsMBps) + ", " + BenchText.Secs(r.WindowsSecs) + " | " + BenchText.Saved(r.Saved) + " | " + Word(r.Verdict) + " |");
             }
             t.AppendLine();
             t.Append("Drives: ");
@@ -351,22 +370,34 @@ namespace Choppy.Bench
         }
 
         static string Cap(string s) { return string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s.Substring(1); }
-        static string Lower(string s) { return s.Replace("Choppy faster", "faster"); }
 
         // ================= HTML =================
 
         static string H(string s) { return WebUtility.HtmlEncode(s ?? ""); }
 
+        static string Cls(int verdict) { return verdict > 0 ? "good" : verdict < 0 ? "bad" : "tie"; }
+
+        /// <summary>The summary line with each verdict in its color.</summary>
+        string SummaryHtml()
+        {
+            int n = Scored;
+            var h = new StringBuilder("Choppy is <span class=\"good\">Faster [" + Faster + " of " + n + "]</span>");
+            if (Ties > 0) h.Append(" · <span class=\"tie\">" + TieWord + " [" + Ties + " of " + n + "]</span>");
+            if (Slower > 0) h.Append(" · <span class=\"bad\">Slower [" + Slower + " of " + n + "]</span>");
+            else if (Ended && Ties > 0) h.Append(" · <span class=\"good\">Never Slower</span>");
+            return h.ToString();
+        }
+
         public string ToHtml(string jsonName)
         {
             var h = new StringBuilder();
             h.Append("<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
-            h.Append("<title>Choppy benchmark · " + H(Started.ToString("d MMM yyyy, HH:mm", CultureInfo.InvariantCulture)) + "</title>\n<style>\n" + Css + "</style></head><body><div class=\"wrap\">\n");
+            h.Append("<title>Choppy Benchmark · " + H(Started.ToString("d MMM yyyy, HH:mm", CultureInfo.InvariantCulture)) + "</title>\n<style>\n" + Css + "</style></head><body><div class=\"wrap\">\n");
 
             // header
             string icon = BenchText.IconDataUri();
             h.Append("<header>" + (icon != null ? "<img src=\"" + icon + "\" width=\"52\" height=\"52\" alt=\"\">" : "")
-                + "<div><h1>Choppy benchmark</h1><div class=\"dim\">Choppy v" + H(Version) + " against Windows' own copy (the engine Explorer uses) · "
+                + "<div><h1>Choppy VS Windows</h1><div class=\"dim\">Choppy v" + H(Version) + " Benchmark · "
                 + H(Started.ToString("d MMM yyyy, HH:mm", CultureInfo.InvariantCulture)) + " · " + H(Cap(Mode)) + " · took " + H(BenchText.Duration(Seconds)) + "</div></div></header>\n");
 
             // summary
@@ -376,17 +407,9 @@ namespace Choppy.Bench
             if (Error != null) h.Append("<div class=\"warn\">" + H(Error) + "</div>");
             if (n > 0)
             {
-                h.Append("<div class=\"summary\">");
-                if (Faster == n) h.Append("Choppy <span class=\"good\">faster on all " + n + "</span>");
-                else
-                {
-                    h.Append("Choppy <span class=\"good\">faster on " + Faster + "</span> of " + n);
-                    if (Ties > 0) h.Append(" · <span class=\"tie\">tie on " + Ties + "</span>");
-                    if (Slower > 0) h.Append(" · <span class=\"bad\">slower on " + Slower + "</span>");
-                }
-                h.Append("</div>");
-                h.Append("<p class=\"dim\">Counted by the time until the copies are on the disk. A difference within " + (int)(Benchmark.TieMargin * 100)
-                    + "%, or within how far each one's own runs differ, counts as a tie. By the time each one says it's done: " + H(Lower(DoneSummary)) + ".</p>");
+                h.Append("<div class=\"summary\">" + SummaryHtml() + "</div>");
+                h.Append("<p class=\"dim\">The time decides: the average of each one's runs until the copies are on the disk. Less than " + (int)(Benchmark.TieMargin * 100)
+                    + "% apart is a " + TieWord + ".</p>");
             }
             else if (!Canceled && Error == null) h.Append("<div class=\"summary\">No case was measured</div>");
             h.Append("</section>\n");
@@ -394,7 +417,7 @@ namespace Choppy.Bench
             // results
             if (Results.Count > 0)
             {
-                h.Append("<section class=\"card\"><h2>Results</h2><div class=\"scroll\"><table class=\"res\"><thead><tr><th>Route</th><th>What</th><th class=\"r\">Choppy</th><th class=\"r\">Windows</th><th class=\"r\">Choppy / Windows</th><th>Result</th></tr></thead><tbody>\n");
+                h.Append("<section class=\"card\"><h2>Results</h2><div class=\"scroll\"><table class=\"res\"><thead><tr><th>Route</th><th>What</th><th class=\"r\">Choppy</th><th class=\"r\">Windows</th><th class=\"r\">Time saved</th><th>Result</th></tr></thead><tbody>\n");
                 foreach (var g in Results.GroupBy(r => r.Route + "|" + r.RouteKinds))
                 {
                     var rows = g.ToList();
@@ -410,16 +433,14 @@ namespace Choppy.Bench
                             continue;
                         }
                         double max = Math.Max(r.ChoppyMBps, r.WindowsMBps);
-                        h.Append("<td class=\"r\"><span class=\"c\">" + H(BenchText.Speed(r.ChoppyMBps)) + "</span><div class=\"faint\">done " + H(BenchText.Speed(r.ChoppyDoneMBps)) + "</div></td>");
-                        h.Append("<td class=\"r\"><span class=\"w\">" + H(BenchText.Speed(r.WindowsMBps)) + "</span><div class=\"faint\">done " + H(BenchText.Speed(r.WindowsDoneMBps)) + "</div></td>");
-                        h.Append("<td class=\"r\"><b>" + H(BenchText.Ratio(r.Ratio)) + "</b><div class=\"bars\"><i class=\"bc\" style=\"width:" + Pct(r.ChoppyMBps, max) + "%\"></i><i class=\"bw\" style=\"width:" + Pct(r.WindowsMBps, max) + "%\"></i></div></td>");
-                        string cls = r.Verdict > 0 ? "b-good" : r.Verdict < 0 ? "b-bad" : "b-tie";
-                        string word = r.Verdict > 0 ? "Choppy faster" : r.Verdict < 0 ? "Choppy slower" : "Tie";
-                        h.Append("<td><span class=\"badge " + cls + "\" title=\"tie within ±" + N(r.Noise * 100, "0.#") + "%\">" + word + "</span></td></tr>\n");
+                        h.Append("<td class=\"r\"><span class=\"c\">" + H(BenchText.Speed(r.ChoppyMBps)) + "</span><div class=\"faint\">" + H(BenchText.Secs(r.ChoppySecs)) + "</div></td>");
+                        h.Append("<td class=\"r\"><span class=\"w\">" + H(BenchText.Speed(r.WindowsMBps)) + "</span><div class=\"faint\">" + H(BenchText.Secs(r.WindowsSecs)) + "</div></td>");
+                        h.Append("<td class=\"r\"><b class=\"" + BenchText.SavedClass(r.Saved) + "\">" + H(BenchText.Saved(r.Saved)) + "</b><div class=\"bars\"><i class=\"bc\" style=\"width:" + Pct(r.ChoppyMBps, max) + "%\"></i><i class=\"bw\" style=\"width:" + Pct(r.WindowsMBps, max) + "%\"></i></div></td>");
+                        h.Append("<td><span class=\"badge b-" + Cls(r.Verdict) + "\">" + Word(r.Verdict) + "</span></td></tr>\n");
                     }
                 }
-                h.Append("</tbody></table></div><p class=\"faint\">MB/s of the time until the copies are on the disk (under it: until each one said it was done). "
-                    + "1 MB = 1,048,576 bytes. Bars: <span class=\"c\">Choppy</span> and <span class=\"w\">Windows</span>.</p></section>\n");
+                h.Append("</tbody></table></div><p class=\"faint\">The average speed, and under it the average time, until the copies are on the disk. Time saved: how much less time "
+                    + "Choppy took than Windows (green), or more (red). Bars: <span class=\"c\">Choppy</span> and <span class=\"w\">Windows</span>.</p></section>\n");
             }
 
             // this PC
@@ -445,21 +466,21 @@ namespace Choppy.Bench
             // every run
             if (Results.Count > 0)
             {
-                h.Append("<section class=\"card\"><details><summary><h2>Every run</h2></summary><div class=\"scroll\"><table class=\"runs\"><thead><tr><th>Route</th><th>What</th><th>Choppy: done / on the disk (s)</th><th>Windows: done / on the disk (s)</th><th>Choppy's way</th></tr></thead><tbody>\n");
+                h.Append("<section class=\"card\"><details><summary><h2>Every run</h2></summary><div class=\"scroll\"><table class=\"runs\"><thead><tr><th>Route</th><th>What</th><th>Choppy (s)</th><th>Windows (s)</th><th>Choppy's way</th></tr></thead><tbody>\n");
                 foreach (var r in Results)
                 {
                     h.Append("<tr><td>" + H(r.Route) + "</td><td>" + H(r.Case.Title) + "</td><td>" + RunList(r, true) + "</td><td>" + RunList(r, false) + "</td><td class=\"faint\">" + H(r.Method ?? "") + "</td></tr>\n");
                 }
-                h.Append("</tbody></table></div><p class=\"faint\">In the order they ran: each case alternates (Choppy, Windows, Windows, Choppy - or the other way round).</p></details></section>\n");
+                h.Append("</tbody></table></div><p class=\"faint\">Seconds until the copies were on the disk, in the order they ran: each case alternates (Choppy, Windows, Windows, Choppy - or the other way round).</p></details></section>\n");
             }
 
             // how
             h.Append("<section class=\"card\"><h2>How it's measured</h2><ul class=\"dim\">");
             h.Append("<li>Routes: from the system drive to each other drive and back, and within each drive.</li>");
             h.Append("<li>Each case is copied " + Rounds + " times by each, in turns, into a new folder. The source is never in memory: it is read once untimed (a new file's first open is slower), then dropped from the Windows cache before every copy.</li>");
-            h.Append("<li>Sizes go by each route's speed: 1 GB and 1,000 small files where it does 350 MB/s or more, 512 MB and 500 files below that, 256 MB and 250 under 40 MB/s (Thorough: twice that, and a mixed folder).</li>");
+            h.Append("<li>Sizes go by each route's speed: 2 GB and 1,000 small files where it does 350 MB/s or more, 1 GB and 500 files below that, 512 MB and 250 under 40 MB/s (Thorough: twice the big file and the small files, and a mixed folder).</li>");
             h.Append("<li>Choppy: its own engine, as every copy runs it (Adaptive picks the way per drive). Windows: the shell copy engine Explorer uses for a paste (IFileOperation), without its window.</li>");
-            h.Append("<li>\"Done\" is when each one says so; \"on the disk\" adds the time to write out what was still in memory (every copy is flushed).</li>");
+            h.Append("<li>Each time runs until the copies are on the disk: what is still in memory when a program says it's done is written out (every copy is flushed). The numbers are the average of each one's runs.</li>");
             h.Append("<li>Test files go into a temporary folder on each drive (\"" + H(BenchFiles.FolderName) + "\"), removed at the end.</li>");
             h.Append("</ul>");
             foreach (var note in Notes) h.Append("<p class=\"warn\">" + H(note) + "</p>");
@@ -473,7 +494,7 @@ namespace Choppy.Bench
 
         static string RunList(BenchResult r, bool choppy)
         {
-            return string.Join("<br>", r.Runs.Where(x => x.Choppy == choppy).Select(x => H(N(x.Done, "0.00")) + " / " + H(N(x.OnDisk, "0.00"))));
+            return string.Join("<br>", r.Runs.Where(x => x.Choppy == choppy).Select(x => H(N(x.OnDisk, "0.00"))));
         }
 
         const string Css =
@@ -522,7 +543,25 @@ namespace Choppy.Bench
             return mbps.ToString(mbps >= 100 ? "0" : "0.0", C) + " MB/s";
         }
 
-        public static string Ratio(double r) { return r > 0 ? r.ToString("0.00", C) + "×" : "-"; }
+        /// <summary>"+17%" (Choppy took less time) / "−11%" (more) / "0%".</summary>
+        public static string Saved(double saved)
+        {
+            double p = Math.Round(saved * 100);
+            return p > 0 ? "+" + p.ToString("0", C) + "%" : p < 0 ? "−" + (-p).ToString("0", C) + "%" : "0%";
+        }
+
+        /// <summary>"good" when Choppy took less time, "bad" when more, "tie" when that rounds to 0%.</summary>
+        public static string SavedClass(double saved)
+        {
+            double p = Math.Round(saved * 100);
+            return p > 0 ? "good" : p < 0 ? "bad" : "tie";
+        }
+
+        /// <summary>"0.41 s", "5.90 s", "23.4 s"</summary>
+        public static string Secs(double s)
+        {
+            return (s < 10 ? s.ToString("0.00", C) : s < 100 ? s.ToString("0.0", C) : s.ToString("0", C)) + " s";
+        }
 
         public static string Duration(double secs)
         {

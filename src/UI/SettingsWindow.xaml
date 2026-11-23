@@ -81,13 +81,45 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="{StaticResource NameCol}"/>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Style="{StaticResource Head}" Text="Show speed in" VerticalAlignment="Center"/>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
-                        <RadioButton x:Name="UAuto" GroupName="unit" Style="{StaticResource Seg}" Margin="0,0,6,0" Content="Auto" Checked="Changed" ToolTip="Network: Mbps. Disks: MB/s."/>
-                        <RadioButton x:Name="UMbps" GroupName="unit" Style="{StaticResource Seg}" Margin="0,0,6,0" Content="Mbps" Checked="Changed"/>
-                        <RadioButton x:Name="UMbs" GroupName="unit" Style="{StaticResource Seg}" Margin="0" Content="MB/s" Checked="Changed"/>
+                        <RadioButton x:Name="UAuto" GroupName="unit" Style="{StaticResource Seg}" Margin="0,0,6,0" Content="Auto" Checked="Changed"
+                                     ToolTip="Picks by the copy: Mbps for a network share, MB/s for hard disks, SSDs and USB drives"/>
+                        <RadioButton x:Name="UMbps" GroupName="unit" Style="{StaticResource Seg}" Margin="0,0,6,0" Content="Mbps" Checked="Changed"
+                                     ToolTip="Megabits per second - the unit internet and network speeds are given in"/>
+                        <RadioButton x:Name="UMbs" GroupName="unit" Style="{StaticResource Seg}" Margin="0" Content="MB/s" Checked="Changed"
+                                     ToolTip="Megabytes per second - the unit file sizes and disk speeds are given in"/>
                     </StackPanel>
+                    <!-- in the switches' column: how Mbps and MB/s compare -->
+                    <Grid Grid.Column="2" Width="44" VerticalAlignment="Center">
+                        <Button x:Name="UnitHelpBtn" Width="28" Height="28" HorizontalAlignment="Center" Click="UnitHelp_Click" Cursor="Hand" ToolTip="Mbps and MB/s side by side">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="b" CornerRadius="14" Background="#FF262B32" BorderBrush="#FF4A515C" BorderThickness="1">
+                                        <TextBlock Text="?" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource B.AccentText}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,1"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="b" Property="Background" Value="#FF15324F"/>
+                                            <Setter TargetName="b" Property="BorderBrush" Value="#FF2A79C8"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </Grid>
+                    <Popup x:Name="UnitHelp" PlacementTarget="{Binding ElementName=UnitHelpBtn}" Placement="Left" HorizontalOffset="-10" VerticalOffset="-14"
+                           StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+                        <Border x:Name="UnitHelpCard" Background="#FF1E2228" BorderBrush="#FF3A414B" BorderThickness="1" CornerRadius="10" Padding="18,14,18,12" Margin="0,0,12,12" Width="350">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="16" ShadowDepth="3" Opacity="0.5" Color="Black"/>
+                            </Border.Effect>
+                            <!-- header (Mbps above its column, a long arrow, MB/s above its column), a line, the rows: built in code -->
+                            <StackPanel x:Name="UnitRows"/>
+                        </Border>
+                    </Popup>
                 </Grid>
             </Border>
 
@@ -107,11 +139,22 @@
             </Border>
 
             <!-- close at completion -->
-            <Border Style="{StaticResource Row}">
-                <CheckBox x:Name="AutoClose" Style="{StaticResource Toggle}" Checked="Changed" Unchecked="Changed"
-                          ToolTip="A few seconds after a copy finishes with no problems. A copy with problems stays open.">
-                    <TextBlock Style="{StaticResource Head}" Text="Close at completion"/>
-                </CheckBox>
+            <Border Style="{StaticResource Row}" Padding="0,10,0,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="{StaticResource NameCol}"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource Head}" Text="Close at completion" VerticalAlignment="Center"
+                               ToolTip="Closes the copy window this many seconds after a copy finishes with no problems. A copy with problems stays open."/>
+                    <TextBox x:Name="CloseValue" Grid.Column="1" Style="{StaticResource Box.Small}" Width="60" Height="30" MaxLength="3" TextChanged="CloseValue_Changed"
+                             ToolTip="Whole seconds"/>
+                    <TextBlock Grid.Column="2" Text="s" FontSize="14" Foreground="{StaticResource B.Dim}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                    <CheckBox x:Name="AutoClose" Grid.Column="4" Style="{StaticResource Toggle}" VerticalAlignment="Center" Checked="Changed" Unchecked="Changed"/>
+                </Grid>
             </Border>
 
             <!-- speed limit -->
@@ -140,9 +183,9 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Style="{StaticResource Head}" Text="Benchmark" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Column="1" Style="{StaticResource Sub}" Text="Against Windows' own copy" VerticalAlignment="Center" Margin="0" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Grid.Column="1" Style="{StaticResource Sub}" Text="Choppy VS Windows" VerticalAlignment="Center" Margin="0" TextTrimming="CharacterEllipsis"/>
                     <Button Grid.Column="2" Style="{StaticResource Btn}" Content="Run..." Height="30" Padding="14,0" MinWidth="0" Click="Benchmark_Click"
-                            ToolTip="Choppy and Windows' own copy copy the same test files on every drive of this PC, then a report shows which is faster where"/>
+                            ToolTip="Choppy and Windows copy the same test files on every drive of this PC, then a report shows which one takes less time where"/>
                 </Grid>
             </Border>
 

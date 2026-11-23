@@ -29,8 +29,9 @@ namespace Choppy.Engine
         public bool VerifyCopies;                       // check every copy with xxHash64 (copies and moves)
         public ConflictPolicy Policy = ConflictPolicy.Ask;
         public double SpeedLimitMbps;                   // 0 = off
-        public double LimitValueMbps = 100;             // the limit's value, kept while it is off
+        public double LimitValueMbps = 101;             // the limit's value, kept while it is off
         public bool CloseWhenDone = true;               // close the window a few seconds after a clean finish
+        public int CloseAfterSeconds = 2;               // ... this many seconds after it
         public bool ExplorerTakeover;                   // Ctrl+V in Explorer + right-click "Paste with Choppy"
         public string SpeedUnit = "auto";               // auto | mbps | mbs
         public string UltracopierRunBackup;             // Ultracopier's startup entry, put back when takeover is turned off
@@ -54,6 +55,7 @@ namespace Choppy.Engine
                 if (d.TryGetValue("LimitValueMbps", out v)) { double x; if (double.TryParse(v, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out x) && x > 0) s.LimitValueMbps = x; }
                 if (s.SpeedLimitMbps > 0) s.LimitValueMbps = s.SpeedLimitMbps;
                 if (d.TryGetValue("CloseWhenDone", out v)) s.CloseWhenDone = v != "0";
+                if (d.TryGetValue("CloseAfterSeconds", out v)) { int x; if (int.TryParse(v, out x) && x >= 1 && x <= 999) s.CloseAfterSeconds = x; }
                 if (d.TryGetValue("ExplorerTakeover", out v)) s.ExplorerTakeover = v == "1";
                 if (d.TryGetValue("SpeedUnit", out v)) s.SpeedUnit = v;
                 if (d.TryGetValue("UltracopierRunBackup", out v)) s.UltracopierRunBackup = v;
@@ -72,6 +74,7 @@ namespace Choppy.Engine
                 { "SpeedLimitMbps", SpeedLimitMbps.ToString(System.Globalization.CultureInfo.InvariantCulture) },
                 { "LimitValueMbps", LimitValueMbps.ToString(System.Globalization.CultureInfo.InvariantCulture) },
                 { "CloseWhenDone", CloseWhenDone ? "1" : "0" },
+                { "CloseAfterSeconds", CloseAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture) },
                 { "ExplorerTakeover", ExplorerTakeover ? "1" : "0" },
                 { "SpeedUnit", SpeedUnit ?? "auto" },
                 { "UltracopierRunBackup", UltracopierRunBackup ?? "" },

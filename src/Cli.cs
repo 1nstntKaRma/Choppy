@@ -361,13 +361,15 @@ namespace Choppy
         /// <summary>The benchmark's parts that need no drives: verdicts, the plan, sizes, the report, clean-up, Windows' copy on a small file.</summary>
         static void BenchChecks(Action<string, bool> check, StringBuilder sb, bool desktop)
         {
-            double ratio, noise;
-            check("bench: same times = tie", Bench.Benchmark.Judge(new[] { 2.0, 2.0 }, new[] { 2.0, 2.0 }, out ratio, out noise) == 0 && Math.Abs(ratio - 1) < 1e-9);
-            check("bench: 20% quicker = faster", Bench.Benchmark.Judge(new[] { 1.0, 1.02 }, new[] { 1.2, 1.22 }, out ratio, out noise) == 1 && ratio > 1.15 && ratio < 1.25);
-            check("bench: 20% slower = slower", Bench.Benchmark.Judge(new[] { 1.2, 1.22 }, new[] { 1.0, 1.02 }, out ratio, out noise) == -1 && ratio < 0.9);
-            check("bench: 3% apart = tie", Bench.Benchmark.Judge(new[] { 1.0, 1.0 }, new[] { 1.03, 1.03 }, out ratio, out noise) == 0);
-            check("bench: within the runs' own scatter = tie", Bench.Benchmark.Judge(new[] { 1.0, 1.4 }, new[] { 1.3, 1.35 }, out ratio, out noise) == 0 && noise > 0.15);
-            check("bench: median of three", Bench.Benchmark.Median(new[] { 3.0, 1.0, 2.0 }) == 2.0 && Bench.Benchmark.Median(new[] { 1.0, 2.0 }) == 1.5);
+            // the time decides: the share of Windows' time Choppy saved; less than 4% apart is a Marginal Tie, nothing else is
+            double saved;
+            check("bench: same times = Marginal Tie", Bench.Benchmark.Judge(new[] { 2.0, 2.0 }, new[] { 2.0, 2.0 }, out saved) == 0 && Math.Abs(saved) < 1e-9);
+            check("bench: less time = Faster (+17%)", Bench.Benchmark.Judge(new[] { 1.0, 1.02 }, new[] { 1.2, 1.22 }, out saved) == 1 && Math.Abs(saved - 0.2 / 1.21) < 1e-9 && Bench.BenchText.Saved(saved) == "+17%");
+            check("bench: more time = Slower (-20%)", Bench.Benchmark.Judge(new[] { 1.2, 1.22 }, new[] { 1.0, 1.02 }, out saved) == -1 && Bench.BenchText.Saved(saved) == "−20%");
+            check("bench: 3% apart = Marginal Tie", Bench.Benchmark.Judge(new[] { 1.0, 1.0 }, new[] { 1.03, 1.03 }, out saved) == 0 && saved > 0);
+            check("bench: 9% behind with scattered runs is still Slower", Bench.Benchmark.Judge(new[] { 1.0, 1.4 }, new[] { 1.1, 1.1 }, out saved) == -1);
+            check("bench: averages", Bench.Benchmark.Mean(new[] { 3.0, 1.0, 2.0 }) == 2.0 && Bench.Benchmark.Mean(new[] { 1.0, 2.0 }) == 1.5);
+            check("bench: seconds", Bench.BenchText.Secs(0.4) == "0.40 s" && Bench.BenchText.Secs(12.34) == "12.3 s" && Bench.BenchText.Saved(0.001) == "0%");
 
             // the plan: system drive to each drive and back, and within each
             Func<string, bool, DeviceKind, int, double, double, Bench.BenchDrive> drive = (l, sys, k, disk, rd, wr) => new Bench.BenchDrive
@@ -385,21 +387,21 @@ namespace Choppy
             var bq = new Bench.Benchmark();
             bq.SizeRoutes(routes);
             Func<Bench.BenchDrive, Bench.BenchDrive, Bench.Benchmark.Route> rt = (a, b2) => routes.Find(r => r.From == a && r.To == b2);
-            check("bench: sizes by speed (1 GB + 1,000 small files at 350 MB/s and more, 512 MB + 500 below)",
-                rt(c, c).Big == 1024 * Bench.Benchmark.MB && rt(c, c).Small == 1000 && rt(c, d).Big == 512 * Bench.Benchmark.MB && rt(c, d).Small == 500
-                && rt(d, d).Big == 512 * Bench.Benchmark.MB && rt(c, e).Big == 1024 * Bench.Benchmark.MB && rt(e, c).Big == 1024 * Bench.Benchmark.MB && rt(e, e).Big == 512 * Bench.Benchmark.MB);
+            check("bench: sizes by speed (2 GB + 1,000 small files at 350 MB/s and more, 1 GB + 500 below)",
+                rt(c, c).Big == 2048 * Bench.Benchmark.MB && rt(c, c).Small == 1000 && rt(c, d).Big == 1024 * Bench.Benchmark.MB && rt(c, d).Small == 500
+                && rt(d, d).Big == 1024 * Bench.Benchmark.MB && rt(c, e).Big == 2048 * Bench.Benchmark.MB && rt(e, c).Big == 2048 * Bench.Benchmark.MB && rt(e, e).Big == 1024 * Bench.Benchmark.MB);
             check("bench: two cases per route", routes.TrueForAll(r => r.Cases.Count == 2 && r.Cases[0].Files == 1 && r.Cases[1].Files == r.Small && r.Est > 0));
             // many hard disks: one step smaller everywhere, to keep to the time budget
             var many = new List<Bench.BenchDrive> { c };
             for (int i = 0; i < 9; i++) many.Add(drive(((char)('F' + i)).ToString() + ":", false, DeviceKind.Hdd, 3 + i, 150, 150));
             var mr = Bench.Benchmark.PlanRoutes(many);
             bq.SizeRoutes(mr);
-            check("bench: a time budget (many hard disks: a step smaller)", mr.Count == 28 && mr[0].Big == 512 * Bench.Benchmark.MB && mr.TrueForAll(r => r.Big <= 512 * Bench.Benchmark.MB) && mr.Exists(r => r.Big == 256 * Bench.Benchmark.MB && r.Small == 250));
+            check("bench: a time budget (many hard disks: a step smaller)", mr.Count == 28 && mr[0].Big == 1024 * Bench.Benchmark.MB && mr.TrueForAll(r => r.Big <= 1024 * Bench.Benchmark.MB) && mr.Exists(r => r.Big == 512 * Bench.Benchmark.MB && r.Small == 250));
             var thorough = new Bench.Benchmark { Thorough = true };
             var tr = Bench.Benchmark.PlanRoutes(new List<Bench.BenchDrive> { c, d });
             thorough.SizeRoutes(tr);
-            check("bench: thorough = 2 GB / 1 GB, 2,000 / 1,000 small files, a mixed folder",
-                tr.TrueForAll(r => r.Cases.Count == 3) && tr[0].Big == 2048 * Bench.Benchmark.MB && tr[0].Small == 2000 && tr[1].Big == 1024 * Bench.Benchmark.MB && tr[1].Small == 1000);
+            check("bench: thorough = 4 GB / 2 GB, 2,000 / 1,000 small files, a mixed folder",
+                tr.TrueForAll(r => r.Cases.Count == 3) && tr[0].Big == 4096 * Bench.Benchmark.MB && tr[0].Small == 2000 && tr[1].Big == 2048 * Bench.Benchmark.MB && tr[1].Small == 1000);
             var s1 = Bench.BenchFiles.SmallSizes(1000);
             long sum = 0; foreach (var x in s1) sum += x;
             check("bench: small files 4 KB - 1 MB, the same set every time", Array.TrueForAll(s1, x => x >= 4096 && x <= 1 << 20) && sum == Bench.BenchFiles.SmallSizes(1000).Sum()
@@ -417,8 +419,13 @@ namespace Choppy
             var r2 = new Bench.BenchResult { From = d, To = c, Case = new Bench.BenchCase { Key = "small", Smalls = s1 }, Error = "test error" };
             r2.Score();
             rep.Results.Add(r1); rep.Results.Add(r2);
-            check("bench: scored (on the disk faster, done slower)", r1.Scored && r1.Verdict == 1 && r1.DoneVerdict == -1 && !r2.Scored && rep.Summary == "Choppy faster on all 1");
-            check("bench: summary line", Bench.BenchReport.SummaryOf(9, 2, 1) == "Choppy faster on 9 of 12 · tie on 2 · slower on 1");
+            check("bench: scored (on the disk faster, done slower; averages)", r1.Scored && r1.Verdict == 1 && r1.DoneVerdict == -1 && !r2.Scored && rep.Summary == "Choppy is Faster [1 of 1]"
+                && Math.Abs(r1.ChoppySecs - 5.15) < 1e-9 && Math.Abs(r1.WindowsSecs - 6.05) < 1e-9);
+            check("bench: summary line", Bench.BenchReport.SummaryOf(9, 2, 1, true) == "Choppy is Faster [9 of 12] · Marginal Tie [2 of 12] · Slower [1 of 12]");
+            check("bench: Never Slower only when a whole run ended without one",
+                Bench.BenchReport.SummaryOf(10, 9, 0, true) == "Choppy is Faster [10 of 19] · Marginal Tie [9 of 19] · Never Slower"
+                && Bench.BenchReport.SummaryOf(10, 9, 0, false) == "Choppy is Faster [10 of 19] · Marginal Tie [9 of 19]"
+                && Bench.BenchReport.SummaryOf(5, 0, 0, true) == "Choppy is Faster [5 of 5]");
             string json = rep.ToJson(), html = rep.ToHtml("x.json"), text = rep.ToText();
             int depth = 0; bool inStr = false, esc = false, balanced = true;
             foreach (char ch in json)
@@ -427,8 +434,9 @@ namespace Choppy
                 if (ch == '"') inStr = true; else if (ch == '{' || ch == '[') depth++; else if (ch == '}' || ch == ']') { depth--; if (depth < 0) balanced = false; }
             }
             check("bench: JSON well formed", balanced && depth == 0 && !inStr && json.Contains("\"verdict\": \"faster\"") && json.Contains("\\\"NVMe\\\"") && json.Contains("\"error\": \"test error\""));
-            check("bench: HTML escaped", html.Contains("&lt;b&gt;&amp;amp;") && !html.Contains("<b>&amp;</b>") && html.Contains("faster on all 1") && html.Contains("not a disk of this PC"));
-            check("bench: text table", text.Contains("| C: → D: (NVMe → HDD) | One big file, 1 GB |") && text.Contains("error: test error"));
+            check("bench: HTML escaped", html.Contains("&lt;b&gt;&amp;amp;") && !html.Contains("<b>&amp;</b>") && html.Contains("Faster [1 of 1]") && html.Contains("Choppy VS Windows")
+                && html.Contains("not a disk of this PC") && !html.Contains(">done "));
+            check("bench: text table", text.Contains("| C: → D: (NVMe → HDD) | One big file, 1 GB | 199 MB/s, 5.15 s | 169 MB/s, 6.05 s | +15% | Faster |") && text.Contains("error: test error"));
 
             // test folders: removed with what's in them; a link inside is removed, never followed; a folder that isn't ours stays
             string root = Path.Combine(Path.GetTempPath(), "choppy-selftest-bench-" + Guid.NewGuid().ToString("N").Substring(0, 8));
@@ -576,13 +584,13 @@ namespace Choppy
             var hdd2 = new VolumeInfo { Id = "vol:h2", Kind = DeviceKind.Hdd, Disk = 2, FileSystem = "NTFS" };
             var usb = new VolumeInfo { Id = "vol:u", Kind = DeviceKind.Usb, Disk = 3, FileSystem = "NTFS" };
             var one = Plan.Choose(new JobSpec { Op = OpKind.Copy }, hdd1, hdd1b, null);
-            check("one hard disk: whole-file batches of 1 MB reads, 64 MB writes, room reserved, no cached end, no trials",
+            check("one hard disk: whole-file batches of 1 MB reads, 64 MB writes, room reserved, cached end only once read, no trials",
                 one.Pipe.Phased && one.Pipe.Chunk == 1 << 20 && one.Pipe.Slots == 512 && one.Pipe.ReadDepth == 32 && one.Pipe.WriteStep == 64 << 20
-                && one.Pipe.Prealloc && one.NoCachedTail && one.PipeWays.Count == 0);
+                && one.Pipe.Prealloc && one.Pipe.TailAfterRead && one.PipeWays.Count == 0);
             var oneUsb = Plan.Choose(new JobSpec { Op = OpKind.Copy }, usb, usb, null);
-            check("one USB drive: 32 MB batches with trials", oneUsb.Pipe.Phased && oneUsb.Pipe.Chunk == 32 << 20 && oneUsb.PipeWays.Count > 0 && !oneUsb.NoCachedTail);
+            check("one USB drive: 32 MB batches with trials", oneUsb.Pipe.Phased && oneUsb.Pipe.Chunk == 32 << 20 && oneUsb.PipeWays.Count > 0);
             var two = Plan.Choose(new JobSpec { Op = OpKind.Copy }, hdd1, hdd2, null);
-            check("two hard disks unchanged", !two.Pipe.Phased && two.Pipe.Chunk == 2 << 20 && two.Pipe.Slots == 256 && two.Pipe.ReadDepth == 4 && two.Pipe.TailAfterRead && !two.NoCachedTail);
+            check("two hard disks unchanged", !two.Pipe.Phased && two.Pipe.Chunk == 2 << 20 && two.Pipe.Slots == 256 && two.Pipe.ReadDepth == 4 && two.Pipe.TailAfterRead);
             check("FAT32 holds files up to 4 GB", new VolumeInfo { FileSystem = "FAT32" }.MaxFileSize == uint.MaxValue
                 && new VolumeInfo { FileSystem = "exFAT" }.MaxFileSize == 0 && ntfs.MaxFileSize == 0 && new VolumeInfo().MaxFileSize == 0);
             // the Ctrl+V hook: its own thread, put in again on time (observe only: it never takes a key here)
