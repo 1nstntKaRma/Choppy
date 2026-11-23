@@ -147,7 +147,7 @@ namespace Choppy.Engine
                 Native.STORAGE_DEVICE_NUMBER dn;
                 int dret;
                 if (Native.DeviceIoControl(h, Native.IOCTL_STORAGE_GET_DEVICE_NUMBER, IntPtr.Zero, 0, out dn, Marshal.SizeOf(typeof(Native.STORAGE_DEVICE_NUMBER)), out dret, IntPtr.Zero))
-                    disk = dn.DeviceNumber;
+                    disk = DiskNumber(dn);
 
                 var q =new Native.STORAGE_PROPERTY_QUERY { PropertyId = 0, QueryType = 0 };
                 Native.STORAGE_DEVICE_DESCRIPTOR_HEADER dd;
@@ -168,6 +168,18 @@ namespace Choppy.Engine
                 if (ok && dd.BusType == 17 /*NVMe*/) return DeviceKind.Ssd;
                 return DeviceKind.Unknown;
             }
+        }
+
+        public const int FILE_DEVICE_DISK = 7;
+
+        /// <summary>
+        /// The physical disk a volume sits on, or -1. Only a disk device's number counts: numbers of other device types
+        /// are counted separately - Google Drive's G: answers as a file system device "number 0", the same number as a
+        /// real hard disk, which made a copy between the two look like one disk.
+        /// </summary>
+        public static int DiskNumber(Native.STORAGE_DEVICE_NUMBER dn)
+        {
+            return dn.DeviceType == FILE_DEVICE_DISK && dn.DeviceNumber >= 0 ? dn.DeviceNumber : -1;
         }
 
         /// <summary>Round trip of one metadata call to the share (best of 3). Tailscale to the NAS was ~9 ms.</summary>

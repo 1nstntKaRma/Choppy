@@ -537,6 +537,11 @@ namespace Choppy
             check("same ReFS drive: Windows' own copy (block clone)", pr.Clone && !pr.Pipeline && !pr.InstantMove);
             check("ReFS to another drive: the pipeline", Plan.Choose(new JobSpec { Op = OpKind.Copy }, refs, ntfs, null).Pipeline);
             check("same ReFS drive, a move: renamed in place", Plan.Choose(new JobSpec { Op = OpKind.Move }, refs, refs, null).InstantMove);
+            // only a disk device's number says which disk a volume is on (a cloud drive answers as a file system, "number 0")
+            check("disk number: a disk counts, a file system device doesn't",
+                VolumeProbe.DiskNumber(new Native.STORAGE_DEVICE_NUMBER { DeviceType = VolumeProbe.FILE_DEVICE_DISK, DeviceNumber = 2 }) == 2
+                && VolumeProbe.DiskNumber(new Native.STORAGE_DEVICE_NUMBER { DeviceType = 8, DeviceNumber = 0 }) == -1
+                && !VolumeProbe.SameDisk(new VolumeInfo { Id = "vol:g", Disk = -1 }, new VolumeInfo { Id = "vol:x", Disk = 0, Kind = DeviceKind.Hdd }));
             check("FAT32 holds files up to 4 GB", new VolumeInfo { FileSystem = "FAT32" }.MaxFileSize == uint.MaxValue
                 && new VolumeInfo { FileSystem = "exFAT" }.MaxFileSize == 0 && ntfs.MaxFileSize == 0 && new VolumeInfo().MaxFileSize == 0);
             // the Ctrl+V hook: its own thread, put in again on time (observe only: it never takes a key here)

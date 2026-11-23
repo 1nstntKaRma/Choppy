@@ -83,7 +83,6 @@ namespace Choppy.Bench
         }
 
         const uint FILE_READ_ONLY_VOLUME = 0x00080000;
-        const int FILE_DEVICE_DISK = 7;
 
         [DllImport("mpr.dll", CharSet = CharSet.Unicode)]
         static extern int WNetGetConnectionW(string localName, StringBuilder remoteName, ref int length);
@@ -115,7 +114,7 @@ namespace Choppy.Bench
                     Native.STORAGE_DEVICE_NUMBER dn;
                     int dret;
                     bool disk = Native.DeviceIoControl(h, Native.IOCTL_STORAGE_GET_DEVICE_NUMBER, IntPtr.Zero, 0, out dn, Marshal.SizeOf(typeof(Native.STORAGE_DEVICE_NUMBER)), out dret, IntPtr.Zero)
-                        && dn.DeviceType == FILE_DEVICE_DISK;
+                        && VolumeProbe.DiskNumber(dn) >= 0;
                     var q = new Native.STORAGE_PROPERTY_QUERY { PropertyId = 0, QueryType = 0 };
                     var buf = new byte[1024];
                     int ret;
