@@ -131,6 +131,21 @@
                 </Grid>
             </Border>
 
+            <!-- benchmark -->
+            <Border Style="{StaticResource Row}" Padding="0,10,0,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="{StaticResource NameCol}"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource Head}" Text="Benchmark" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" Style="{StaticResource Sub}" Text="Against Windows' own copy" VerticalAlignment="Center" Margin="0" TextTrimming="CharacterEllipsis"/>
+                    <Button Grid.Column="2" Style="{StaticResource Btn}" Content="Run..." Height="30" Padding="14,0" MinWidth="0" Click="Benchmark_Click"
+                            ToolTip="Choppy and Windows' own copy copy the same test files on every drive of this PC, then a report shows which is faster where"/>
+                </Grid>
+            </Border>
+
             <Grid Margin="0,14,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="{StaticResource NameCol}"/>

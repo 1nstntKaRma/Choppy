@@ -27,6 +27,7 @@ namespace Choppy
         public JobManager Manager;
         MainWindow main;
         SettingsWindow settingsWin;
+        BenchmarkWindow benchWin;
         WinForms.NotifyIcon tray;
         bool resident;
         Mutex instanceMutex;
@@ -93,6 +94,8 @@ namespace Choppy
             if (!Elevated && !step)
                 Dispatcher.BeginInvoke(new Action(() => { Takeover.Refresh(); if (takeover) ApplyTakeover(); }), DispatcherPriority.Background);
             if (!Elevated) Dispatcher.BeginInvoke(new Action(OfferResume), DispatcherPriority.ApplicationIdle);
+            // test files a benchmark left behind (Choppy closed or the PC went off while it ran)
+            if (!Elevated) Dispatcher.BeginInvoke(new Action(() => ThreadPool.QueueUserWorkItem(_ => { try { Bench.BenchFiles.CleanLeftovers(); } catch { } })), DispatcherPriority.ApplicationIdle);
         }
 
         // ================= commands =================
@@ -287,8 +290,19 @@ namespace Choppy
             settingsWin.Show();
         }
 
+        /// <summary>The benchmark window (one at a time; it isn't owned by the settings, so closing those leaves it open).</summary>
+        public void ShowBenchmark()
+        {
+            if (benchWin != null) { if (benchWin.WindowState == WindowState.Minimized) benchWin.WindowState = WindowState.Normal; benchWin.Activate(); return; }
+            benchWin = new BenchmarkWindow();
+            if (TestHook.Park) { benchWin.WindowStartupLocation = WindowStartupLocation.Manual; benchWin.Left = -32000; benchWin.Top = 0; benchWin.ShowInTaskbar = false; benchWin.ShowActivated = false; }
+            benchWin.Closed += (s, e) => { benchWin = null; MaybeExit(); };
+            benchWin.Show();
+        }
+
         internal MainWindow Main { get { return main; } }
         internal SettingsWindow SettingsWin { get { return settingsWin; } }
+        internal BenchmarkWindow BenchWin { get { return benchWin; } }
         internal ConflictWindow OpenConflict;
 
         public void RegisterDialog(Window w)
@@ -305,7 +319,7 @@ namespace Choppy
         {
             if (resident) return;
             if (Manager.Busy) return;
-            if (main != null || settingsWin != null || dialogs.Count > 0) return;
+            if (main != null || settingsWin != null || benchWin != null || dialogs.Count > 0) return;
             if (testHook != null && !testHook.QuitRequested) return;
             Shutdown();
         }

@@ -62,7 +62,8 @@ namespace Choppy
                 case "shot":
                     {
                         var p = arg.Split(new[] { ' ' }, 2);
-                        Window w = p[0] == "conflict" ? (Window)app.OpenConflict : p[0] == "settings" ? (Window)app.SettingsWin : p[0] == "dialog" ? app.TopDialog : app.Main;
+                        Window w = p[0] == "conflict" ? (Window)app.OpenConflict : p[0] == "settings" ? (Window)app.SettingsWin : p[0] == "dialog" ? app.TopDialog
+                            : p[0] == "benchmark" ? (Window)app.BenchWin : app.Main;
                         if (w == null) return "no window";
                         Shot(w, p[1]);
                         return "ok";
@@ -93,6 +94,12 @@ namespace Choppy
                     if (arg.Trim() == "open") app.ShowSettings(app.Main);
                     else if (app.SettingsWin != null) app.SettingsWin.Close();
                     return "ok";
+                case "benchmark":
+                    // benchmark open | close | start tiny|quick|thorough [C,D] | stop | state
+                    if (arg.Trim() == "open") { app.ShowBenchmark(); return "ok"; }
+                    if (app.BenchWin == null) return "benchmark not open";
+                    if (arg.Trim() == "close") { app.BenchWin.Close(); return "ok"; }
+                    return app.BenchWin.ForTest(arg);
                 case "set":
                     {
                         if (app.SettingsWin == null) return "settings not open";

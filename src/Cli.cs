@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using Choppy.Engine;
@@ -14,6 +15,7 @@ namespace Choppy
     ///   Choppy.exe --cli copy|move &lt;src...&gt; &lt;destDir&gt; [--verify] [--policy ask|replace|skip|keepboth|newer]
     ///                 [--limit Mbps] [--resume] [--json out.json] [--log progress.txt] [--cancel-after sec] [--pause-at sec,sec]
     ///   Choppy.exe --selftest out.txt
+    ///   Choppy.exe --benchmark [out.json] [--thorough] [--network] [--drives C,D] [--list] [--log progress.txt] [--cancel-after sec] [--tiny]
     /// Exit code: 0 = all done, 2 = some files failed/skipped, 3 = canceled, 1 = error.
     /// </summary>
     internal static class Cli
@@ -24,6 +26,8 @@ namespace Choppy
             {
                 if (args.Length >= 1 && args[0] == "--selftest") return SelfTest(args.Length > 1 ? args[1] : null);
                 if (args.Length >= 1 && args[0] == "--where") return Where(args.Length > 1 ? args[1] : null);
+                if (args.Length >= 1 && args[0] == "--benchmark") return BenchCli(args);
+                if (args.Length >= 2 && args[0] == "--shellcopy") return Bench.ShellCopy.Child(args[1]);
                 var rest = new List<string>();
                 string json = null, log = null;
                 var spec = new JobSpec { Origin = "CLI" };
@@ -110,6 +114,62 @@ namespace Choppy
                 return 1;
             }
         }
+
+        /// <summary>
+        /// Choppy against Windows' own copy on every drive, headless: writes out.json and out.html (default: the Logs
+        /// folder). --list only lists the drives and the time it would take, into out.json as text. Exit code 0 = done,
+        /// 3 = stopped, 1 = error.
+        /// </summary>
+        static int BenchCli(string[] args)
+        {
+            var b = new Bench.Benchmark();
+            string outPath = null, log = null;
+            double cancelAfter = 0;
+            bool list = false;
+            for (int i = 1; i < args.Length; i++)
+            {
+                switch (args[i])
+                {
+                    case "--quick": b.Thorough = false; break;
+                    case "--thorough": b.Thorough = true; break;
+                    case "--network": b.Network = true; break;
+                    case "--tiny": b.Tiny = true; break;
+                    case "--list": list = true; break;
+                    case "--log": log = Full(args[++i]); break;
+                    case "--cancel-after": cancelAfter = double.Parse(args[++i], CultureInfo.InvariantCulture); break;
+                    case "--drives":
+                        b.Only = new HashSet<string>();
+                        foreach (var s in args[++i].Split(',')) if (s.Trim().Length > 0) b.Only.Add(s.Trim().TrimEnd('\\', ':').ToUpperInvariant() + ":");
+                        break;
+                    default: if (outPath == null && !args[i].StartsWith("--")) outPath = Full(args[i]); break;
+                }
+            }
+            if (list)
+            {
+                var drives = Bench.Benchmark.FindDrives(b.Network, b.Only);
+                double est = b.Preview(drives);
+                var sb = new StringBuilder();
+                foreach (var d in drives)
+                    sb.AppendLine(d.Letter + " " + d.Label + " | " + (d.Vol != null || d.Network ? d.Kind : "") + " | " + d.Model + " | " + d.Bus + " | " + d.FileSystem
+                        + " | disk " + (d.Vol != null ? d.Vol.Disk : -1) + " | " + (d.Skip == null ? "tested" : "skipped: " + d.Skip));
+                sb.AppendLine("about " + Bench.BenchText.Duration(est) + (b.Thorough ? " (thorough)" : " (quick)"));
+                if (outPath != null) File.WriteAllText(outPath, sb.ToString(), Encoding.UTF8);
+                return 0;
+            }
+            if (log != null) Directory.CreateDirectory(Path.GetDirectoryName(log));
+            StreamWriter lw = log != null ? new StreamWriter(log, false, Encoding.UTF8) { AutoFlush = true } : null;
+            if (lw != null) b.Log = line => { lock (lw) lw.WriteLine(line); };
+            Timer stop = cancelAfter > 0 ? new Timer(_ => b.Cancel(), null, (int)(cancelAfter * 1000), Timeout.Infinite) : null;
+            var rep = b.Run();
+            if (stop != null) stop.Dispose();
+            string html, json;
+            rep.Save(outPath, out html, out json);
+            if (lw != null) { lw.WriteLine(rep.Summary); lw.WriteLine(html); lw.Dispose(); }
+            return rep.Canceled ? 3 : rep.Error != null ? 1 : 0;
+        }
+
+        /// <summary>A path from the command line, against the folder Choppy was started from.</summary>
+        static string Full(string p) { return Path.IsPathRooted(p) ? p : Path.Combine(Program.StartDir ?? "", p); }
 
         static ConflictPolicy ParsePolicy(string s)
         {
@@ -271,6 +331,146 @@ namespace Choppy
             finally { try { Directory.Delete(dir, true); } catch { } }
         }
 
+        /// <summary>The benchmark's parts that need no drives: verdicts, the plan, sizes, the report, clean-up, Windows' copy on a small file.</summary>
+        static void BenchChecks(Action<string, bool> check, StringBuilder sb, bool desktop)
+        {
+            double ratio, noise;
+            check("bench: same times = tie", Bench.Benchmark.Judge(new[] { 2.0, 2.0 }, new[] { 2.0, 2.0 }, out ratio, out noise) == 0 && Math.Abs(ratio - 1) < 1e-9);
+            check("bench: 20% quicker = faster", Bench.Benchmark.Judge(new[] { 1.0, 1.02 }, new[] { 1.2, 1.22 }, out ratio, out noise) == 1 && ratio > 1.15 && ratio < 1.25);
+            check("bench: 20% slower = slower", Bench.Benchmark.Judge(new[] { 1.2, 1.22 }, new[] { 1.0, 1.02 }, out ratio, out noise) == -1 && ratio < 0.9);
+            check("bench: 3% apart = tie", Bench.Benchmark.Judge(new[] { 1.0, 1.0 }, new[] { 1.03, 1.03 }, out ratio, out noise) == 0);
+            check("bench: within the runs' own scatter = tie", Bench.Benchmark.Judge(new[] { 1.0, 1.4 }, new[] { 1.3, 1.35 }, out ratio, out noise) == 0 && noise > 0.15);
+            check("bench: median of three", Bench.Benchmark.Median(new[] { 3.0, 1.0, 2.0 }) == 2.0 && Bench.Benchmark.Median(new[] { 1.0, 2.0 }) == 1.5);
+
+            // the plan: system drive to each drive and back, and within each
+            Func<string, bool, DeviceKind, int, double, double, Bench.BenchDrive> drive = (l, sys, k, disk, rd, wr) => new Bench.BenchDrive
+            {
+                Letter = l, Root = l + "\\", System = sys, Measured = true, ReadMBps = rd, WriteMBps = wr, FileSystem = "NTFS",
+                Vol = new VolumeInfo { Id = "vol:" + l, Kind = k, Disk = disk, FileSystem = "NTFS" }, Bus = k == DeviceKind.Ssd ? "NVMe" : "SATA"
+            };
+            var c = drive("C:", true, DeviceKind.Ssd, 0, 2000, 1500);
+            var d = drive("D:", false, DeviceKind.Hdd, 1, 180, 180);
+            var e = drive("E:", false, DeviceKind.Ssd, 2, 400, 350);
+            var routes = Bench.Benchmark.PlanRoutes(new List<Bench.BenchDrive> { d, c, e });
+            Func<Bench.BenchDrive, Bench.BenchDrive, bool> has = (a, b2) => routes.Exists(r => r.From == a && r.To == b2);
+            check("bench: routes (7 for 3 drives, the system drive first, no route between two others)",
+                routes.Count == 7 && routes[0].From == c && routes[0].To == c && has(c, d) && has(d, c) && has(d, d) && has(c, e) && has(e, c) && has(e, e) && !has(d, e));
+            var bq = new Bench.Benchmark();
+            bq.SizeRoutes(routes);
+            Func<Bench.BenchDrive, Bench.BenchDrive, Bench.Benchmark.Route> rt = (a, b2) => routes.Find(r => r.From == a && r.To == b2);
+            check("bench: sizes by speed (1 GB + 1,000 small files at 350 MB/s and more, 512 MB + 500 below)",
+                rt(c, c).Big == 1024 * Bench.Benchmark.MB && rt(c, c).Small == 1000 && rt(c, d).Big == 512 * Bench.Benchmark.MB && rt(c, d).Small == 500
+                && rt(d, d).Big == 512 * Bench.Benchmark.MB && rt(c, e).Big == 1024 * Bench.Benchmark.MB && rt(e, c).Big == 1024 * Bench.Benchmark.MB && rt(e, e).Big == 512 * Bench.Benchmark.MB);
+            check("bench: two cases per route", routes.TrueForAll(r => r.Cases.Count == 2 && r.Cases[0].Files == 1 && r.Cases[1].Files == r.Small && r.Est > 0));
+            // many hard disks: one step smaller everywhere, to keep to the time budget
+            var many = new List<Bench.BenchDrive> { c };
+            for (int i = 0; i < 9; i++) many.Add(drive(((char)('F' + i)).ToString() + ":", false, DeviceKind.Hdd, 3 + i, 150, 150));
+            var mr = Bench.Benchmark.PlanRoutes(many);
+            bq.SizeRoutes(mr);
+            check("bench: a time budget (many hard disks: a step smaller)", mr.Count == 28 && mr[0].Big == 512 * Bench.Benchmark.MB && mr.TrueForAll(r => r.Big <= 512 * Bench.Benchmark.MB) && mr.Exists(r => r.Big == 256 * Bench.Benchmark.MB && r.Small == 250));
+            var thorough = new Bench.Benchmark { Thorough = true };
+            var tr = Bench.Benchmark.PlanRoutes(new List<Bench.BenchDrive> { c, d });
+            thorough.SizeRoutes(tr);
+            check("bench: thorough = 2 GB / 1 GB, 2,000 / 1,000 small files, a mixed folder",
+                tr.TrueForAll(r => r.Cases.Count == 3) && tr[0].Big == 2048 * Bench.Benchmark.MB && tr[0].Small == 2000 && tr[1].Big == 1024 * Bench.Benchmark.MB && tr[1].Small == 1000);
+            var s1 = Bench.BenchFiles.SmallSizes(1000);
+            long sum = 0; foreach (var x in s1) sum += x;
+            check("bench: small files 4 KB - 1 MB, the same set every time", Array.TrueForAll(s1, x => x >= 4096 && x <= 1 << 20) && sum == Bench.BenchFiles.SmallSizes(1000).Sum()
+                && sum > 150 * Bench.Benchmark.MB && sum < 250 * Bench.Benchmark.MB);
+
+            // the report: summary, JSON, HTML (escaped), text
+            var rep = new Bench.BenchReport { Started = new DateTime(2026, 11, 23, 14, 5, 0), Mode = "quick", Rounds = 2, Cpu = "Test CPU", Windows = "Windows test", Threads = 4, RamGB = 8 };
+            c.Label = "<b>&amp;"; c.Model = "Test \"NVMe\"";
+            rep.Drives = new List<Bench.BenchDrive> { c, d, new Bench.BenchDrive { Letter = "G:", Skip = "not a disk of this PC (a virtual or cloud drive)" } };
+            var big = new Bench.BenchCase { Key = "big", Big = new[] { 1024 * Bench.Benchmark.MB } };
+            var r1 = new Bench.BenchResult { From = c, To = d, Case = big };
+            r1.Runs.Add(new Bench.BenchRun { Choppy = true, Done = 5.0, OnDisk = 5.1 }); r1.Runs.Add(new Bench.BenchRun { Choppy = false, Done = 4.0, OnDisk = 6.0 });
+            r1.Runs.Add(new Bench.BenchRun { Choppy = false, Done = 4.1, OnDisk = 6.1 }); r1.Runs.Add(new Bench.BenchRun { Choppy = true, Done = 5.0, OnDisk = 5.2 });
+            r1.Score();
+            var r2 = new Bench.BenchResult { From = d, To = c, Case = new Bench.BenchCase { Key = "small", Smalls = s1 }, Error = "test error" };
+            r2.Score();
+            rep.Results.Add(r1); rep.Results.Add(r2);
+            check("bench: scored (on the disk faster, done slower)", r1.Scored && r1.Verdict == 1 && r1.DoneVerdict == -1 && !r2.Scored && rep.Summary == "Choppy faster on all 1");
+            check("bench: summary line", Bench.BenchReport.SummaryOf(9, 2, 1) == "Choppy faster on 9 of 12 · tie on 2 · slower on 1");
+            string json = rep.ToJson(), html = rep.ToHtml("x.json"), text = rep.ToText();
+            int depth = 0; bool inStr = false, esc = false, balanced = true;
+            foreach (char ch in json)
+            {
+                if (inStr) { if (esc) esc = false; else if (ch == '\\') esc = true; else if (ch == '"') inStr = false; continue; }
+                if (ch == '"') inStr = true; else if (ch == '{' || ch == '[') depth++; else if (ch == '}' || ch == ']') { depth--; if (depth < 0) balanced = false; }
+            }
+            check("bench: JSON well formed", balanced && depth == 0 && !inStr && json.Contains("\"verdict\": \"faster\"") && json.Contains("\\\"NVMe\\\"") && json.Contains("\"error\": \"test error\""));
+            check("bench: HTML escaped", html.Contains("&lt;b&gt;&amp;amp;") && !html.Contains("<b>&amp;</b>") && html.Contains("faster on all 1") && html.Contains("not a disk of this PC"));
+            check("bench: text table", text.Contains("| C: → D: (NVMe → HDD) | One big file, 1 GB |") && text.Contains("error: test error"));
+
+            // test folders: removed with what's in them; a link inside is removed, never followed; a folder that isn't ours stays
+            string root = Path.Combine(Path.GetTempPath(), "choppy-selftest-bench-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            Directory.CreateDirectory(root);
+            try
+            {
+                string outside = Path.Combine(root, "outside");
+                Directory.CreateDirectory(outside);
+                File.WriteAllText(Path.Combine(outside, "keep.txt"), "keep");
+                string why;
+                string t1 = Bench.BenchFiles.MakeFolder(root, false, out why);
+                Directory.CreateDirectory(Path.Combine(t1, "a", "b"));
+                File.WriteAllText(Path.Combine(t1, "a", "b", "x.bin"), "x");
+                File.SetAttributes(Path.Combine(t1, "a", "b", "x.bin"), FileAttributes.ReadOnly);
+                bool link = MakeJunction(Path.Combine(t1, "link"), outside);
+                // a folder of that name that isn't the benchmark's: never used, a numbered one instead
+                string foreign = Path.Combine(root, "x");
+                Directory.CreateDirectory(foreign);
+                string t2 = Bench.BenchFiles.MakeFolder(foreign, false, out why);
+                Directory.Delete(t2, true);
+                Directory.CreateDirectory(t2);
+                File.WriteAllText(Path.Combine(t2, "theirs.txt"), "theirs");
+                string t3 = Bench.BenchFiles.MakeFolder(foreign, false, out why);
+                check("bench: a folder that isn't ours gets a numbered name", t1 != null && t3 != null && t3.EndsWith(Bench.BenchFiles.FolderName + " 2"));
+                Bench.BenchFiles.CleanLeftovers();
+                check("bench: leftovers removed, links not followed" + (link ? "" : " (no link made)"),
+                    !Directory.Exists(t1) && !Directory.Exists(t3) && File.Exists(Path.Combine(outside, "keep.txt")));
+                check("bench: a folder without the marker untouched", File.Exists(Path.Combine(t2, "theirs.txt")));
+            }
+            catch (Exception ex) { check("bench: test folders: " + ex.Message, false); }
+            finally { try { Directory.Delete(root, true); } catch { } }
+
+            // Windows' own copy (the shell's engine, in a child process) of a small file and a folder
+            string sdir = Path.Combine(Path.GetTempPath(), "choppy-selftest-shell-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            try
+            {
+                Directory.CreateDirectory(Path.Combine(sdir, "src", "sub"));
+                Directory.CreateDirectory(Path.Combine(sdir, "dst"));
+                var data = new byte[300000];
+                new Random(3).NextBytes(data);
+                File.WriteAllBytes(Path.Combine(sdir, "src", "sub", "f.bin"), data);
+                File.WriteAllBytes(Path.Combine(sdir, "w.bin"), new byte[100]);
+                Directory.CreateDirectory(Path.Combine(sdir, "warm"));
+                double secs = Bench.ShellCopy.Run(Path.Combine(sdir, "w.bin"), Path.Combine(sdir, "warm"), Path.Combine(sdir, "src"), Path.Combine(sdir, "dst"), () => false);
+                string got = Path.Combine(sdir, "dst", "src", "sub", "f.bin");
+                check("bench: Windows' copy (IFileOperation, child process)", secs >= 0 && File.Exists(got) && System.Linq.Enumerable.SequenceEqual(File.ReadAllBytes(got), data)
+                    && File.Exists(Path.Combine(sdir, "warm", "w.bin")));
+            }
+            catch (Exception ex)
+            {
+                // a build server without a desktop may have no shell to copy with (like the Ctrl+V hook above)
+                if (!desktop || ex.Message.Contains("80040154") || ex.Message.IndexOf("not registered", StringComparison.OrdinalIgnoreCase) >= 0) sb.AppendLine("SKIP Windows' copy (no shell here: " + ex.Message + ")");
+                else check("bench: Windows' copy: " + ex.Message, false);
+            }
+            finally { try { Directory.Delete(sdir, true); } catch { } }
+        }
+
+        /// <summary>A junction (no administrator rights needed), for the clean-up check.</summary>
+        static bool MakeJunction(string link, string target)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo("cmd.exe", "/c mklink /J \"" + link + "\" \"" + target + "\"") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true };
+                using (var p = Process.Start(psi)) { p.StandardOutput.ReadToEnd(); p.WaitForExit(10000); }
+                return Directory.Exists(link) && (File.GetAttributes(link) & FileAttributes.ReparsePoint) != 0;
+            }
+            catch { return false; }
+        }
+
         static void WriteStream(string path, string text)
         {
             using (var h = Native.CreateFileW(path, Native.GENERIC_WRITE, 0, IntPtr.Zero, 2, 0, IntPtr.Zero))
@@ -340,7 +540,8 @@ namespace Choppy
             check("FAT32 holds files up to 4 GB", new VolumeInfo { FileSystem = "FAT32" }.MaxFileSize == uint.MaxValue
                 && new VolumeInfo { FileSystem = "exFAT" }.MaxFileSize == 0 && ntfs.MaxFileSize == 0 && new VolumeInfo().MaxFileSize == 0);
             // the Ctrl+V hook: its own thread, put in again on time (observe only: it never takes a key here)
-            if (Choppy.Explorer.PasteHook.Start(null, null, true))
+            bool desktop = Choppy.Explorer.PasteHook.Start(null, null, true);
+            if (desktop)
             {
                 System.Threading.Thread.Sleep(3500);
                 bool ok = Choppy.Explorer.PasteHook.Running && Choppy.Explorer.PasteHook.Refreshes >= 1 && Choppy.Explorer.PasteHook.Dropped == 0;
@@ -348,6 +549,7 @@ namespace Choppy
                 check("Ctrl+V hook on its own thread, refreshed (" + Choppy.Explorer.PasteHook.Refreshes + ")", ok && !Choppy.Explorer.PasteHook.Running);
             }
             else sb.AppendLine("SKIP Ctrl+V hook (no desktop to hook here)");
+            BenchChecks(check, sb, desktop);
             sb.AppendLine(fails == 0 ? "ALL PASS" : fails + " FAILED");
             if (outFile != null) File.WriteAllText(outFile, sb.ToString());
             return fails == 0 ? 0 : 2;

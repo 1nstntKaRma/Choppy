@@ -110,6 +110,8 @@ namespace Choppy.UI
 
         void Close_Click(object sender, RoutedEventArgs e) { Close(); }
 
+        void Benchmark_Click(object sender, RoutedEventArgs e) { App.Current2.ShowBenchmark(); }
+
         void About_Click(object sender, RoutedEventArgs e) { Dialogs.About(this); }
 
         internal void SetForTest(string key, string value)
