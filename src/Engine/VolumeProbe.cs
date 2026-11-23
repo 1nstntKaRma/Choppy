@@ -21,6 +21,7 @@ namespace Choppy.Engine
         public int Sector = 512;     // bytes per sector: unbuffered reads and writes go in multiples of it
         public bool Removable;       // can be pulled out (USB, cards): nothing may wait in memory for it
         public uint FsFlags;         // the file system's FILE_* capability flags
+        public bool OnUsb;           // attached by USB (an SSD in a USB case too)
         public UsbLink Usb;          // a USB drive: the speed it runs at and the most it can do (null = not USB, or unknown)
 
         public bool IsNetwork { get { return Kind == DeviceKind.Network; } }
@@ -98,6 +99,7 @@ namespace Choppy.Engine
                 {
                     bool usb;
                     v.Kind = ProbeDisk(root, type, out v.Disk, out v.Removable, out usb);
+                    v.OnUsb = usb;
                     if (usb) v.Usb = UsbLink.ForDisk(v.Disk);
                 }
                 uint spc, bps, fc, tc;

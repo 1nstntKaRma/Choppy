@@ -181,6 +181,7 @@ namespace Choppy
                 case "--batch": spec.PipeBatch = int.Parse(args[++i]); return true;
                 case "--depth": spec.PipeDepth = int.Parse(args[++i]); return true;
                 case "--wstep": spec.PipeWriteStepMB = int.Parse(args[++i]); return true;
+                case "--phased": spec.PipePhased = int.Parse(args[++i]); return true;
                 case "--flush-files": spec.FlushFiles = int.Parse(args[++i]); return true;
                 case "--flush-threads": spec.FlushThreads = int.Parse(args[++i]); return true;
                 case "--no-prealloc": spec.NoPrealloc = true; return true;

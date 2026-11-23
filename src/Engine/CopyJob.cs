@@ -448,7 +448,7 @@ namespace Choppy.Engine
             if (Spec.ForceWorkers > 0) { Plan.Workers = Spec.ForceWorkers; Plan.CanTune = false; }
             if (Spec.NoTune) Plan.CanTune = false;
             if (Spec.SmallMode == "batch") Plan.CanTune = false;   // batches are read and written by one worker
-            bool fixedPipe = Spec.PipeChunkMB > 0 || Spec.PipeSlots > 0 || Spec.PipeBatch > 0 || Spec.PipeDepth > 0 || Spec.PipeWriteStepMB > 0 || Spec.NoTune || Spec.NoPrealloc || Spec.ForcePrealloc;
+            bool fixedPipe = Spec.PipeChunkMB > 0 || Spec.PipeSlots > 0 || Spec.PipeBatch > 0 || Spec.PipeDepth > 0 || Spec.PipeWriteStepMB > 0 || Spec.NoTune || Spec.NoPrealloc || Spec.ForcePrealloc || Spec.PipePhased >= 0;
             // with a speed limit the trials would measure the limit, not the drives
             pipeTuner = Plan.Pipeline && !fixedPipe && limitBps <= 0 && Plan.PipeWays.Count > 0 ? new PipeTuner(Plan.Pipe, Plan.PipeWays, Plan.TuneSeconds, Plan.TuneMargin) : null;
             int da = Native.GetFileAttributesW(Spec.Dest);
@@ -926,8 +926,8 @@ namespace Choppy.Engine
         bool CopyBig(FileItem f, string temp, Transfer t, out int err)
         {
             var tune = Plan.Pipe;
-            if (Spec.PipeChunkMB > 0 || Spec.PipeSlots > 0 || Spec.PipeBatch > 0 || Spec.PipeDepth > 0 || Spec.PipeWriteStepMB > 0 || Spec.NoPrealloc || Spec.ForcePrealloc || Spec.CachedWriteMB > 0)
-                tune = new PipeTuning { Align = tune.Align, Chunk = Spec.PipeChunkMB > 0 ? Spec.PipeChunkMB << 20 : tune.Chunk, Slots = Spec.PipeSlots > 0 ? Spec.PipeSlots : tune.Slots, WriteBatch = Spec.PipeBatch > 0 ? Spec.PipeBatch : tune.WriteBatch, Phased = tune.Phased, Prealloc = Spec.ForcePrealloc || (tune.Prealloc && !Spec.NoPrealloc), CachedWriteChunk = Spec.CachedWriteMB > 0 ? Spec.CachedWriteMB << 20 : tune.CachedWriteChunk, TailAfterRead = tune.TailAfterRead, ReadDepth = Spec.PipeDepth > 0 ? Spec.PipeDepth : tune.ReadDepth, WriteStep = Spec.PipeWriteStepMB > 0 ? Spec.PipeWriteStepMB << 20 : tune.WriteStep };
+            if (Spec.PipeChunkMB > 0 || Spec.PipeSlots > 0 || Spec.PipeBatch > 0 || Spec.PipeDepth > 0 || Spec.PipeWriteStepMB > 0 || Spec.NoPrealloc || Spec.ForcePrealloc || Spec.CachedWriteMB > 0 || Spec.PipePhased >= 0)
+                tune = new PipeTuning { Align = tune.Align, Chunk = Spec.PipeChunkMB > 0 ? Spec.PipeChunkMB << 20 : tune.Chunk, Slots = Spec.PipeSlots > 0 ? Spec.PipeSlots : tune.Slots, WriteBatch = Spec.PipeBatch > 0 ? Spec.PipeBatch : tune.WriteBatch, Phased = Spec.PipePhased >= 0 ? Spec.PipePhased == 1 : tune.Phased, Prealloc = Spec.ForcePrealloc || (tune.Prealloc && !Spec.NoPrealloc), CachedWriteChunk = Spec.CachedWriteMB > 0 ? Spec.CachedWriteMB << 20 : tune.CachedWriteChunk, TailAfterRead = tune.TailAfterRead, ReadDepth = Spec.PipeDepth > 0 ? Spec.PipeDepth : tune.ReadDepth, WriteStep = Spec.PipeWriteStepMB > 0 ? Spec.PipeWriteStepMB << 20 : tune.WriteStep };
             Func<long, bool> progress = done =>
             {
                 long delta = done - t.Done;
@@ -949,8 +949,12 @@ namespace Choppy.Engine
             // last bytes are in memory - like Explorer's copy (a move and a checked copy read the disk, they don't)
             long tail = 0;
             if (Spec.TailMB >= 0) tail = (long)Spec.TailMB << 20;
-            // never for a USB stick: it may be pulled out right after "done"
-            else if (!Verify && Spec.Op == OpKind.Copy && !Spec.NoCachedTail && (DstVol == null || (DstVol.Kind != DeviceKind.Usb && !DstVol.Removable)))
+            // never for a USB stick: it may be pulled out right after "done". Nor when the source is the slow end (a hard disk
+            // or a USB drive into an internal SSD): the copy waits on the reads anyway, so a tail in memory makes "done" no
+            // sooner and leaves writing for after it. Five runs each into the NVMe, time to the disk against Windows' copy,
+            // with the tail / without: 1 GB from a hard disk -1.7% / +1.6%, 2 GB from a 10 Gbps USB drive -2.4% / +5.2%,
+            // from a 10 Gbps USB SSD +5.3% / +5.3% (every run within 0.03 s without it; one took twice as long with it)
+            else if (!Verify && Spec.Op == OpKind.Copy && !Spec.NoCachedTail && (DstVol == null || (DstVol.Kind != DeviceKind.Usb && !DstVol.Removable)) && !SourceIsSlowEnd)
             {
                 long after = Interlocked.Read(ref TotalBytes) - Interlocked.Read(ref DoneBytes) - (f.Size - t.Done);
                 if (after < (64L << 20)) tail = CacheBudget();
@@ -999,6 +1003,16 @@ namespace Choppy.Engine
                 f.Size = r.Bytes;
             }
             return true;
+        }
+
+        /// <summary>A hard disk, disc or USB drive into an internal SSD: the reads set the pace.</summary>
+        bool SourceIsSlowEnd
+        {
+            get
+            {
+                return SrcVol != null && DstVol != null && !SrcVol.IsNetwork && !DstVol.IsNetwork && !DstVol.IsSlowSeek && !DstVol.OnUsb
+                    && (SrcVol.IsSlowSeek || SrcVol.OnUsb);
+            }
         }
 
         /// <summary>Free bytes at the destination for this user (quotas count); -1 = couldn't tell.</summary>

@@ -17,6 +17,7 @@ namespace Choppy.Engine
         public bool Network;
         public bool CanTune;                 // measure once and switch to more files in flight when that is faster
         public bool Clone;                   // the same ReFS volume: Windows' own copy shares the blocks instead of writing them
+        public bool OneUsb;                  // one SSD in a USB case at both ends: it stalls when asked to read and write much at once
         public string Kind = "Disk";
         public bool Tuned;
         public string TuneNote;
@@ -42,6 +43,7 @@ namespace Choppy.Engine
                 string s = Kind + ": ";
                 if (Clone) return s + "Windows' own copy, which shares the original's blocks on ReFS (Windows 11 24H2 and later): nothing is written twice.";
                 if (Network) s += Workers + " files in flight hide the network's round trips" + (CanTune ? "; it measures and adds more when that is faster." : ".");
+                else if (OneUsb) s += "one file at a time, read and written at once in 8 MB pieces - a USB case stalls when much more is in flight.";
                 else if (Workers <= 1) s += "one file at a time, in order - no seeking back and forth.";
                 else s += Workers + " small files at once.";
                 if (Pipeline) s += " Big files are read and written past the Windows cache" + (PipeWays.Count > 0 ? "; the first big file tries a few ways and the fastest copies the rest." : ".");
@@ -94,6 +96,23 @@ namespace Choppy.Engine
             p.Pipeline = true;
             p.Pipe.Align = Math.Max(4096, Math.Max(src != null ? src.Sector : 512, dst != null ? dst.Sector : 512));
             bool oneDisk = VolumeProbe.SameDisk(src, dst);
+            // one SSD in a USB case at both ends: it reads and writes at once, but never much in flight. With more out (8 small
+            // files at once, 4 reads of 8 MB beside a write, or one read and one write of 16 MB) a 10 Gbps Netac NVMe case
+            // stopped answering until Windows reset it (event 129 - 19 times in six minutes): a 2 GB copy within it took
+            // 6-25 s, 1,000 small files 36-121 s, Windows' copy 4.2 s / 4 s. Into it or out of it alone it keeps up with 8 in
+            // flight. 2 GB within it, three runs each, time against Windows': 8 MB pieces with one read out +34% (723 MB/s),
+            // 4 MB +30%, 2 MB +27%, 1 MB with two out +3%; each batch read, then written: -9% (456 MB/s). No trials: a
+            // bigger piece is what stalls it. Small files: batches read, then written through the cache, one at a time (five
+            // runs each: 2 GB +32%, 2,000 small files +65%, a mixed folder +48%, no reset).
+            if (slow == DeviceKind.Unknown && oneDisk && src.OnUsb)
+            {
+                p.OneUsb = true;
+                p.Kind = "USB";
+                p.Pipe.Chunk = 8 << 20;
+                p.Pipe.Slots = 4;
+                p.Pipe.ReadDepth = 1;
+                return Aligned(p.WithSmallBatch());
+            }
             if (slow != DeviceKind.Unknown)
             {
                 // a spinning disk or USB stick hates seeking: one file at a time, in order

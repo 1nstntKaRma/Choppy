@@ -36,6 +36,7 @@ namespace Choppy.Engine
         public string SmallMode;                             // tests: small files - "unbuf", "cached", "tiny" (cache under 64 KB), "off" (no batches), "batch" (batches on any hard disk)
         public bool ForcePrealloc;                           // tests: reserve the size up front even on a hard disk
         public bool NoTune;                                  // tests: keep the first guess, measure nothing
+        public int PipePhased = -1;                          // tests: 1 = read a batch, then write it; 0 = both at once (-1 = Adaptive)
         public bool NoCachedTail;                            // tests: the last file's end goes straight to the disk too
         public int TailMB = -1;                              // tests: how much of each big file's end goes through the cache (-1 = Adaptive)
         public long MaxFileTest;                             // tests: the destination takes no file bigger than this (as FAT32 does at 4 GB)
