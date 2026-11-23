@@ -117,7 +117,7 @@ The administrator copy keeps every rule: temporary names, verify (when on) befor
 | NAS / network share / VPN | 8-16 files in flight for many small files (measures and goes up to 32 when that is faster), big files one at a time with Windows' pipelined writes |
 | SSD / NVMe | 4-8 files in flight; big files through the pipeline (8 MB pieces) |
 | Hard disk / USB stick | One stream, in order - no seeking; big files through the pipeline (32 MB pieces, 8 reads queued at the disk; writes to a hard disk joined up to 128 MB) |
-| To a hard disk, the last file fits in memory | Through the Windows cache in 4 MB writes, its size reserved first - as Explorer's copy does: done once it is in memory, Windows writes it out right after (never to a USB drive, never for a move or with Verify) |
+| To a hard disk, the last file | Through the Windows cache in 4 MB writes, its size reserved first - as Explorer's copy does: done once it is in memory, Windows writes it out right after and holds the copy back while too much waits. From an SSD / NVMe any size; from a hard disk a file that fits in memory (never to a USB drive, never for a move or with Verify) |
 | Two hard disks | Big files: 512 MB read ahead in 2 MB reads (4 at the disk at once), written in 64 MB pieces; once the source is fully read, what's left goes through the Windows cache |
 | Both ends on one hard disk | Big files: the whole file (up to 512 MB at a time) read in 1 MB reads, then written in 64 MB writes into room reserved up front - not both at once, so the heads don't run back and forth |
 | Copy within one ReFS drive (a Dev Drive) | Windows' own copy, which shares the original's blocks instead of writing them again (Windows 11 24H2 and later) |
@@ -165,6 +165,8 @@ The administrator copy keeps every rule: temporary names, verify (when on) befor
 | USB drive → NVMe (1 GB / 500 files) | 24.6 / 24.7 s (0%) | 2.94 / 4.06 s (+28%) |
 
 The second hard disk gave the same picture: small files +35% to +66%, big files −4% to +3%. The two *Slower* were hard disk → NVMe: Choppy then tried slower ways of reading the disk on every copy; without those trials (as released) it measured −3% and −1% over three runs each - Marginal Ties.
+
+One big file from the NVMe to each hard disk, five runs each (v1.43): 2 GB +5% / −1%, 4 GB 0% / −2% - Faster or a Marginal Tie. In v1.42 a file bigger than a quarter of the free memory went straight to the disk and tried a few ways of writing first: 2 GB −8% / −22%, 4 GB +10% / −20%, depending on where on the nearly full disks it landed; since v1.43 the last file goes through the Windows cache whatever its size.
 
 ## Measured
 

@@ -119,7 +119,8 @@ namespace Choppy.Engine
                 // no size reserved up front on a hard disk: the reservation can land the file on a slower part of the
                 // platter (NVMe to hard disk: 199-206 MB/s without it, 169-170 with it; again in v1.40, 4 GB: 179 / 170).
                 // A 512 MB file lands on a fast part more often with it (as Explorer's copy, which reserves) - both ways
-                // tie with Explorer over ten runs, so it stays off
+                // tie with Explorer over ten runs, so it stays off in the pipeline (the last file, through the cache, has its
+                // size reserved as Explorer's copy does - CopyJob.CopyBig)
                 if (dstSlow) p.Pipe.Prealloc = false;
                 // two hard disks: 512 MB read ahead in 2 MB reads, joined into 64 MB writes, so a write doesn't stop the
                 // reads and the source streams from the first second (4 GB on disk: 32 MB x 8 = 163 MB/s, 32 MB x 16 =
@@ -167,6 +168,10 @@ namespace Choppy.Engine
                 }
                 else
                 {
+                    // a fast drive into a hard disk: the last file skips the pipeline and its trials, whatever its size - it goes
+                    // through the Windows cache as Explorer's copy sends it (see CopyJob.CopyBig: 2 GB, five runs each to two hard
+                    // disks, the pipeline with trials took 8% / 22% longer than Windows' copy, the cache 5% less / 1% more;
+                    // 4 GB: the pipeline 10% less / 20% more, the cache 0% / 2% more)
                     p.PipeWays.Add(Way(1, 32, false, 32));    // small reads, joined into 32 MB writes
                     p.PipeWays.Add(Way(8, 8, false, 4));
                 }

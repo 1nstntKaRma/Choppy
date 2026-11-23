@@ -958,12 +958,20 @@ namespace Choppy.Engine
             // a move flushes the copy to the disk before the original can go
             var tuner = pipeTuner != null && !pipeTuner.Settled ? pipeTuner : null;
             if (pipeTuner != null && pipeTuner.Settled) tune = pipeTuner.Best;
-            // to a hard disk, a last file that fits in memory goes there the way Explorer's copy sends it: through the
-            // Windows cache, its size reserved first, done once it is in memory - Windows writes it out right after (512 MB
-            // NVMe to hard disk: Explorer done in 0.15 s, the copy straight to the disk 2.7-3.1 s). One hard disk: only once
-            // the whole batch is read (the plan says so), so the writing never competes with the reads. Nothing to try then.
-            if (tail >= f.Size && Spec.TailMB < 0 && DstVol != null && DstVol.Kind == DeviceKind.Hdd && Spec.PipeChunkMB == 0)
+            // to a hard disk, the last file goes there the way Explorer's copy sends it: through the Windows cache, its size
+            // reserved first, done once it is in memory - Windows writes it out right after (512 MB NVMe to hard disk:
+            // Explorer done in 0.15 s, the copy straight to the disk 2.7-3.1 s). From an SSD any size goes that way: Windows
+            // holds the writer back by itself while too much waits in memory, as it does for its own copy. Measured, NVMe to
+            // each of two hard disks about 80% full (D: / X:), five runs each, time to the disk against Windows': 2 GB +5% /
+            // -1%, 4 GB 0% / -2%. Before, a file bigger than a quarter of the free memory went through the pipeline and its
+            // trials: 2 GB -8% / -22%, 4 GB +10% / -20% (where the file lands decides; -5% / -24% in a Benchmark run). With at
+            // most 256 MB waiting in memory, flushed as it goes: 2 GB +4% / -1%, 4 GB -5% / -5%. From a hard disk only a file
+            // that fits in memory, once the whole batch is read (the plan says so), so the writing never competes with the
+            // reads. Nothing to try then.
+            bool fastSource = SrcVol != null && !SrcVol.IsSlowSeek && !SrcVol.IsNetwork;   // not a hard disk, USB stick or disc
+            if (tail > 0 && (tail >= f.Size || fastSource) && Spec.TailMB < 0 && DstVol != null && DstVol.Kind == DeviceKind.Hdd && Spec.PipeChunkMB == 0)
             {
+                tail = f.Size;
                 tuner = null;
                 tune = new PipeTuning { Align = tune.Align, Chunk = tune.Chunk, Slots = tune.Slots, WriteBatch = tune.WriteBatch, Phased = tune.Phased, Prealloc = true,
                     CachedWriteChunk = tune.CachedWriteChunk, TailAfterRead = tune.TailAfterRead, ReadDepth = tune.ReadDepth, WriteStep = tune.WriteStep };
