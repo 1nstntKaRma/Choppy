@@ -110,7 +110,7 @@ impl Scanner {
                 tops.push(TopItem::File(FileItem {
                     src: src.clone(),
                     rel: name,
-                    size,
+                    size: size.into(),
                     attr: d.attributes,
                     ctime: d.creation,
                     atime: d.access,
@@ -138,7 +138,7 @@ impl Scanner {
         // 3) flatten in source order: files of a folder, then its subfolders (depth first)
         for t in tops {
             match t {
-                TopItem::File(f) => res.files.push(f),
+                TopItem::File(f) => res.files.push(Arc::new(f)),
                 TopItem::Node(n) => flatten(&n, &mut res),
             }
         }
@@ -147,8 +147,8 @@ impl Scanner {
         let mut conflicts = 0;
         let mut sizes: Vec<i64> = Vec::with_capacity(res.files.len());
         for f in &res.files {
-            total += f.size;
-            sizes.push(f.size);
+            total += f.size();
+            sizes.push(f.size());
             if f.dest_exists {
                 conflicts += 1;
             }
@@ -260,7 +260,7 @@ impl Scanner {
                 node.files.push(FileItem {
                     src: full,
                     rel,
-                    size,
+                    size: size.into(),
                     attr: fd.attributes,
                     ctime: fd.creation,
                     atime: fd.access,
@@ -349,12 +349,12 @@ impl Scanner {
     }
 }
 
-fn top_largest(files: &[FileItem], n: usize) -> Vec<(WString, i64)> {
+fn top_largest(files: &[Arc<FileItem>], n: usize) -> Vec<(WString, i64)> {
     let mut top: Vec<&FileItem> = Vec::with_capacity(n + 1);
     for f in files {
-        if top.len() < n || f.size > top[top.len() - 1].size {
+        if top.len() < n || f.size() > top[top.len() - 1].size() {
             let mut i = top.len();
-            while i > 0 && top[i - 1].size < f.size {
+            while i > 0 && top[i - 1].size() < f.size() {
                 i -= 1;
             }
             top.insert(i, f);
@@ -363,7 +363,7 @@ fn top_largest(files: &[FileItem], n: usize) -> Vec<(WString, i64)> {
             }
         }
     }
-    top.iter().map(|f| (f.name(), f.size)).collect()
+    top.iter().map(|f| (f.name(), f.size())).collect()
 }
 
 fn flatten(n: &NodeRef, res: &mut ScanResult) {
@@ -373,7 +373,7 @@ fn flatten(n: &NodeRef, res: &mut ScanResult) {
     }
     res.dirs.push(node.dir);
     res.problems.extend(node.notes);
-    res.files.extend(node.files);
+    res.files.extend(node.files.into_iter().map(Arc::new));
     for s in &node.subs {
         flatten(s, res);
     }

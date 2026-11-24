@@ -1,5 +1,10 @@
-//! Streaming xxHash64 (seed 0) (XxHash64.cs). The file hasher (HashFile, which reads through BigCopy's RingReader
-//! straight from the disk / server with no cache) comes with BigCopy in step 2.
+//! Streaming xxHash64 (seed 0) plus a file hasher that reads straight from the disk/server (no cache) (XxHash64.cs).
+
+use std::sync::Arc;
+
+use super::big_copy::RingReader;
+use crate::sys;
+use crate::wstr::WString;
 
 const P1: u64 = 11400714785074694791;
 const P2: u64 = 14029467366897019727;
@@ -121,4 +126,38 @@ impl XxHash64 {
         x.update(data);
         x.digest()
     }
+}
+
+/// Hashes a file. no_cache = opened unbuffered so the bytes really come from the disk/NAS, not from what Windows still
+/// holds in memory after writing it. progress gets the bytes read so far (false = stop). Err = the error when it can't
+/// read (ERROR_REQUEST_ABORTED once stopped).
+pub fn hash_file(long_path: &WString, no_cache: bool, mut progress: Option<&mut dyn FnMut(i64) -> bool>) -> Result<u64, u32> {
+    let flags = sys::FILE_FLAG_SEQUENTIAL_SCAN | if no_cache { sys::FILE_FLAG_NO_BUFFERING | sys::FILE_FLAG_OVERLAPPED } else { 0 };
+    let h = Arc::new(sys::create_file(
+        long_path,
+        sys::GENERIC_READ,
+        sys::FILE_SHARE_READ | sys::FILE_SHARE_WRITE | sys::FILE_SHARE_DELETE,
+        sys::OPEN_EXISTING,
+        flags,
+    )?);
+    let size = sys::file_size(&h)?;
+    let mut x = XxHash64::new();
+    let mut done = 0i64;
+    // the next pieces are read while this one is hashed
+    let mut rr = RingReader::new(h, size, 8 << 20, 4, no_cache, None, false, 0, 0);
+    while let Some(p) = rr.next() {
+        let read = p.n;
+        x.update(&p.bytes()[..read as usize]);
+        rr.release(p);
+        done += read as i64;
+        if let Some(pr) = progress.as_deref_mut()
+            && !pr(done)
+        {
+            return Err(sys::ERROR_REQUEST_ABORTED);
+        }
+    }
+    if rr.error() != 0 {
+        return Err(rr.error());
+    }
+    Ok(x.digest())
 }

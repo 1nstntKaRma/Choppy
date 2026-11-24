@@ -9,6 +9,7 @@ mod bench;
 mod cli;
 mod engine;
 mod explorer;
+mod job_manager;
 mod sys; // the one module with unsafe code (it allows it itself)
 mod testhook;
 mod ui;
@@ -24,7 +25,7 @@ fn main() {
     if let Ok(cwd) = std::env::current_dir() {
         paths::set_start_dir(WString::from_os(cwd.as_os_str()));
     }
-    // (step 2: Handoff.Prepare(args) - an administrator copy takes test mode from its record)
+    engine::handoff::prepare(&args); // an administrator copy takes test mode from its record (a fresh environment)
     // Never work "in" a random folder: anything relative can only ever land in Choppy's own data folder.
     let data = app_paths::data_dir();
     if std::fs::create_dir_all(&data).is_ok() {

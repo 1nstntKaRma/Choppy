@@ -24,4 +24,8 @@ windows = { version = "0.62", features = [
     "Win32_System_Diagnostics_Debug",          # FormatMessageW (Win32Exception's message)
     "Win32_System_Environment",                # ExpandEnvironmentStringsW (REG_EXPAND_SZ as .NET reads it)
     "Win32_System_Time",                       # FileTimes.ToLocal
+    "Win32_System_Threading",                  # events for overlapped reads, thread priority, processes (the hand-off)
+    "Win32_System_Memory",                     # VirtualAlloc: the pipeline's aligned buffers
+    "Win32_System_SystemInformation",          # GlobalMemoryStatusEx (buffer and cache budgets), the clock
+    "Win32_System_Power",                      # SetThreadExecutionState: the PC doesn't sleep mid-copy
 ] }

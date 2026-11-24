@@ -1,6 +1,6 @@
 //! What a job is made of (Model.cs): the job, its files and folders, the scan's result, conflicts.
 
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
@@ -247,10 +247,12 @@ impl JobSpec {
     }
 }
 
+/// One file of a job. The scan fills it in; the copy changes what C# changed from any thread (its state, its size when
+/// the file grew or shrank since the scan, the error, where it ended up...), so those are atomics or behind a lock.
 pub struct FileItem {
     pub src: WString,         // long-form source path
     pub rel: WString,         // path under the destination folder, top-level name included
-    pub size: i64,
+    pub size: AtomicI64,      // C#'s Size: the copy puts it right when the file changed since the scan
     pub attr: u32,
     pub ctime: i64,
     pub atime: i64,
@@ -261,11 +263,11 @@ pub struct FileItem {
     pub dest_mtime: i64,
     pub temp_exists: bool,    // a leftover "<name>.chpart" from an interrupted run
     pub state: AtomicI32,     // FileState
-    pub error: Option<String>,
-    pub final_path: Option<WString>, // where it ended up (Keep both can change the name)
-    pub verified: bool,
-    pub already_there: bool,  // resume: same size + date already at the destination
-    pub source_kept: bool,    // move: copied, but the source couldn't be deleted
+    pub error: Mutex<Option<String>>,
+    pub final_path: Mutex<Option<WString>>, // where it ended up (Keep both can change the name)
+    pub verified: AtomicBool,
+    pub already_there: AtomicBool, // resume: same size + date already at the destination
+    pub source_kept: AtomicBool,   // move: copied, but the source couldn't be deleted
 }
 
 impl Default for FileItem {
@@ -273,7 +275,7 @@ impl Default for FileItem {
         FileItem {
             src: WString::new(),
             rel: WString::new(),
-            size: 0,
+            size: AtomicI64::new(0),
             attr: 0,
             ctime: 0,
             atime: 0,
@@ -284,16 +286,38 @@ impl Default for FileItem {
             dest_mtime: 0,
             temp_exists: false,
             state: AtomicI32::new(FileState::Pending as i32),
-            error: None,
-            final_path: None,
-            verified: false,
-            already_there: false,
-            source_kept: false,
+            error: Mutex::new(None),
+            final_path: Mutex::new(None),
+            verified: AtomicBool::new(false),
+            already_there: AtomicBool::new(false),
+            source_kept: AtomicBool::new(false),
         }
     }
 }
 
 impl FileItem {
+    /// `new FileItem { Src = src, Rel = rel, Size = size }`
+    pub fn new(src: WString, rel: WString, size: i64) -> FileItem {
+        FileItem { src, rel, size: AtomicI64::new(size), ..Default::default() }
+    }
+    pub fn size(&self) -> i64 {
+        self.size.load(Ordering::SeqCst)
+    }
+    pub fn set_size(&self, v: i64) {
+        self.size.store(v, Ordering::SeqCst);
+    }
+    pub fn error(&self) -> Option<String> {
+        self.error.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+    pub fn set_error(&self, why: Option<String>) {
+        *self.error.lock().unwrap_or_else(|e| e.into_inner()) = why;
+    }
+    pub fn final_path(&self) -> Option<WString> {
+        self.final_path.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+    pub fn set_final_path(&self, p: WString) {
+        *self.final_path.lock().unwrap_or_else(|e| e.into_inner()) = Some(p);
+    }
     pub fn st(&self) -> FileState {
         FileState::from_i32(self.state.load(Ordering::SeqCst))
     }
@@ -320,7 +344,7 @@ pub struct DirItem {
 
 #[derive(Default)]
 pub struct ScanResult {
-    pub files: Vec<FileItem>,
+    pub files: Vec<Arc<FileItem>>, // shared with the copy (its lists of failed and skipped files hold them too)
     pub dirs: Vec<DirItem>,
     pub total_bytes: i64,
     pub conflicts: i32,
@@ -330,7 +354,7 @@ pub struct ScanResult {
 }
 
 pub struct ConflictInfo {
-    pub file_index: usize,       // which file of the job (C#: the FileItem itself)
+    pub file: Arc<FileItem>,
     pub incoming_path: WString,  // short form
     pub existing_path: WString,  // short form
     pub incoming_size: i64,

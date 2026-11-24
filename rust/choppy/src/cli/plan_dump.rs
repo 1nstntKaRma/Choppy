@@ -146,7 +146,7 @@ const SHAPES: [(&str, i64, i64, i64); 12] = [
 fn shape(files: i64, median: i64, largest: i64) -> ScanResult {
     let mut s = ScanResult::default();
     for _ in 0..files {
-        s.files.push(FileItem::default());
+        s.files.push(std::sync::Arc::new(FileItem::default()));
     }
     s.median_size = median;
     if files > 0 {
@@ -502,7 +502,7 @@ fn dump_scan(args: &[WString], sb: &mut String) {
                     "{} | {} | {} | {:X} | c {} a {} m {} | dest {} dir {} {} {} | temp {}",
                     f.src,
                     f.rel,
-                    f.size,
+                    f.size(),
                     f.attr,
                     f.ctime,
                     f.atime,

@@ -3,6 +3,7 @@
 //! Exit code: 0 = all done, 2 = some files failed/skipped (self-test: a check failed), 3 = canceled, 1 = error.
 #![deny(unsafe_code)]
 
+mod job;
 mod plan_dump;
 mod selftest;
 mod usb;
@@ -16,6 +17,7 @@ pub fn run(args: &[WString]) -> i32 {
         let first = args.first().map(|a| a.to_string_lossy()).unwrap_or_default();
         match first.as_str() {
             "--selftest" => selftest::self_test(args.get(1)),
+            "--cli" => job::run(args),
             "--usb" => usb::usb(args.get(1)),
             "--plan-dump" => plan_dump::plan_dump(args),
             _ => {

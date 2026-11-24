@@ -4,13 +4,19 @@
 
 mod device;
 mod file;
+mod io;
+mod proc;
 mod reg;
+mod ring;
 mod text;
 mod volume;
 
 pub use device::*;
 pub use file::*;
+pub use io::*;
+pub use proc::*;
 pub use reg::*;
+pub use ring::*;
 pub use text::*;
 pub use volume::*;
 
@@ -52,6 +58,10 @@ pub const ERROR_INVALID_PARAMETER: u32 = 87;
 pub const ERROR_FILE_TOO_LARGE: u32 = 223;
 pub const ERROR_MORE_DATA: u32 = 234;
 pub const ERROR_NO_MORE_ITEMS: u32 = 259;
+pub const ERROR_NOT_SUPPORTED: u32 = 50;
+pub const ERROR_INVALID_FUNCTION: u32 = 1;
+pub const ERROR_NOT_SAME_DEVICE: u32 = 17;
+pub const ERROR_CANCELLED: u32 = 1223;
 
 pub const COPY_FILE_FAIL_IF_EXISTS: u32 = 0x00000001;
 pub const COPY_FILE_ALLOW_DECRYPTED_DESTINATION: u32 = 0x00000008;
@@ -82,6 +92,8 @@ pub const FILE_FLAG_SEQUENTIAL_SCAN: u32 = 0x08000000;
 pub const FILE_FLAG_NO_BUFFERING: u32 = 0x20000000;
 pub const FILE_FLAG_OVERLAPPED: u32 = 0x40000000;
 pub const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x00200000;
+pub const FILE_FLAG_DELETE_ON_CLOSE: u32 = 0x04000000;
+pub const FILE_ATTRIBUTE_TEMPORARY: u32 = 0x100;
 
 pub const DRIVE_UNKNOWN: u32 = 0;
 pub const DRIVE_NO_ROOT_DIR: u32 = 1;
@@ -153,6 +165,17 @@ pub fn error_text(code: u32) -> String {
         // new Win32Exception(code).Message, then " (code)" - C#'s int, so a code past 2^31 shows negative
         _ => format!("{} ({})", win32_message(code), code as i32),
     }
+}
+
+/// GetLastError: right after a call that reports its error that way (GetFileAttributesW).
+pub fn last_error() -> u32 {
+    unsafe { windows::Win32::Foundation::GetLastError() }.0
+}
+
+/// Sets an environment variable of this process. Only at the start, before any other thread runs (the
+/// administrator copy takes test mode from its record: Handoff.Prepare).
+pub fn set_env_var(key: &str, value: &str) {
+    unsafe { std::env::set_var(key, value) }
 }
 
 /// The Win32 error code inside a `windows` crate error (HRESULT_FROM_WIN32), as GetLastError gave it.
