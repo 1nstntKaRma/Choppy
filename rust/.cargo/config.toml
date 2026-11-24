@@ -1,0 +1,6 @@
+# One exe with the C runtime inside: no VC++ redistributable needed on the user's PC.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[build]
+target = "x86_64-pc-windows-msvc"

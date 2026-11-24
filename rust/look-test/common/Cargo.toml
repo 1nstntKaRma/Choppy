@@ -1,0 +1,9 @@
+[package]
+name = "look-common"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Look test: the README demo copy (fake data, animated) + Format + the speed graph's math, shared by A and B"
+
+[dependencies]

@@ -16,3 +16,6 @@ settings.ini
 *.suo
 Thumbs.db
 Desktop.ini
+
+# Rust build output
+rust/target/

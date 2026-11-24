@@ -1,0 +1,599 @@
+// Look test B: Choppy's copy window (MainWindow.xaml + Theme.xaml) in Slint. Sizes are WPF units (Slint's logical
+// px = WPF's DIPs). Text boxes use WPF's line height (size x 1.3301, Segoe UI's LineSpacing) so rows line up the
+// same way; 1 px borders are physical pixels (1phx), like WPF's rounded border thickness.
+
+export struct Seg { commands: string, color: color }
+export struct LegendRow { name: string, size: string, color: color }
+
+// a TextBlock: Segoe UI Variable Text, WPF's line height
+component T inherits Text {
+    font-family: "Segoe UI Variable Text";
+    font-size: 14px;
+    color: #F1F3F5;
+    vertical-alignment: top;
+    height: self.font-size * 1.3301;
+    wrap: no-wrap;
+}
+
+component Cap inherits T {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #8A929E;
+}
+
+component Icon inherits Text {
+    font-family: "Segoe MDL2 Assets";
+    font-size: 10px;
+    color: #9AA2AD;
+    vertical-alignment: top;
+    height: self.font-size;
+}
+
+// Btn / Btn.Primary / Btn.Cancel: a 36 high button with a 6 radius, hover / pressed / keyboard-focus looks
+component Btn inherits Rectangle {
+    in property <string> label;
+    in property <length> pad: 18px;
+    in property <length> min-w: 74px;
+    in property <color> bg: #262B32;
+    in property <color> bd: #383E47;
+    in property <color> fg: #F1F3F5;
+    in property <color> hover-bg: #2F353D;
+    in property <color> hover-bd: #454C56;
+    in property <bool> hover-keeps-bd: false;
+    in property <color> pressed-bg: #22262C;
+    in property <color> focus-bd: #5CB8FF;
+    in property <bool> on: true;
+    property <bool> key-down;
+    callback clicked;
+    height: 36px;
+    width: max(self.min-w, txt.preferred-width + 2 * self.pad + 2px);
+    border-radius: 6px;
+    border-width: 1phx;
+    background: ta.pressed || self.key-down ? self.pressed-bg : ta.has-hover ? self.hover-bg : self.bg;
+    border-color: fs.has-focus ? self.focus-bd : ta.has-hover && !self.hover-keeps-bd ? self.hover-bd : self.bd;
+    opacity: self.on ? 1 : 0.45;
+    txt := T {
+        text: root.label;
+        color: root.fg;
+        font-weight: 600;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+    fs := FocusScope {
+        enabled: root.on;
+        key-pressed(e) => {
+            if (e.text == " ") { root.key-down = true; return accept; }
+            if (e.text == "\n") { root.clicked(); return accept; }
+            return reject;
+        }
+        key-released(e) => {
+            if (e.text == " " && root.key-down) { root.key-down = false; root.clicked(); return accept; }
+            return reject;
+        }
+    }
+    ta := TouchArea {
+        enabled: root.on;
+        mouse-cursor: pointer;
+        clicked => { fs.focus(); root.clicked(); }
+    }
+}
+
+// Btn.Link: flat, a soft background on hover, Padding 6,3; content as children
+component LinkBtn inherits Rectangle {
+    callback clicked;
+    width: self.preferred-width;
+    height: self.preferred-height;
+    border-radius: 5px;
+    background: ta.has-hover ? #262B32 : transparent;
+    HorizontalLayout {
+        padding-left: 6px; padding-right: 6px; padding-top: 3px; padding-bottom: 3px;
+        @children
+    }
+    fs := FocusScope {
+        key-pressed(e) => {
+            if (e.text == " " || e.text == "\n") { root.clicked(); return accept; }
+            return reject;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { fs.focus(); root.clicked(); }
+    }
+}
+
+// Btn.Title / Btn.TitleClose: 46 x 46, an icon glyph
+component TitleBtn inherits Rectangle {
+    in property <string> glyph;
+    in property <length> size: 16px;
+    in property <bool> close;
+    callback clicked;
+    width: 46px;
+    height: 46px;
+    background: ta.pressed ? (self.close ? #A3271B : #262B32) : ta.has-hover ? (self.close ? #C42B1C : #2C323A) : transparent;
+    g := Icon {
+        text: root.glyph;
+        font-size: root.size;
+        color: root.close && ta.has-hover ? white : #C9CED6;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+// the quick toggle's dot: green on, red off (8 x 8, Margin 0,1,8,0)
+component Dot inherits Rectangle {
+    in property <bool> on;
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    background: self.on ? #3DD27A : #F0645F;
+}
+
+// Quick: a pill 32 high (Padding 11,0,13,0) with the dot and a label
+component Quick inherits Rectangle {
+    in property <string> label;
+    in property <bool> on;
+    callback toggled;
+    height: 32px;
+    width: 1phx * 2 + 11px + 16px + t.preferred-width + 13px;
+    border-radius: 16px;
+    border-width: 1phx;
+    background: #22262C;
+    border-color: ta.has-hover ? #59616C : #383E47;
+    Dot { on: root.on; x: 1phx + 11px; y: (parent.height - 9px) / 2 + 1px; }
+    t := T { text: root.label; font-size: 13.5px; color: #DDE1E6; x: 1phx + 11px + 16px; y: (parent.height - self.height) / 2; }
+    fs := FocusScope {
+        key-pressed(e) => {
+            if (e.text == " ") { root.toggled(); return accept; }
+            return reject;
+        }
+    }
+    ta := TouchArea { mouse-cursor: pointer; clicked => { fs.focus(); root.toggled(); } }
+}
+
+export component MainWindow inherits Window {
+    // everything Tick() changes
+    in property <bool> ext: true;
+    in property <string> percent: "46%";
+    in property <float> frac: 0.46;
+    in property <string> badge-mode: "Adaptive";
+    in property <string> badge-detail: "1 stream";
+    in property <bool> badge-warn;
+    in property <string> speed-num;
+    in property <string> speed-unit;
+    in property <string> avg-num;
+    in property <string> avg-unit;
+    in property <string> c-now;
+    in property <string> c-avg-label;
+    in property <string> c-avg;
+    in property <string> size-done;
+    in property <string> size-of;
+    in property <string> size-total;
+    in property <string> files;
+    in property <string> elapsed;
+    in property <string> remain-label;
+    in property <string> remain;
+    in property <string> cur-label: "CURRENT FILE";
+    in property <string> cur-name;
+    in property <string> cur-done;
+    in property <string> cur-of;
+    in property <string> cur-total;
+    in property <float> cur-frac;
+    in property <string> c2-label;
+    in property <bool> c2-warn;
+    in property <string> c2-name;
+    in property <string> pause-text: "Pause";
+    in property <string> limit-unit: "MB/s";
+    in-out property <string> limit-text: "57";
+    in property <bool> close-on: true;
+    in property <bool> verify-on;
+    in property <bool> limit-on: true;
+    in property <int> queue-count;
+    in property <string> from-name: "D: 4TB - Shadow";
+    in property <string> from-path: "D:\\Home Videos";
+    in property <string> to-name: "X: 4TB - uTorrent";
+    in property <string> to-path: "X:\\Backup\\Home Videos";
+    // the speed graph (drawn in a 500 x 70 box) and the donut (76 x 76), built in Rust from Controls.cs's math
+    in property <string> graph-area;
+    in property <string> graph-line;
+    in property <length> graph-area-top;
+    in property <bool> graph-has;
+    in property <length> avg-y;
+    in property <bool> has-avg;
+    in property <length> dot-x;
+    in property <length> dot-y;
+    in property <[Seg]> donut;
+    in property <[LegendRow]> legend;
+    in-out property <bool> queue-open;
+    in property <string> win-title: "Choppy";
+    out property <length> content-height: root-layout.preferred-height;
+    // compact: the percent's column (MinWidth 70, Margin 12) - the bar, stats and speeds end before it
+    property <length> col5: root.ext ? 0px : 12px + max(70px, pct-c.preferred-width);
+
+    callback start-drag();
+    callback close-clicked();
+    callback settings-clicked();
+    callback unit-clicked();
+    callback toggle-close();
+    callback toggle-verify();
+    callback toggle-limit();
+    callback limit-edited(string);
+    callback pause-clicked();
+    callback skip-clicked();
+    callback cancel-clicked();
+    callback view-clicked();
+
+    // bumped by Rust when the limit is turned on: the box takes the focus with its text selected
+    in-out property <int> focus-limit-req;
+
+    title: root.win-title;
+    forward-focus: main-fs;
+    icon: @image-url("icon32.png");
+    no-frame: true;
+    default-font-family: "Segoe UI Variable Text";
+    background: @linear-gradient(180deg, #232931 0%, #1B1F25 100%);
+    width: 576px;
+    height: self.content-height;
+
+    // Space anywhere else: pause / resume
+    main-fs := FocusScope {
+        key-pressed(e) => {
+            if (e.text == " ") { root.pause-clicked(); return accept; }
+            return reject;
+        }
+    }
+
+    root-layout := VerticalLayout {
+        padding: 1phx;
+        // ===== title bar (46): drags the window =====
+        title-bar := Rectangle {
+            height: 46px;
+            TouchArea {
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) { root.start-drag(); }
+                }
+            }
+            Image { source: @image-url("icon32.png"); x: 18px; y: (parent.height - 20px) / 2; width: 20px; height: 20px; image-rendering: smooth; }
+            T { text: "Choppy"; font-size: 15px; font-weight: 600; color: #E9ECF0; x: 18px + 20px + 10px; y: (parent.height - self.height - 1px) / 2; }
+            HorizontalLayout {
+                alignment: end;
+                TitleBtn { glyph: "\u{E713}"; size: 16px; clicked => { root.settings-clicked(); } }
+                TitleBtn { glyph: "\u{E8BB}"; size: 12px; close: true; clicked => { root.close-clicked(); } }
+            }
+        }
+
+        // ===== content (Margin 20,0,20,18) =====
+        VerticalLayout {
+            padding-left: 20px; padding-right: 20px; padding-bottom: 18px;
+            alignment: start;
+
+            // FROM / TO: columns 48 | 30 | Auto | the path (Margin 10 left)
+            route := Rectangle {
+                property <length> name-w: max(from-n.preferred-width, to-n.preferred-width);
+                height: 54px;
+                Cap { text: "FROM"; x: 0; y: (27px - self.height) / 2; }
+                Path { x: 48px; y: (27px - 13.65px) / 2; width: 18px; height: 14px; fit: preserve; stroke: #AEB6C2; stroke-width: 1.3px;
+                    commands: "M2.5,1 H15.5 A1.5,1.5 0 0 1 17,2.5 V11.5 A1.5,1.5 0 0 1 15.5,13 H2.5 A1.5,1.5 0 0 1 1,11.5 V2.5 A1.5,1.5 0 0 1 2.5,1 Z M1,5 H17"; }
+                from-n := T { text: root.from-name; font-size: 15.5px; font-weight: 600; x: 78px; y: (27px - self.height) / 2; }
+                T { text: root.from-path; font-size: 14.5px; color: #9AA2AD; x: 78px + parent.name-w + 10px; y: 1px + (26px - 20px) / 2; width: parent.width - self.x; overflow: elide; }
+                Cap { text: "TO"; x: 0; y: 27px + (27px - self.height) / 2; }
+                Path { x: 48px; y: 27px + (27px - 13.65px) / 2; width: 18px; height: 14px; fit: preserve; stroke: #AEB6C2; stroke-width: 1.3px;
+                    commands: "M2.5,1 H15.5 A1.5,1.5 0 0 1 17,2.5 V11.5 A1.5,1.5 0 0 1 15.5,13 H2.5 A1.5,1.5 0 0 1 1,11.5 V2.5 A1.5,1.5 0 0 1 2.5,1 Z M1,5 H17"; }
+                to-n := T { text: root.to-name; font-size: 15.5px; font-weight: 600; x: 78px; y: 27px + (27px - self.height) / 2; }
+                T { text: root.to-path; font-size: 14.5px; color: #9AA2AD; x: 78px + parent.name-w + 10px; y: 27px + 1px + (26px - 20px) / 2; width: parent.width - self.x; overflow: elide; }
+            }
+
+
+            // compact: speeds on their own row, right where the bar ends (Margin 0,4,0,-6)
+            if !root.ext : Rectangle {
+                height: 14px * 1.3301 - 2px;
+                property <length> right: self.width - root.col5;
+                // runs on one baseline: 14 SemiBold | 12.5 | 14 SemiBold
+                cav := T { text: root.c-avg; font-weight: 600; color: #C4A7FF; x: parent.right - self.preferred-width; y: 4px; }
+                cal := T { text: root.c-avg-label; font-size: 12.5px; color: #9AA2AD; x: cav.x - self.preferred-width; y: 4px + 1.5px * 1.0791; }
+                T { text: root.c-now; font-weight: 600; color: #5AC8FA; x: cal.x - self.preferred-width; y: 4px; }
+            }
+
+            // extended: the badge (Margin 0,12,0,0) and the big percent (Margin 0,8,0,-4, bottom)
+            if root.ext : Rectangle {
+                property <length> bh: 4px + 13.5px * 1.3301 + 5px + 2phx;
+                height: max(12px + self.bh, 8px + 30px * 1.3301 - 4px);
+                Rectangle {
+                    x: 0;
+                    y: 12px + (parent.height - 12px - parent.bh) / 2;
+                    height: parent.bh;
+                    width: 2phx + 12px + 7px + 8px + bm.preferred-width + (root.badge-detail == "" ? 0px : 12px + bd.preferred-width) + 14px;
+                    border-radius: 15px;
+                    border-width: 1phx;
+                    background: #132B44;
+                    border-color: #245E9C;
+                    Rectangle { x: 1phx + 12px; y: 1phx + 4px + (13.5px * 1.3301 - 8px) / 2 + 1px; width: 7px; height: 7px; border-radius: 3.5px; background: root.badge-warn ? #E8B04B : #5AC8FA; }
+                    bm := T { text: root.badge-mode; font-size: 13.5px; font-weight: 600; color: #5CB8FF; x: 1phx + 12px + 7px + 8px; y: 1phx + 4px; }
+                    bd := T { text: root.badge-detail; font-size: 13.5px; color: #5CB8FF; x: bm.x + bm.preferred-width + 12px; y: 1phx + 4px; }
+                }
+                T { text: root.percent; font-family: "Segoe UI Variable Display"; font-size: 30px; font-weight: 700; color: #F5F7FA;
+                    x: parent.width - self.preferred-width; y: parent.height + 4px - self.height; }
+            }
+
+            // the bar (Height 7, Margin 0,14,0,0) and, compact, the percent beside it (Margin 12,12,0,0)
+            Rectangle {
+                height: root.ext ? 21px : max(21px, 12px + 25px * 1.3301);
+                track := Rectangle {
+                    x: 0;
+                    y: 14px + (parent.height - 21px) / 2;
+                    height: 7px;
+                    width: parent.width - root.col5;
+                    border-radius: 3.5px;
+                    background: #2A2F37;
+                    Rectangle {
+                        x: 0;
+                        width: root.frac > 0 ? max(7px, parent.width * root.frac) : 0;
+                        border-radius: 3.5px;
+                        background: @linear-gradient(90deg, #1A7FE6 0%, #5AC8FA 100%);
+                    }
+                }
+                pct-c := T { visible: !root.ext; text: root.percent; font-family: "Segoe UI Variable Display"; font-size: 25px; font-weight: 700; color: #F5F7FA;
+                    x: parent.width - self.preferred-width; y: 12px + (parent.height - 12px - self.height) / 2; }
+            }
+
+            // sizes · files · elapsed / remaining (Margin 0,9,0,0)
+            Rectangle {
+                height: 9px + 14px * 1.3301;
+                property <length> right: self.width - root.col5;
+                sd := T { text: root.size-done; font-weight: 600; color: #7DD3A0; x: 0; y: 9px; }
+                so := T { text: root.size-of; color: #9AA2AD; x: sd.preferred-width; y: 9px; }
+                st := T { text: root.size-total; font-weight: 600; color: #F0B68C; x: so.x + so.preferred-width; y: 9px; }
+                rv := T { text: root.remain; font-weight: 600; color: #F59BC6; x: parent.right - self.preferred-width; y: 9px; }
+                rl := T { text: root.remain-label; color: #9AA2AD; x: rv.x - self.preferred-width; y: 9px; }
+                ev := T { text: root.elapsed; font-weight: 600; color: #F2C46D; x: rl.x - self.preferred-width; y: 9px; }
+                el := T { text: "Elapsed "; color: #9AA2AD; x: ev.x - self.preferred-width; y: 9px; }
+                if root.ext : T {
+                    text: root.files; color: #9AA2AD; y: 9px;
+                    x: (st.x + st.preferred-width + 10px) + ((el.x - 10px) - (st.x + st.preferred-width + 10px) - self.preferred-width) / 2;
+                }
+            }
+
+            // compact: what is happening right now (Margin 0,12,0,0)
+            if !root.ext : Rectangle {
+                height: 12px + 14px * 1.3301;
+                c2l := T { text: root.c2-label; color: root.c2-warn ? #E8B04B : #9AA2AD; x: 0; y: 12px; }
+                T { text: root.c2-name; color: #DDE1E6; x: c2l.preferred-width; y: 12px; width: parent.width - self.x; overflow: elide; }
+            }
+
+            if root.ext : VerticalLayout {
+                alignment: start;
+                // ---------- speed card (Margin 0,14,0,0; Padding 16,10) ----------
+                Rectangle { height: 14px; }
+                Rectangle {
+                    background: #171A1F;
+                    border-color: #262B33;
+                    border-width: 1phx;
+                    border-radius: 9px;
+                    VerticalLayout {
+                        padding-left: 16px + 1phx; padding-right: 16px + 1phx; padding-top: 10px + 1phx; padding-bottom: 10px + 1phx;
+                        Rectangle {
+                            height: max(11.5px * 1.3301, ub.preferred-height - 8px);
+                            Cap { text: "SPEED"; x: 0; y: (parent.height - self.height) / 2; }
+                            ub := LinkBtn {
+                                x: parent.width + 6px - self.preferred-width;
+                                y: -4px;
+                                height: parent.height + 8px;
+                                clicked => { root.unit-clicked(); }
+                                Rectangle {
+                                    width: av.x + av.preferred-width;
+                                    height: 24px * 1.3301;
+                                    // "AVG  " 12 SemiBold dim + the average 15 SemiBold lavender (one baseline), centered
+                                    property <length> top: (self.height - 15px * 1.3301) / 2;
+                                    aa := T { text: "AVG  "; font-size: 12px; font-weight: 600; color: #9AA2AD; x: 0; y: parent.top + 3px * 1.0791; }
+                                    an := T { text: root.avg-num + root.avg-unit; font-size: 15px; font-weight: 600; color: #C4A7FF; x: aa.preferred-width; y: parent.top; }
+                                    av := T { text: root.speed-num + root.speed-unit; font-family: "Segoe UI Variable Display"; font-size: 24px; font-weight: 600; color: #5AC8FA;
+                                        x: an.x + an.preferred-width + 20px; y: 0; }
+                                }
+                            }
+                        }
+                        Rectangle { height: 6px; }
+                        // SpeedGraph (70 high): a top grid line, the gradient fill, the dashed average, the line, the end dot
+                        graph := Rectangle {
+                            height: 70px;
+                            Rectangle { x: 0; y: 6px; width: parent.width; height: 1px; background: #FFFFFF30; }
+                            if root.graph-has : Path {
+                                // the fill's gradient runs over the filled area's own bounds (like WPF's brush): the Path
+                                // starts at the area's top, its points are moved up by as much (in Rust)
+                                x: 0; y: root.graph-area-top; width: parent.width; height: parent.height - root.graph-area-top;
+                                fit: preserve;
+                                commands: root.graph-area;
+                                fill: @linear-gradient(180deg, #2E8FD870 0%, #1E5A8A28 60%, #161A2000 100%);
+                            }
+                            if root.has-avg : Path {
+                                x: 0; y: 0; width: parent.width; height: parent.height;
+                                fit: preserve;
+                                commands: "M0," + (root.avg-y / 1px) + " L" + (parent.width / 1px) + "," + (root.avg-y / 1px);
+                                stroke: #C4A7FF; stroke-width: 1.4px; stroke-dash-array: [5.6px, 4.2px];
+                            }
+                            if root.graph-has : Path {
+                                x: 0; y: 0; width: parent.width; height: parent.height;
+                                fit: preserve;
+                                commands: root.graph-line;
+                                stroke: #5AC8FA; stroke-width: 2px; stroke-line-cap: round; stroke-line-join: round;
+                            }
+                            if root.graph-has : Rectangle { x: root.dot-x - 6px; y: root.dot-y - 6px; width: 12px; height: 12px; border-radius: 6px; background: #5AC8FA40; }
+                            if root.graph-has : Rectangle { x: root.dot-x - 3.2px; y: root.dot-y - 3.2px; width: 6.4px; height: 6.4px; border-radius: 3.2px; background: #5AC8FA; }
+                        }
+                    }
+                }
+
+                // ---------- current file (Margin 0,16,0,0) ----------
+                Rectangle { height: 16px; }
+                Rectangle {
+                    height: 14px * 1.3301;
+                    Cap { text: root.cur-label; x: 0; y: (parent.height - self.height) / 2; }
+                    ct := T { text: root.cur-total; font-weight: 600; color: #F0B68C; x: parent.width - self.preferred-width; y: 0; }
+                    co := T { text: root.cur-of; color: #9AA2AD; x: ct.x - self.preferred-width; y: 0; }
+                    T { text: root.cur-done; font-weight: 600; color: #7DD3A0; x: co.x - self.preferred-width; y: 0; }
+                }
+                Rectangle { height: 4px; }
+                T { text: root.cur-name; font-size: 16px; font-weight: 600; overflow: elide; }
+                Rectangle { height: 9px; }
+                Rectangle {
+                    height: 4px;
+                    border-radius: 2px;
+                    background: #2A2F37;
+                    Rectangle { x: 0; width: parent.width * root.cur-frac; border-radius: 2px; background: #5AC8FA; }
+                }
+
+                // ---------- largest files (Margin 0,18,0,0) ----------
+                Rectangle { height: 18px; }
+                Cap { text: "LARGEST FILES"; }
+                Rectangle { height: 10px; }
+                Rectangle {
+                    property <length> row-h: 14px * 1.3301;
+                    property <length> legend-h: self.row-h * root.legend.length + 6px * (root.legend.length - 1);
+                    height: max(76px, self.legend-h);
+                    Rectangle {
+                        x: 0; y: (parent.height - 76px) / 2; width: 76px; height: 76px;
+                        // the track: a 13 wide ring
+                        Path { width: 76px; height: 76px; fit: preserve; stroke: #2A2F37; stroke-width: 13px;
+                            commands: "M38,6.5 A31.5,31.5 0 1 1 38,69.5 A31.5,31.5 0 1 1 38,6.5 Z"; }
+                        for s in root.donut : Path { width: 76px; height: 76px; fit: preserve; stroke: s.color; stroke-width: 13px; stroke-line-cap: butt;
+                            commands: s.commands; }
+                    }
+                    for r[i] in root.legend : Rectangle {
+                        x: 80px + 18px;
+                        y: (parent.height - parent.legend-h) / 2 + i * (parent.row-h + 6px);
+                        width: parent.width - self.x;
+                        height: parent.row-h;
+                        Rectangle { x: 0; y: (parent.height - 11px) / 2 + 1px; width: 10px; height: 10px; border-radius: 2px; background: r.color; }
+                        sz := T { text: r.size; color: #9AA2AD; x: parent.width - self.preferred-width; y: 0; }
+                        T { text: r.name; color: #DDE1E6; x: 20px; y: 0; width: sz.x - 14px - self.x; overflow: elide; }
+                    }
+                }
+
+                // ---------- quick toggles (Margin 0,18,0,0; WrapPanel Margin 0,9,0,-6) ----------
+                Rectangle { height: 18px; }
+                Cap { text: "QUICK TOGGLES"; }
+                Rectangle { height: 9px; }
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 0;
+                    Quick { label: "Close at completion"; on: root.close-on; toggled => { root.toggle-close(); } }
+                    Rectangle { width: 7px; }
+                    Quick { label: "Verify files"; on: root.verify-on; toggled => { root.toggle-verify(); } }
+                    Rectangle { width: 7px; }
+                    // QuickPill (Padding 11,0,4,0): QuickDot | line (Margin 10,0,8,0) | the box 56 x 26 | unit (Margin 7,0,8,0)
+                    Rectangle {
+                        height: 32px;
+                        width: 2phx + 11px + 16px + sl.preferred-width + 10px + 1px + 8px + 56px + 7px + lu.preferred-width + 8px + 4px;
+                        border-radius: 16px;
+                        border-width: 1phx;
+                        background: #22262C;
+                        border-color: #383E47;
+                        Rectangle {
+                            x: 1phx + 11px; width: 16px + sl.preferred-width; height: parent.height;
+                            Dot { on: root.limit-on; x: 0; y: (parent.height - 9px) / 2 + 1px; }
+                            sl := T { text: "Speed limit"; font-size: 13.5px; color: #DDE1E6; x: 16px; y: (parent.height - self.height) / 2; }
+                            lfs := FocusScope {
+                                key-pressed(e) => {
+                                    if (e.text == " ") { root.toggle-limit(); return accept; }
+                                    return reject;
+                                }
+                            }
+                            TouchArea { mouse-cursor: pointer; clicked => { lfs.focus(); root.toggle-limit(); } }
+                        }
+                        Rectangle { x: 1phx + 11px + 16px + sl.preferred-width + 10px; y: (parent.height - 18px) / 2; width: 1phx; height: 18px; background: #3A4048; }
+                        box := Rectangle {
+                            x: 1phx + 11px + 16px + sl.preferred-width + 10px + 1px + 8px;
+                            y: (parent.height - 26px) / 2;
+                            width: 56px;
+                            height: 26px;
+                            border-radius: 5px;
+                            border-width: 1phx;
+                            background: #15181C;
+                            border-color: limit-input.has-focus ? #5CB8FF : #3A4048;
+                            opacity: root.limit-on ? 1 : 0.45;
+                            limit-input := TextInput {
+                                x: 1phx + 2px; width: parent.width - 2 * self.x; height: parent.height;
+                                text <=> root.limit-text;
+                                enabled: root.limit-on;
+                                property <int> req: root.focus-limit-req;
+                                changed req => { self.focus(); self.select-all(); }
+                                single-line: true;
+                                font-family: "Segoe UI Variable Text";
+                                font-size: 14px;
+                                font-weight: 600;
+                                color: #F1F3F5;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                selection-background-color: #2A79C866;
+                                selection-foreground-color: #F1F3F5;
+                                text-cursor-width: 1phx;
+                                edited => { root.limit-edited(self.text); }
+                                accepted => { self.clear-focus(); }
+                                key-pressed(e) => {
+                                    if (e.text == Key.Escape) { self.clear-focus(); return accept; }
+                                    return reject;
+                                }
+                            }
+                        }
+                        lu := T { text: root.limit-unit; font-size: 13.5px; color: #9AA2AD; x: box.x + 56px + 7px; y: (parent.height - self.height) / 2; }
+                    }
+                }
+            }
+
+            // ---------- actions (Margin 0,16,0,0) ----------
+            Rectangle { height: 16px; }
+            actions := Rectangle {
+                height: 36px;
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 8px;
+                    Btn { label: root.pause-text; min-w: 84px; bg: #0E72E6; bd: #2A86EE; fg: white; hover-bg: #1C80F2; hover-keeps-bd: true; pressed-bg: #0B62C6; focus-bd: #BFE3FF;
+                        clicked => { root.pause-clicked(); } }
+                    if root.ext : Btn { label: "Skip"; min-w: 0; clicked => { root.skip-clicked(); } }
+                    Btn { label: "Cancel"; min-w: 0; bg: #23272D; bd: #3A4048; fg: #F4B8B3; clicked => { root.cancel-clicked(); } }
+                    if root.ext : qb := Btn {
+                        label: "";
+                        min-w: 1px * 0;
+                        width: 2px + 28px + ql.preferred-width + qn.preferred-width + 10px + 9px;
+                        clicked => { root.queue-open = !root.queue-open; }
+                        ql := T { text: "Queue   "; color: #9AA2AD; x: (parent.width - (self.preferred-width + qn.preferred-width + 10px + 9px)) / 2; y: (parent.height - self.height) / 2; }
+                        qn := T { text: root.queue-count; font-weight: 600; x: ql.x + ql.preferred-width; y: ql.y; }
+                        Icon { text: root.queue-open ? "\u{E70E}" : "\u{E70D}"; font-size: 9px; x: qn.x + qn.preferred-width + 10px; y: (parent.height - 9px) / 2 + 1px; }
+                    }
+                }
+                LinkBtn {
+                    x: parent.width - self.preferred-width;
+                    y: (parent.height - self.preferred-height) / 2;
+                    clicked => { root.queue-open = false; root.view-clicked(); }
+                    vt := T { text: root.ext ? "Compact" : "Extended"; font-size: 14.5px; color: #DDE1E6; }
+                    Rectangle {
+                        width: 9px + 10px;
+                        min-height: vt.height;
+                        Icon { text: root.ext ? "\u{E70E}" : "\u{E70D}"; font-size: 10px; x: 9px; y: (vt.height - 10px) / 2 + 1px; }
+                    }
+                }
+            }
+        }
+    }
+
+    // the Queue pop-up (Placement Top, VerticalOffset -6, 400 wide): Slint draws pop-ups inside the window,
+    // so it's kept within the window's edge. A click outside closes it (StaysOpen="False").
+    if root.queue-open : TouchArea {
+        clicked => { root.queue-open = false; }
+    }
+    if root.queue-open : Rectangle {
+        property <length> h: 2phx + 12px + 8px + 12.5px * 1.3301;
+        x: root.width - 1phx - 400px;
+        y: root.height - 1phx - 18px - 36px - 6px - self.h;
+        width: 400px;
+        height: self.h;
+        background: #22262C;
+        border-color: #3A4048;
+        border-width: 1phx;
+        border-radius: 8px;
+        TouchArea { }
+        T { text: "Nothing waiting. A new copy waits here while one is running."; font-size: 12.5px; color: #6B737E; x: 1phx + 6px + 8px; y: 1phx + 6px + 4px; }
+    }
+
+    // the 1 px window border, on top
+    Rectangle { border-width: 1phx; border-color: #333A43; }
+}
