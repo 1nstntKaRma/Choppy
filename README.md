@@ -112,14 +112,6 @@ Everything is per user:
 
 `Revert to Windows Copy.cmd` removes all of it (logs stay).
 
-## Command Line
-
-```text
-Choppy.exe copy <source...> <destination folder>
-Choppy.exe move <source...> <destination folder>
-Choppy.exe --benchmark [out.json] [--thorough] [--network]
-```
-
 ## License
 
 [MIT](LICENSE) - by 1nstntKaRma. No telemetry, no update checks: the link in *About* opens your browser only when you click it.
