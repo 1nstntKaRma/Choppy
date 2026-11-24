@@ -211,7 +211,7 @@ namespace Choppy.UI
             DataObject.AddPastingHandler(box, (s, e) =>
             {
                 var text = e.DataObject.GetDataPresent(typeof(string)) ? (string)e.DataObject.GetData(typeof(string)) : null;
-                if (Format.ParseLimit(text) == 0) e.CancelCommand();
+                if (string.IsNullOrEmpty(text) || System.Linq.Enumerable.Any(text, c => c < '0' || c > '9')) e.CancelCommand();
             });
             box.PreviewKeyDown += (s, e) => { if (e.Key == System.Windows.Input.Key.Space) e.Handled = true; };
         }

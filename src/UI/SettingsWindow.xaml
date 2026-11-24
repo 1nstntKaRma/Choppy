@@ -149,7 +149,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Style="{StaticResource Head}" Text="Close at completion" VerticalAlignment="Center"
-                               ToolTip="Closes the copy window this many seconds after a copy finishes with no problems. A copy with problems stays open."/>
+                               ToolTip="Closes the copy window this many seconds after a copy finishes with no problems (0: right away). A copy with problems stays open."/>
                     <TextBox x:Name="CloseValue" Grid.Column="1" Style="{StaticResource Box.Small}" Width="60" Height="30" MaxLength="3" TextChanged="CloseValue_Changed"/>
                     <TextBlock Grid.Column="2" Text="s" FontSize="14" Foreground="{StaticResource B.Dim}" VerticalAlignment="Center" Margin="10,0,0,0"/>
                     <CheckBox x:Name="AutoClose" Grid.Column="4" Style="{StaticResource Toggle}" VerticalAlignment="Center" Checked="Changed" Unchecked="Changed"/>

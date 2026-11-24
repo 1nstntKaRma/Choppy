@@ -603,7 +603,8 @@ namespace Choppy.UI
             }
             if (closeAt.HasValue)
             {
-                if (IsMouseOver) closeAt = DateTime.Now.AddSeconds(Settings.Current.CloseAfterSeconds);
+                // the mouse on the window holds it open, unless it is set to close right away (0 s)
+                if (IsMouseOver && Settings.Current.CloseAfterSeconds > 0) closeAt = DateTime.Now.AddSeconds(Settings.Current.CloseAfterSeconds);
                 else if (DateTime.Now >= closeAt.Value) { closeAt = null; Close(); return; }
             }
             string countdown = closeAt.HasValue ? "closing in " + Math.Max(1, (int)Math.Ceiling((closeAt.Value - DateTime.Now).TotalSeconds)) + " s" : null;

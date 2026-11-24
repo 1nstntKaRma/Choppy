@@ -424,37 +424,13 @@ namespace Choppy.Bench
             return "[" + string.Join(", ", r.Runs.Where(x => x.Choppy == choppy).Select(x => "{ \"done\": " + N(x.Done, "0.000") + ", \"onDisk\": " + N(x.OnDisk, "0.000") + " }")) + "]";
         }
 
-        // ================= text (clipboard) =================
-
-        /// <summary>A short Markdown table: reads as plain text and shows as a table on GitHub and in chats.</summary>
-        public string ToText()
-        {
-            var t = new StringBuilder();
-            t.AppendLine("**Choppy VS Windows - Choppy v" + Version + " Benchmark** - " + Started.ToString("d MMM yyyy, HH:mm", CultureInfo.InvariantCulture) + " - " + Cap(Mode) + (Canceled ? " (stopped early)" : ""));
-            t.AppendLine(Machine);
-            t.AppendLine();
-            t.AppendLine("**" + Summary + "**");
-            var tot = Totals;
-            if (tot != null) t.AppendLine("**" + tot.Line + "** (every case copied once)");
-            t.AppendLine("The average of each one's runs until the copies are on the disk; less than " + (int)(Benchmark.TieMargin * 100) + "% apart is a " + TieWord + ".");
-            foreach (var hb in HeldBack()) t.AppendLine("Held back: " + hb);
-            t.AppendLine();
-            t.AppendLine("| Route | What | Choppy | Windows | Time saved | Result |");
-            t.AppendLine("|---|---|---:|---:|---:|---|");
-            foreach (var r in Results)
-            {
-                string route = r.Route + " (" + r.RouteKinds + ")";
-                if (!r.Scored) { t.AppendLine("| " + route + " | " + r.Case.Title + ", " + r.Case.Detail + " | | | | error: " + (r.Error ?? "not measured") + " |"); continue; }
-                t.AppendLine("| " + route + " | " + r.Case.Title + ", " + BenchText.Size(r.Case.Bytes) + " | " + BenchText.Speed(r.ChoppyMBps) + ", " + BenchText.Secs(r.ChoppySecs)
-                    + " | " + BenchText.Speed(r.WindowsMBps) + ", " + BenchText.Secs(r.WindowsSecs) + " | " + BenchText.Saved(r.Saved) + " | " + Word(r.Verdict) + " |");
-            }
-            t.AppendLine();
-            t.Append("Drives: ");
-            t.AppendLine(string.Join("; ", (Drives ?? new List<BenchDrive>()).Where(d => d.Skip == null).Select(d => d.Letter + " " + d.Kind + (d.Model != null ? " " + d.Model : "") + " (" + d.FileSystem + (d.Usb != null ? ", " + UsbLink.Short(d.Usb.Speed) : "") + ")")));
-            return t.ToString();
-        }
-
         static string Cap(string s) { return string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s.Substring(1); }
+
+        /// <summary>"Quick", or "Quick, 5 runs each" when the runs were changed from the default.</summary>
+        string ModeText
+        {
+            get { return Cap(Mode) + (Rounds > 0 && Rounds != Benchmark.DefaultRounds(Mode == "thorough") ? ", " + Rounds + (Rounds == 1 ? " run each" : " runs each") : ""); }
+        }
 
         // ================= HTML =================
 
@@ -506,7 +482,7 @@ namespace Choppy.Bench
             string icon = BenchText.IconDataUri();
             h.Append("<header>" + (icon != null ? "<img src=\"" + icon + "\" width=\"52\" height=\"52\" alt=\"\">" : "")
                 + "<div><h1>Choppy VS Windows</h1><div class=\"dim\">Choppy v" + H(Version) + " Benchmark · "
-                + H(Started.ToString("d MMM yyyy, HH:mm", CultureInfo.InvariantCulture)) + " · " + H(Cap(Mode)) + " · took " + H(BenchText.Duration(Seconds)) + "</div></div></header>\n");
+                + H(Started.ToString("d MMM yyyy, HH:mm", CultureInfo.InvariantCulture)) + " · " + H(ModeText) + " · took " + H(BenchText.Duration(Seconds)) + "</div></div></header>\n");
 
             // the whole run in four numbers
             h.Append(TotalsHtml());

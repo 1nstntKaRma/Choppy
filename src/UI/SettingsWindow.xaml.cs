@@ -67,8 +67,8 @@ namespace Choppy.UI
                 : PSkip.IsChecked == true ? ConflictPolicy.Skip : PBoth.IsChecked == true ? ConflictPolicy.KeepBoth : ConflictPolicy.Ask;
             s.CloseWhenDone = AutoClose.IsChecked == true;
             CloseValue.IsEnabled = s.CloseWhenDone;
-            int secs = Format.ParseLimit(CloseValue.Text);   // whole seconds only
-            if (secs >= 1 && secs <= 999) s.CloseAfterSeconds = secs;
+            int secs;   // whole seconds only; 0 closes the window right away
+            if (int.TryParse(CloseValue.Text, NumberStyles.None, CultureInfo.InvariantCulture, out secs) && secs <= 999) s.CloseAfterSeconds = secs;
             string unit = UMbps.IsChecked == true ? "mbps" : UMbs.IsChecked == true ? "mbs" : "auto";
             if (unit != s.SpeedUnit)
             {

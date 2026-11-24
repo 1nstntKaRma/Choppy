@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -18,8 +19,8 @@ namespace Choppy.UI
 {
     /// <summary>
     /// Benchmark: Choppy VS Windows (its own copy engine) on every drive of this PC. Lists the drives (and why one is left
-    /// out), runs on its own thread with progress and an estimate, shows each case as it finishes, and saves the report.
-    /// It can be resized and maximized at any time, running or not.
+    /// out, looked at again when one is plugged in or removed), runs on its own thread with progress and an estimate,
+    /// shows each case as it finishes, and saves the report. It can be resized and maximized at any time, running or not.
     /// </summary>
     public partial class BenchmarkWindow : Window
     {
@@ -39,6 +40,12 @@ namespace Choppy.UI
         bool foldedForRoom;         // the drives folded by themselves: no room on this screen (not kept for the next time)
         bool keepOpen;              // ... and opened again with the +: they stay open
         double barFraction;
+        bool scanning;              // looking at the drives
+        int usable = -1;            // drives that would be tested (-1: not known yet)
+        bool loadingRuns;
+        readonly DispatcherTimer rescanSoon;   // a drive plugged in or removed: looked at again a moment later
+
+        const string KeepOff = "Keep other work off these drives while it runs: it measures them.";
 
         static Brush Res(string key) { return (Brush)Application.Current.FindResource(key); }
 
@@ -50,13 +57,17 @@ namespace Choppy.UI
             try { AppIcon.Source = ChoppyIcon.Frame(20); Icon = BitmapFrame.Create(new Uri(ChoppyIcon.Uri)); } catch { }
             timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
             timer.Tick += (s, e) => Tick();
+            rescanSoon = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
+            rescanSoon.Tick += (s, e) => { rescanSoon.Stop(); if (worker == null) Scan(); };
+            WholeNumberBox.Attach(RunsBox);
             BuildHead();
             ShowFold();
+            ShowRuns();
             SourceInitialized += (o, e) =>
             {
                 Native2.MaximizeToWorkArea(this);
                 var src = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
-                if (src != null) src.AddHook(SizeHook);
+                if (src != null) src.AddHook(WndHook);
             };
             StateChanged += (o, e) => OnStateChanged();
             LayoutUpdated += (o, e) => UpdateMinHeight();
@@ -69,12 +80,17 @@ namespace Choppy.UI
 
         // ================= drives =================
 
-        /// <summary>Looks at the drives on a worker thread (a network drive can take a moment to answer).</summary>
+        /// <summary>
+        /// Looks at the drives on a worker thread (a network drive can take a moment to answer): when the window opens,
+        /// with the arrows beside DRIVES, and by itself when a drive is plugged in or removed - while nothing runs.
+        /// </summary>
         void Scan()
         {
             int no = ++scanNo;
             bool net = NetworkToggle.IsChecked == true;
-            StartBtn.IsEnabled = false;
+            scanning = true;
+            ShowButtons();
+            Estimate.Visibility = Visibility.Visible;
             Estimate.Text = "Looking at the drives...";
             ThreadPool.QueueUserWorkItem(_ =>
             {
@@ -82,26 +98,94 @@ namespace Choppy.UI
                 try { found = Benchmark.FindDrives(net, null); } catch { found = new List<BenchDrive>(); }
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    if (no != scanNo || worker != null || report != null) return;
+                    if (no != scanNo) return;
+                    scanning = false;
+                    if (worker != null) return;
                     drives = found;
                     Preview();
                 }));
             });
         }
 
-        /// <summary>The drives that would be tested and how long it would take, for the chosen mode.</summary>
+        void Rescan_Click(object sender, RoutedEventArgs e) { if (worker == null) Scan(); }
+
+        /// <summary>The drives that would be tested and how long it would take, for the chosen mode and runs.</summary>
         void Preview()
         {
             if (drives == null) return;
-            var b = new Benchmark { Thorough = ModeThorough.IsChecked == true, Network = NetworkToggle.IsChecked == true };
-            double est = b.Preview(drives);
-            int used = drives.Count(d => d.Skip == null);
+            double est = NewBench().Preview(drives);
+            usable = drives.Count(d => d.Skip == null);
             ShowDrives(drives, false);
-            Estimate.Text = used == 0 ? "" : "about " + Format.Short(TimeSpan.FromSeconds(Math.Max(60, est)));
-            StartBtn.IsEnabled = used > 0;
-            FootNote.Text = used == 0 ? "No drive here can be tested - each one's reason is listed above."
-                : "Keep other work off these drives while it runs: it measures them.";
+            Estimate.Visibility = Visibility.Visible;
+            Estimate.Text = usable == 0 ? "" : "about " + Format.Short(TimeSpan.FromSeconds(Math.Max(60, est)));
+            ShowHint(usable == 0 ? "No drive here can be tested - each one's reason is listed above." : KeepOff);
+            ShowButtons();
         }
+
+        /// <summary>A Benchmark as chosen: Quick or Thorough, network drives or not, and the runs.</summary>
+        Benchmark NewBench()
+        {
+            bool thorough = ModeThorough.IsChecked == true;
+            int runs = Runs;
+            return new Benchmark { Thorough = thorough, Network = NetworkToggle.IsChecked == true, RoundsOverride = runs != Benchmark.DefaultRounds(thorough) ? runs : 0 };
+        }
+
+        /// <summary>The line under the progress (and under the drives before it starts).</summary>
+        void ShowHint(string text)
+        {
+            Hint.Text = text;
+            Hint.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        // ================= runs =================
+
+        /// <summary>Runs each for the mode chosen: the number typed in (kept in the settings), else the default (Quick 2, Thorough 3).</summary>
+        int Runs
+        {
+            get
+            {
+                bool thorough = ModeThorough.IsChecked == true;
+                int v = thorough ? Settings.Current.BenchRunsThorough : Settings.Current.BenchRunsQuick;
+                return v > 0 ? v : Benchmark.DefaultRounds(thorough);
+            }
+        }
+
+        /// <summary>The box shows the runs of the mode chosen; the intro and its tooltip say them.</summary>
+        void ShowRuns()
+        {
+            loadingRuns = true;
+            RunsBox.Text = Runs.ToString(CultureInfo.InvariantCulture);
+            loadingRuns = false;
+            ShowRunsText();
+        }
+
+        void ShowRunsText()
+        {
+            bool thorough = ModeThorough.IsChecked == true;
+            int n = Runs, d = Benchmark.DefaultRounds(thorough);
+            RunsPanel.ToolTip = "How many times each one copies every case, taking turns. " + (thorough ? "Thorough" : "Quick") + ": " + d
+                + (n == d ? "" : " if not changed") + ". Kept for the next time";
+            Intro.Text = "Both copy the same test files on every drive of this PC - one big file and many small files, from the system drive to each other drive and back, and within each drive. They take turns, each one "
+                + (n == 1 ? "once" : n == 2 ? "twice" : n + " times") + ", and the source is never in memory. The test files go into a temporary folder on each drive and are removed at the end.";
+        }
+
+        /// <summary>A number from 1 typed in: kept for this mode (the default kept as no change), and the estimate follows.</summary>
+        void Runs_Changed(object sender, TextChangedEventArgs e)
+        {
+            if (loadingRuns || !IsLoaded) return;
+            int v;
+            // empty or 0 while typing: nothing changes (the box shows the runs again when it is left)
+            if (!int.TryParse(RunsBox.Text, NumberStyles.None, CultureInfo.InvariantCulture, out v) || v < 1 || v > Settings.MaxBenchRuns) return;
+            bool thorough = ModeThorough.IsChecked == true;
+            int keep = v == Benchmark.DefaultRounds(thorough) ? 0 : v;
+            var st = Settings.Current;
+            if (thorough) st.BenchRunsThorough = keep; else st.BenchRunsQuick = keep;
+            st.Save();
+            ShowRunsText();
+            if (worker == null) Preview();
+        }
+
+        void Runs_LostFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e) { ShowRuns(); }
 
         void ShowDrives(List<BenchDrive> list, bool measured)
         {
@@ -164,8 +248,6 @@ namespace Choppy.UI
         // the − folds the drives to one line beside DRIVES (kept for the next time), the + opens the list again
         void Fold_Click(object sender, RoutedEventArgs e) { ToggleFold(); }
 
-        void DrivesHead_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) { if (!e.Handled) ToggleFold(); }
-
         bool Shut { get { return Settings.Current.BenchDrivesShut || foldedForRoom; } }
 
         void ToggleFold()
@@ -217,9 +299,14 @@ namespace Choppy.UI
             DrivesLine.ToolTip = string.Join("\n", tip);
         }
 
-        void Mode_Changed(object sender, RoutedEventArgs e) { if (IsLoaded && worker == null && report == null) Preview(); }
+        void Mode_Changed(object sender, RoutedEventArgs e)
+        {
+            if (!IsLoaded) return;
+            ShowRuns();
+            if (worker == null) Preview();
+        }
 
-        void Network_Changed(object sender, RoutedEventArgs e) { if (IsLoaded && worker == null && report == null) Scan(); }
+        void Network_Changed(object sender, RoutedEventArgs e) { if (IsLoaded && worker == null) Scan(); }
 
         // ================= results =================
 
@@ -413,12 +500,28 @@ namespace Choppy.UI
             if (WindowState != WindowState.Minimized) FitToScreen();
         }
 
-        /// <summary>Dragging the top or bottom edge makes the height the user's; dragging only a side keeps it following the content.</summary>
-        IntPtr SizeHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        /// <summary>
+        /// Dragging the top or bottom edge makes the height the user's; dragging only a side keeps it following the content.
+        /// A drive plugged in or removed: the drives are looked at again.
+        /// </summary>
+        IntPtr WndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
             const int WM_SIZING = 0x0214, WM_ENTERSIZEMOVE = 0x0231, WM_EXITSIZEMOVE = 0x0232, WM_SYSCOMMAND = 0x0112, SC_MAXIMIZE = 0xF030;
+            const int WM_DEVICECHANGE = 0x0219, DBT_DEVICEARRIVAL = 0x8000, DBT_DEVICEREMOVECOMPLETE = 0x8004, DBT_DEVTYP_VOLUME = 2;
             switch (msg)
             {
+                case WM_DEVICECHANGE:
+                    // a volume came or went (DEV_BROADCAST_HDR: size, then the device type); a moment later Windows has it ready
+                    {
+                        int ev = wParam.ToInt32();
+                        if ((ev == DBT_DEVICEARRIVAL || ev == DBT_DEVICEREMOVECOMPLETE) && lParam != IntPtr.Zero
+                            && System.Runtime.InteropServices.Marshal.ReadInt32(lParam, 4) == DBT_DEVTYP_VOLUME && worker == null)
+                        {
+                            rescanSoon.Stop();
+                            rescanSoon.Start();
+                        }
+                    }
+                    break;
                 case WM_SYSCOMMAND:
                     // about to be maximized (the title bar double-clicked, Windows+Up, the window menu): the content lets go of the height first
                     if ((wParam.ToInt32() & 0xFFF0) == SC_MAXIMIZE) SizeToContent = SizeToContent.Manual;
@@ -486,22 +589,55 @@ namespace Choppy.UI
 
         // ================= running =================
 
+        /// <summary>Start; while it runs Abort, then Close (once aborted); after an abort Close.</summary>
         void Start_Click(object sender, RoutedEventArgs e)
         {
-            if (worker != null) { AskStop(); return; }
-            Begin(new Benchmark { Thorough = ModeThorough.IsChecked == true, Network = NetworkToggle.IsChecked == true });
+            if (worker != null)
+            {
+                if (!bench.IsCanceled) AskAbort();
+                else { closeWhenDone = true; ShowButtons(); }   // the window closes as soon as the test files are removed
+                return;
+            }
+            if (report != null && report.Canceled) { Close(); return; }
+            Begin(NewBench());
+        }
+
+        void Again_Click(object sender, RoutedEventArgs e) { if (worker == null) Begin(NewBench()); }
+
+        /// <summary>
+        /// The buttons for where it is: Start; Abort while it runs, then Close (the window closes once the test files are
+        /// removed); at the end Run again, or after an abort Run again and Close. Both Abort and Close are red.
+        /// </summary>
+        void ShowButtons()
+        {
+            bool running = worker != null, aborting = running && bench.IsCanceled, done = !running && report != null, aborted = done && report.Canceled;
+            var app = Application.Current;
+            FolderBtn.Visibility = ReportBtn.Visibility = done && htmlPath != null ? Visibility.Visible : Visibility.Collapsed;
+            ReportBtn.Style = (Style)app.FindResource(aborted ? "Btn" : "Btn.Primary");
+            AgainBtn.Visibility = aborted ? Visibility.Visible : Visibility.Collapsed;
+            AgainBtn.IsEnabled = !scanning && usable != 0;
+            string text, style = "Btn.Stop", tip = null;
+            bool on = true;
+            if (aborting) { text = closeWhenDone ? "Closing..." : "Close"; on = !closeWhenDone; tip = "Closes the window as soon as the test files are removed"; }
+            else if (running) { text = "Abort"; tip = "Stops the Benchmark and removes its test files. The cases that finished stay in the report."; }
+            else if (aborted) text = "Close";
+            else if (done) { text = "Run again"; style = "Btn"; on = !scanning && usable != 0; }
+            else { text = "Start"; style = "Btn.Primary"; on = !scanning && usable > 0; }
+            StartBtn.Content = text;
+            StartBtn.Style = (Style)app.FindResource(style);
+            StartBtn.IsEnabled = on;
+            StartBtn.ToolTip = tip;
+            ModeQuick.IsEnabled = ModeThorough.IsEnabled = NetworkToggle.IsEnabled = RunsBox.IsEnabled = !running;
+            RescanBtn.IsEnabled = !running && !scanning;
         }
 
         void Begin(Benchmark b)
         {
             bench = b;
             report = null; htmlPath = jsonPath = null; shown = 0; lastFrom = lastTo = null;
+            closeWhenDone = false;
+            rescanSoon.Stop();
             ResultsList.Children.Clear();
-            ModeQuick.IsEnabled = ModeThorough.IsEnabled = NetworkToggle.IsEnabled = false;
-            CopyBtn.Visibility = FolderBtn.Visibility = ReportBtn.Visibility = Visibility.Collapsed;
-            StartBtn.Content = "Stop";
-            StartBtn.Style = (Style)Application.Current.FindResource("Btn.Stop");
-            StartBtn.IsEnabled = true;
             ProgressPanel.Visibility = Visibility.Visible;
             ResultsPanel.Visibility = Visibility.Visible;
             Intro.Visibility = Visibility.Collapsed;
@@ -510,7 +646,7 @@ namespace Choppy.UI
             if (drives != null) ShowDrives(drives, false);
             SummaryNote.Text = "";
             ShowSummary(new List<BenchResult>(), false);
-            FootNote.Text = "Keep other work off these drives while it runs: it measures them.";
+            ShowHint(KeepOff);
             SetBar(0);
             StepText.Text = "Starting";
             ElapsedVal.Text = "0 s"; RemainLabel.Text = ""; RemainVal.Text = "";
@@ -522,6 +658,7 @@ namespace Choppy.UI
                 catch (Exception ex) { rep = b.Report; rep.Error = ex.Message; }
                 Dispatcher.BeginInvoke(new Action(() => Finished(rep)));
             }) { IsBackground = true, Name = "benchmark" };
+            ShowButtons();
             worker.Start();
             timer.Start();
         }
@@ -537,7 +674,7 @@ namespace Choppy.UI
         {
             if (bench == null) return;
             var s = bench.Status();
-            if (bench.IsCanceled) StepText.Text = "Stopping - removing the test files...";
+            if (bench.IsCanceled) StepText.Text = "Aborting - removing the test files...";
             else StepText.Text = s.Text;
             SetBar(s.Fraction);
             // the copy window's wording and colors: Elapsed 2 min    Remaining 6 min
@@ -563,14 +700,14 @@ namespace Choppy.UI
             ShowSummary(rep.Results.ToList(), true, rep.Ended);
             ShowTotals(rep.Totals);
             // the progress line stays, finished: the time it took, nothing remaining
-            StepText.Text = rep.Canceled ? "Stopped" : rep.Error != null ? "Couldn't finish" : "Finished";
+            StepText.Text = rep.Canceled ? "Aborted" : rep.Error != null ? "Couldn't finish" : "Finished";
             if (rep.Ended) SetBar(1);
             ElapsedVal.Text = BenchText.Duration(rep.Seconds); RemainLabel.Text = ""; RemainVal.Text = "";
             string saved = null;
             try { rep.Save(null, out htmlPath, out jsonPath); saved = Path.GetFileName(htmlPath); }
             catch (Exception ex) { saved = null; rep.Notes.Add("The report couldn't be saved: " + ex.Message); }
             var notes = new List<string>();
-            if (rep.Canceled) notes.Add("Stopped before the end - the cases that finished are shown.");
+            if (rep.Canceled) notes.Add("Aborted before the end - the cases that finished are shown.");
             if (rep.Error != null) notes.Add(rep.Error);
             if (rep.Scored > 0)
                 notes.Add("The time decides: the average of each one's runs until the copies are on the disk. Less than " + (int)(Benchmark.TieMargin * 100) + "% apart is a " + BenchReport.TieWord + ".");
@@ -579,49 +716,31 @@ namespace Choppy.UI
             ResultsScroll.ScrollToTop();
             FitToScreen();
             Estimate.Text = "";
-            FootNote.Text = saved != null ? "Saved in Choppy's Logs folder: " + saved + " and .json" + (rep.Notes.Count > 0 ? " · " + rep.Notes[0] : "")
-                : string.Join(" ", rep.Notes);
-            CopyBtn.Visibility = rep.Results.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-            FolderBtn.Visibility = ReportBtn.Visibility = htmlPath != null ? Visibility.Visible : Visibility.Collapsed;
-            ReportBtn.Style = (Style)Application.Current.FindResource("Btn.Primary");
-            StartBtn.Style = (Style)Application.Current.FindResource("Btn");
-            StartBtn.Content = "Run again";
-            StartBtn.IsEnabled = true;
-            ModeQuick.IsEnabled = ModeThorough.IsEnabled = NetworkToggle.IsEnabled = true;
+            ShowHint(saved != null ? "Saved in Choppy's Logs folder: " + saved + " and .json" + (rep.Notes.Count > 0 ? " · " + rep.Notes[0] : "")
+                : string.Join(" ", rep.Notes));
+            ShowButtons();
             if (closeWhenDone) Close();
         }
 
-        bool AskStop()
+        bool AskAbort()
         {
             if (worker == null || bench.IsCanceled) return worker != null;
-            if (!Dialogs.Ask(this, "Stop the Benchmark?", "Its test files are removed. The cases that finished stay in the report.", "Stop", "Keep going")) return false;
+            if (!Dialogs.Ask(this, "Abort the Benchmark?", "Its test files are removed. The cases that finished stay in the report.", "Abort", "Keep going")) return false;
             if (worker == null) return false;   // it ended while the question was up
             bench.Cancel();
-            StartBtn.IsEnabled = false;
-            StartBtn.Content = "Stopping...";
+            ShowButtons();
             return true;
         }
 
         void OnClosing(object sender, System.ComponentModel.CancelEventArgs e)
         {
-            if (worker == null) { timer.Stop(); return; }
+            if (worker == null) { timer.Stop(); rescanSoon.Stop(); return; }
             e.Cancel = true;
-            // running: stop first (its test files are removed), then the window closes by itself
-            if (bench.IsCanceled || AskStop()) closeWhenDone = true;
+            // running: abort first (its test files are removed), then the window closes by itself
+            if (bench.IsCanceled || AskAbort()) { closeWhenDone = true; ShowButtons(); }
         }
 
         // ================= after =================
-
-        void Copy_Click(object sender, RoutedEventArgs e)
-        {
-            if (report == null) return;
-            for (int i = 0; i < 5; i++)
-            {
-                try { Clipboard.SetText(report.ToText()); FootNote.Text = "Copied - a short table to paste in a chat or an issue."; return; }
-                catch { Thread.Sleep(60); }
-            }
-            FootNote.Text = "The clipboard is busy - try again.";
-        }
 
         void Report_Click(object sender, RoutedEventArgs e)
         {
@@ -642,7 +761,11 @@ namespace Choppy.UI
 
         // ================= test hook =================
 
-        /// <summary>"start tiny C,D" / "start quick" / "stop" / "state" / "fold" / "unfold" / "max" / "maxsys" / "normal" / "size w [h]" / "move x y" / "rect" (the test hook drives the window without the mouse).</summary>
+        /// <summary>
+        /// "start tiny C,D" / "start quick" / "stop" (= "abort") / "state" / "fold" / "unfold" / "max" / "maxsys" / "normal" /
+        /// "size w [h]" / "move x y" / "rect" / "mode quick|thorough" / "runs n" / "press main|again|rescan" / "ui" (the test
+        /// hook drives the window without the mouse).
+        /// </summary>
         internal string ForTest(string cmd)
         {
             var p = cmd.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
@@ -652,17 +775,50 @@ namespace Choppy.UI
                 case "start":
                     {
                         if (worker != null) return "running";
-                        var b = new Benchmark { Thorough = p.Length > 1 && p[1] == "thorough", Tiny = p.Length > 1 && p[1] == "tiny", Network = NetworkToggle.IsChecked == true };
+                        if (p.Length > 1 && p[1] != "tiny") (p[1] == "thorough" ? ModeThorough : ModeQuick).IsChecked = true;
+                        var b = NewBench();
+                        b.Tiny = p.Length > 1 && p[1] == "tiny";
                         if (p.Length > 2) b.Only = new HashSet<string>(p[2].Split(',').Select(x => x.Trim().TrimEnd(':').ToUpperInvariant() + ":"));
                         Begin(b);
                         return "ok";
                     }
                 case "stop":
+                case "abort":
+                    // as Abort answered with Abort
                     if (worker == null) return "not running";
                     bench.Cancel();
-                    StartBtn.IsEnabled = false;
-                    StartBtn.Content = "Stopping...";
+                    ShowButtons();
                     return "ok";
+                case "mode":
+                    (p.Length > 1 && p[1] == "thorough" ? ModeThorough : ModeQuick).IsChecked = true;
+                    return "ok";
+                case "runs":
+                    // as typed in the box, then the box left
+                    RunsBox.Text = p.Length > 1 ? p[1] : "";
+                    ShowRuns();
+                    return "runs " + Runs;
+                case "press":
+                    {
+                        string what = p.Length > 1 ? p[1] : "";
+                        if (what == "main")
+                        {
+                            if (worker != null && !bench.IsCanceled) return "would ask to abort (use abort)";
+                            Start_Click(null, null);
+                        }
+                        else if (what == "again") Again_Click(null, null);
+                        else if (what == "rescan") Rescan_Click(null, null);
+                        else return "unknown button";
+                        return "ok";
+                    }
+                case "ui":
+                    {
+                        Func<Button, string> btn = x => x.Visibility != Visibility.Visible ? null
+                            : x.Content + (x.IsEnabled ? "" : " (off)") + (x.Style == Application.Current.FindResource("Btn.Stop") ? " [red]" : x.Style == Application.Current.FindResource("Btn.Primary") ? " [blue]" : "");
+                        var shownBtns = new[] { FolderBtn, ReportBtn, AgainBtn, StartBtn }.Select(btn).Where(x => x != null);
+                        return "buttons: " + string.Join(", ", shownBtns) + " | runs " + RunsBox.Text + (RunsBox.IsEnabled ? "" : " (off)") + " | estimate " + Estimate.Text
+                            + " | rescan " + (RescanBtn.IsEnabled ? "on" : "off") + " | drives " + (drives == null ? "-" : string.Join(",", drives.Select(d => d.Letter + (d.Skip == null ? "" : "(out)"))))
+                            + " | hint " + Hint.Text + " | step " + StepText.Text;
+                    }
                 case "state":
                     return worker != null ? "running " + (int)(bench.Status().Fraction * 100) + "%" : report != null ? "done: " + report.Summary + (report.Canceled ? " (stopped)" : "")
                         + (report.Totals != null ? " | " + report.Totals.Line : "") + " | " + htmlPath : "idle";

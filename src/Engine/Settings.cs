@@ -31,12 +31,13 @@ namespace Choppy.Engine
         public double SpeedLimitMbps;                   // 0 = off
         public double LimitValueMbps = 101;             // the limit's value, kept while it is off
         public bool CloseWhenDone = true;               // close the window a few seconds after a clean finish
-        public int CloseAfterSeconds = 2;               // ... this many seconds after it
+        public int CloseAfterSeconds = 2;               // ... this many seconds after it (0 = right away)
         public bool ExplorerTakeover;                   // Ctrl+V in Explorer + right-click "Paste with Choppy"
         public string SpeedUnit = "auto";               // auto | mbps | mbs
         public string UltracopierRunBackup;             // Ultracopier's startup entry, put back when takeover is turned off
         public bool Extended;                           // copy window: extended view (else compact)
         public bool BenchDrivesShut;                    // Benchmark window: the drives list collapsed to one line
+        public int BenchRunsQuick, BenchRunsThorough;   // Benchmark: runs each of a Quick / Thorough run (0 = the default, 2 / 3)
 
         static Settings current;
         public static Settings Current { get { if (current == null) current = Load(); return current; } }
@@ -56,12 +57,14 @@ namespace Choppy.Engine
                 if (d.TryGetValue("LimitValueMbps", out v)) { double x; if (double.TryParse(v, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out x) && x > 0) s.LimitValueMbps = x; }
                 if (s.SpeedLimitMbps > 0) s.LimitValueMbps = s.SpeedLimitMbps;
                 if (d.TryGetValue("CloseWhenDone", out v)) s.CloseWhenDone = v != "0";
-                if (d.TryGetValue("CloseAfterSeconds", out v)) { int x; if (int.TryParse(v, out x) && x >= 1 && x <= 999) s.CloseAfterSeconds = x; }
+                if (d.TryGetValue("CloseAfterSeconds", out v)) { int x; if (int.TryParse(v, out x) && x >= 0 && x <= 999) s.CloseAfterSeconds = x; }
                 if (d.TryGetValue("ExplorerTakeover", out v)) s.ExplorerTakeover = v == "1";
                 if (d.TryGetValue("SpeedUnit", out v)) s.SpeedUnit = v;
                 if (d.TryGetValue("UltracopierRunBackup", out v)) s.UltracopierRunBackup = v;
                 if (d.TryGetValue("View", out v)) s.Extended = v == "extended";
                 if (d.TryGetValue("BenchDrives", out v)) s.BenchDrivesShut = v == "collapsed";
+                if (d.TryGetValue("BenchRunsQuick", out v)) s.BenchRunsQuick = Runs(v);
+                if (d.TryGetValue("BenchRunsThorough", out v)) s.BenchRunsThorough = Runs(v);
             }
             catch { }
             return s;
@@ -82,9 +85,16 @@ namespace Choppy.Engine
                 { "UltracopierRunBackup", UltracopierRunBackup ?? "" },
                 { "View", Extended ? "extended" : "compact" },
                 { "BenchDrives", BenchDrivesShut ? "collapsed" : "expanded" },
+                { "BenchRunsQuick", BenchRunsQuick.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                { "BenchRunsThorough", BenchRunsThorough.ToString(System.Globalization.CultureInfo.InvariantCulture) },
             };
             try { Write(d); } catch { }
         }
+
+        /// <summary>A saved number of Benchmark runs: 1 to 99, else 0 (the default).</summary>
+        static int Runs(string v) { int x; return int.TryParse(v, out x) && x >= 1 && x <= MaxBenchRuns ? x : 0; }
+
+        public const int MaxBenchRuns = 99;
 
         static Dictionary<string, string> Read()
         {

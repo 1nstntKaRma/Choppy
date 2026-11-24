@@ -23,7 +23,7 @@ namespace Choppy.Bench
         public const long MB = 1L << 20;
         public const double TieMargin = 0.04;    // less than 4% of the time apart is a Marginal Tie
 
-        public bool Thorough;                     // bigger files, a mixed folder, three rounds
+        public bool Thorough;                     // bigger files, a mixed folder, three runs each
         public bool Network;                      // mapped network drives too
         public HashSet<string> Only;              // tests: only these drive letters ("C:", "D:")
         public bool Tiny;                         // tests: very small sizes
@@ -31,7 +31,7 @@ namespace Choppy.Bench
         public Action<JobSpec> Tweak;             // tests: engine switches for Choppy's side
         public HashSet<string> Cases;             // tests: only these cases ("big", "small", "mixed")
         public int BigMB;                         // tests: this big file size on every route
-        public int RoundsOverride;                // tests: more rounds
+        public int RoundsOverride;                // runs each other than the default (the window's Runs, the command line's --rounds)
         public HashSet<string> RoutesOnly;        // tests: only these routes ("C>D", "D>D")
 
         public readonly BenchReport Report = new BenchReport();
@@ -40,7 +40,10 @@ namespace Choppy.Bench
         public bool IsCanceled { get { return cancel; } }
         bool Canceled() { return cancel; }
 
-        int Rounds { get { return RoundsOverride > 0 ? RoundsOverride : Thorough ? 3 : 2; } }
+        /// <summary>Runs each, unless changed: Quick 2, Thorough 3.</summary>
+        public static int DefaultRounds(bool thorough) { return thorough ? 3 : 2; }
+
+        int Rounds { get { return RoundsOverride > 0 ? RoundsOverride : DefaultRounds(Thorough); } }
 
         // ================= drives =================
 
@@ -193,7 +196,10 @@ namespace Choppy.Bench
         /// <summary>Space a drive needs at most: one source and one copy of everything, and room to spare.</summary>
         long NeedBytes { get { return 2 * (BigFor(0) + BenchFiles.SmallSizes(SmallFor(0)).Sum() + (Thorough ? MixedBig.Sum() + BenchFiles.SmallSizes(MixedSmall).Sum() : 0)) + 1024 * MB; } }
 
-        /// <summary>Sizes per route from its speed class (one step smaller for every route when that is over the time budget); the estimate of each.</summary>
+        /// <summary>
+        /// Sizes per route from its speed class (one step smaller for every route when that is over the time budget); the
+        /// estimate of each. The budget counts the default runs: more runs take longer, with the same files.
+        /// </summary>
         internal void SizeRoutes(List<Route> routes)
         {
             for (int down = 0; down <= 1; down++)
@@ -204,7 +210,7 @@ namespace Choppy.Bench
                     r.Big = BigFor(step);
                     r.Small = SmallFor(step);
                 }
-                if (Tiny || routes.Sum(x => Estimate(x)) <= BudgetSeconds) break;
+                if (Tiny || routes.Sum(x => Estimate(x, DefaultRounds(Thorough))) <= BudgetSeconds) break;
             }
             foreach (var r in routes)
             {
@@ -236,14 +242,16 @@ namespace Choppy.Bench
         static bool Slow(BenchDrive d) { return d.Network || (d.Vol != null && d.Vol.IsSlowSeek); }
 
         /// <summary>Seconds a route takes: its sources, then every run of every case with the flush, the delete and a pause.</summary>
-        double Estimate(Route r)
+        double Estimate(Route r) { return Estimate(r, Rounds); }
+
+        double Estimate(Route r, int rounds)
         {
             double sp = BigMBps(r);
             bool slow = Slow(r.From) || Slow(r.To), one = OneDisk(r);
             double rtt = Math.Max(r.From.Vol != null ? r.From.Vol.RttMs : 0, r.To.Vol != null ? r.To.Vol.RttMs : 0);
             double perFile = r.From.Network || r.To.Network ? 0.004 + 3 * Math.Max(0, rtt) / 1000 : slow ? (one ? 0.007 : 0.004) : 0.0004;
             double tidy = (slow ? 0.75 : 0.25) + 0.4;               // pause between runs + the other program's start, the warm-up
-            int runs = 2 * Rounds;
+            int runs = 2 * rounds;
             double t = 0;
             var cases = new List<KeyValuePair<long, int>> { new KeyValuePair<long, int>(r.Big, 0), new KeyValuePair<long, int>(BenchFiles.SmallSizes(r.Small).Sum(), r.Small) };
             if (Thorough) cases.Add(new KeyValuePair<long, int>(MixedBig.Sum() + BenchFiles.SmallSizes(MixedSmall).Sum(), MixedSmall + MixedBig.Length));
