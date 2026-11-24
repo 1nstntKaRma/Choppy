@@ -78,7 +78,7 @@ Every C# file belongs to exactly one step. Cli.cs and App.cs are split by comman
 | src/Engine/Native.cs | 439 | 1 | becomes `sys`; later steps add the calls they need there |
 | src/Engine/Paths.cs | 127 | 1 | |
 | src/Engine/Settings.cs | 282 | 1 | HKCU key + names, test-mode ini, `Layout` 2 |
-| src/Engine/XxHash64.cs | 134 | 1 | incl. `HashFile` (buffered / unbuffered) |
+| src/Engine/XxHash64.cs | 134 | 1 | the hash; `HashFile` moved to step 2 (it reads through BigCopy's RingReader; its checks are step 2's) |
 | src/Engine/Model.cs | 125 | 1 | JobSpec, VolumeInfo (MaxFileSize), enums |
 | src/Engine/VolumeProbe.cs | 214 | 1 | |
 | src/Engine/UsbLink.cs | 298 | 1 | + `CHOPPY_FAKE_USB` |
@@ -86,7 +86,7 @@ Every C# file belongs to exactly one step. Cli.cs and App.cs are split by comman
 | src/Engine/Plan.cs | 246 | 1 | |
 | src/app.manifest, src/Choppy.ico | - | 1 | embedded by build.rs (with the version info) |
 | src/Cli.cs: `--usb` (Usb), the new `--plan-dump` | - | 1 | |
-| src/Engine/BigCopy.cs | 633 | 2 | |
+| src/Engine/BigCopy.cs | 633 | 2 | `PipeTuning` + `PipeTuner.Describe` came in step 1 (Plan picks a PipeTuning) |
 | src/Engine/CopyJob.cs | 1989 | 2 | incl. `TempName` (.chpart) |
 | src/Engine/Handoff.cs | 353 | 2 | the admin hand-off files |
 | src/JobManager.cs | 133 | 2 | |
@@ -165,8 +165,91 @@ its rows are `checked`.
 
 | id | rule / fix (one line) | C# file:line | Rust location | how it's tested | status |
 |----|-----------------------|--------------|---------------|-----------------|--------|
-| 1.x | (filled in step 1) | | | self-test name or side-by-side check | ported / checked |
-| 2.x | (filled in step 2) | | | | |
+| 1.1 | Windows' struct layouts: WIN32_FIND_DATAW 592 bytes, WIN32_FILE_ATTRIBUTE_DATA 36 (FILETIME at 4-byte packing) | Native.cs:106 | sys/file.rs `struct_sizes` | self-test `struct size` | checked |
+| 1.2 | ErrorText's own words for 17 errors (gone, folder gone, access denied, open elsewhere, locked part, full, too big for the file system, network dropped x9, name not allowed, path too long, bad sector x2, Stopped) | Native.cs:408 | sys.rs `error_text` | plan dump `errors`: codes 0-1999 + 11 more identical | checked |
+| 1.3 | Any other error: Win32Exception's message + " (code)", the code as C#'s int | Native.cs:435 | sys.rs `error_text` | same | checked |
+| 1.4 | Win32Exception's message (.NET 4.8): FormatMessage into 256 characters, 4 times more while it doesn't fit (up to 64 K), trailing white space / control characters / periods cut, "Unknown error (0x..)" | System.dll Win32Exception | sys/text.rs `win32_message` | same (the dump found the retry: codes 357, 384, 560... are longer than 256) | checked |
+| 1.5 | FILE_SUPPORTS_BLOCK_REFCOUNTING = a ReFS volume can clone blocks | Native.cs:405 | sys.rs | self-test `same ReFS drive...` x3 | checked |
+| 1.6 | FixArg: Explorer's drive root `C:\"` arrives as `C:"` and becomes `C:\`; stray quotes and white space dropped | Paths.cs:12 | engine/paths.rs `fix_arg` | self-test `drive root from Explorer (C:")`, `folder arg with quote`; dump `paths` | checked |
+| 1.7 | ToLong: relative paths against the start folder, Path.GetFullPath, trailing `\` trimmed but roots kept, `\\?\` / `\\?\UNC\` prefix; `\\?\` paths only trimmed, `\\.\` untouched | Paths.cs:25,52 | paths.rs `to_long`, `trim_end`; main.rs `set_start_dir` | self-test `long local`, `long unc`; dump `paths` (51 inputs) | checked |
+| 1.8 | What .NET's GetFullPath adds to Win32's: invalid characters (`"`, `<`, `>`, `\|`, control), white space only, wildcards, stray colons -> the C# keeps the path as given; white space at the end trimmed beyond Win32's spaces | mscorlib Path | paths.rs `net_full_path` | dump `paths` (`a*b`, `a\|b`, `a:b`, `C:\x\f:s`, `:x`, `1:\x`, NBSP, U+2028) | checked |
+| 1.9 | 8.3 short names (`PROGRA~1`) expanded as .NET 4.8 does, its buffer quirk included: where only part of the path exists, a path of 15 characters or less stays short, a longer one expands one level up | mscorlib PathHelper | paths.rs `expand_short_names` | dump (8 `PROGRA~` inputs); .NET measured in PowerShell 5.1 for lengths 13-36 | checked |
+| 1.10 | ToShort: `\\?\UNC\` (any case) -> `\\`, `\\?\` removed | Paths.cs:44 | paths.rs `to_short` | self-test `short unc`; dump | checked |
+| 1.11 | Parent: a drive root has none; a trailing `\` is skipped; `C:` gets its `\` back | Paths.cs:77 | paths.rs `parent` | self-test `parent`, `parent of root`; dump | checked |
+| 1.12 | IsSameOrInside / SamePath: trailing `\` ignored, OrdinalIgnoreCase through Windows' upper-case table | Paths.cs:89,97 | paths.rs; sys/text.rs `equal_ignore_case` | self-test `inside`, `not inside`; dump pairs (Ä/ä, ß/SS, ı/I, Σ/σ) | checked |
+| 1.13 | NumberedName "name (2).ext"; folders, names without an extension or starting with a dot get it at the end | Paths.cs:107 | paths.rs `numbered_name` | self-test `numbered`, `numbered noext`; dump | checked |
+| 1.14 | Combine, FileName, IsUnc, Exists, DirExists as in C# | Paths.cs:64-125 | paths.rs | dump (`name`, `unc`, `exists` columns) | checked |
+| 1.15 | Paths stay UTF-16 like C# strings: a lone surrogate survives, lengths count UTF-16 units (NTFS's 255) | C# string | wstr.rs `WString` | dump (emoji / ü / é names in paths and scans) | checked |
+| 1.16 | AppPaths: CHOPPY_DATA = test mode (data, Jobs, Logs, settings.ini there), else %LOCALAPPDATA%\Choppy | Settings.cs:12 | engine/settings.rs `app_paths` | every dump runs in test mode | checked |
+| 1.17 | Before any command: the start folder kept, the data folder made and used as the current folder (relative output lands there) | Program.cs:17-24 | main.rs | dump `scan-relative` | checked |
+| 1.18 | HKCU\Software\Choppy, the same 13 value names, all REG_SZ text | Settings.cs:55,89 | settings.rs `save_to`, `write` | cargo test `settings_in_the_registry` (a scratch key, never the real one) | checked |
+| 1.19 | Layout 2: no or an older SettingsVersion -> the defaults once (ExplorerTakeover and UltracopierRunBackup kept), saved; **never raise it** | Settings.cs:44,77 | settings.rs `LAYOUT`, `load_from` | dump set-old, set-bad (layout 1), set-num (layout 3 kept), set-v2 | checked |
+| 1.20 | Defaults: Ask me, close at completion after 0 s, Check every copy off, speed limit off at 12 MB/s (100.663296 Mbps), Auto, compact | Settings.cs:32-42 | `Settings::default` | dump (no settings.ini); cargo test | checked |
+| 1.21 | Reading rules: VerifyCopies "1", CloseWhenDone anything but "0", CloseAfterSeconds 0-999, LimitValueMbps > 0, a speed limit that is on sets the value, runs 1-99 else 0, View "extended", names in any case | Settings.cs:64-76,111 | `load_from`, `runs` | dump set-edge, set-bad, set-num | checked |
+| 1.22 | Policy read as Enum.TryParse: names as written, numbers, names joined by commas add up ("Replace, Skip" = KeepBoth) | Settings.cs:65 | engine/model.rs `ConflictPolicy::parse` | dump set-edge; cargo test | checked (on purpose: a number no policy has, like 7, is refused; C# kept an unnamed value) |
+| 1.23 | BenchDrives is no longer kept: deleted on save | Settings.cs:50,150 | settings.rs `GONE` | cargo test | checked |
+| 1.24 | Registry values as .NET reads them: one closing NUL dropped, REG_EXPAND_SZ expanded, DWORD as int, QWORD as long, lists and bytes as their type's name | Settings.cs:132 | settings.rs `registry_text` | cargo test | checked |
+| 1.25 | Numbers as .NET Framework writes and reads them: "G" = 15 digits rounded half up, `1E-05` / `1E+15`; "F<n>" (half away from zero); NumberStyles.Float parsing | Settings.cs:66,95 | engine/netfmt.rs | cargo tests with values measured on .NET 4.8; dump set-g1, set-g2, journal `limit` | checked |
+| 1.26 | settings.ini: ReadAllLines (BOM, CR LF / LF / CR), key = text before the first `=`, never empty; written `key=value` CR LF, UTF-8 without BOM | Settings.cs:118,139 | settings.rs `read`, `write`, `read_all_lines` | dump set-crlf, set-edge; cargo test | checked |
+| 1.27 | Job record: written when queued, UTF-8, flushed to the disk, then renamed into place; keys op, dest, verify, policy, limit, origin, src, file, dir + extra lines | Settings.cs:183 | settings.rs `journal::write` | dump `journal` (the file's text identical) | checked |
+| 1.28 | An administrator copy has no .job record (it runs from its .admin) | Settings.cs:163,179 | `journal::save`, `save_soon` | dump `records admin 0` | checked |
+| 1.29 | SaveSoon writes in the background; Remove of a record still being written waits for it (else it would come back as an unfinished copy) | Settings.cs:172,253 | `journal::save_soon`, `remove` (model.rs `Recorded`) | dump `records soon 0` | checked (the record's text is taken when SaveSoon is called; C#'s task read the job a moment later) |
+| 1.30 | Reading a record: dest and src through ToLong (repairs C:" from older records), Depth from the backslashes, nothing to do = no job | Settings.cs:210 | `journal::read` | dump `journal` read-back | checked |
+| 1.31 | LoadUnfinished: `*.job` by Windows' own pattern (it also matches `.jobx`, as C# does), resume mode on, a record with nothing to do deleted | Settings.cs:259 | `journal::load_unfinished` | dump `unfinished` lines, `after load empty 0` | checked (its Handoff.CleanStale call is 2.3) |
+| 1.32 | xxHash64, seed 0, streamed in any pieces (a 32-byte tail between them) | XxHash64.cs:10 | engine/xxhash64.rs | self-test `xxh64 ...` x5 | checked |
+| 1.33 | JobSpec.Id = the first 12 hex digits of a new GUID | Model.cs:17 | model.rs `new_id` | cargo test | checked |
+| 1.34 | Title: "Copy 3 files again" ("again" not for an administrator copy), "Move photo.jpg", "Copy 2 items" | Model.cs:44 | model.rs `title` | dump titles | checked |
+| 1.35 | Test switches default to Adaptive (PipePhased -1, TailMB -1) | Model.cs:39,41 | `JobSpec::default` | cargo test | checked |
+| 1.36 | FileTimes.ToLocal: the date's daylight saving; the standard offset where Windows has no rule (1601); clamped at .NET's last date; outside .NET's range = MinValue | Model.cs:120 | model.rs `file_times`; sys/text.rs `file_time_to_local` | dump `time` lines (8 values; the dump found 1601 and 9999) | checked |
+| 1.37 | GetVolumePathName on a path that may not exist yet: walk up until it works; else the UNC root or the first 3 characters | VolumeProbe.cs:65 | engine/volume_probe.rs `probe` | dump `scan-no-dest` | checked |
+| 1.38 | UNC or DRIVE_REMOTE = Network: id `net:` + root (UNC lower case, a letter upper case); round trip = best of 3 metadata calls on a name that never exists (no cached answer) | VolumeProbe.cs:78,196 | `probe`, `measure_rtt` | dump `UNC` drive, scan-unc, scan-unc-src (\\localhost\C$) | checked |
+| 1.39 | A local volume's id = `vol:` + serial (X8), `root:` when unknown; the same id = the same volume | VolumeProbe.cs:90 | `probe` | dump `drives` | checked |
+| 1.40 | The volume opened with no access rights; USB / SD / MMC bus or a removable drive = pluggable (removable: nothing waits in memory for it); a USB SSD with no seek penalty = SSD, else USB; seek penalty -> HDD / SSD; NVMe -> SSD; a descriptor that didn't fit still counts (32 bytes or more) | VolumeProbe.cs:137 | `probe_disk` | dump `drives` (C: NVMe, D:/X: HDD, F: USB SSD, G: cloud drive) | checked |
+| 1.41 | A disk number only from a disk device: Google Drive's G: answers as type 8 "number 0", which looked like X:'s disk 0 | VolumeProbe.cs:185 | `disk_number` | self-test `disk number...`; dump G: disk -1 | checked |
+| 1.42 | Bytes per sector from GetDiskFreeSpace when 512 or more (unbuffered I/O alignment) | VolumeProbe.cs:106 | `probe` | dump (`sector`, plan `align`) | checked |
+| 1.43 | MaxFileSize (FAT* = 4 GB less a byte), CanClone, IsSlowSeek (HDD, USB, disc), KindText | VolumeProbe.cs:28-54 | `VolumeInfo` | self-test `FAT32...`; dump | checked |
+| 1.44 | SameDisk: the same volume or the same disk number, never on a network | VolumeProbe.cs:132 | `same_disk` | self-test; dump plans | checked |
+| 1.45 | USB: disk -> its device node (the first 64 disk interfaces) -> up to 8 levels to the hub port; UASPStor on the way = UASP | UsbLink.cs:100,177 | engine/usb_link.rs `for_disk`, `disk_dev_inst` | `--usb` identical (F: 10 Gbps, UASP) | checked |
+| 1.46 | The hub is asked (GENERIC_WRITE): CONNECTION_INFORMATION_EX (bcdUSB, speed capped at 5 Gbps, connected?), then EX_V2 (port does USB 3; runs at / can do 5 or 10 Gbps) | UsbLink.cs:140 | `ask` | `--usb`; dump `drives` | checked |
+| 1.47 | HeldBack, Advice, Name, Short, CeilingMBps, Aka | UsbLink.cs:26-97 | usb_link.rs | dump (fake link advice; `usb 0-4` table) | checked |
+| 1.48 | CHOPPY_FAKE_USB=speed,capable[,port3] fakes every USB drive's link | UsbLink.cs:103 | `for_disk` | dump with 2,3,1 and 4,4; `--usb` with 2,3,0 | checked (on purpose: a malformed value fakes nothing; C# threw) |
+| 1.49 | SP_DEVICE_INTERFACE_DETAIL_DATA_W's cbSize is 8 in a 64-bit process | UsbLink.cs:195 | sys/device.rs `device_interfaces` | `--usb` | checked |
+| 1.50 | Scan: the sources first (8 listings at once on a network, else 1), then only the destination folders that exist (8 / 2) | Scanner.cs:9; CopyJob.cs:403 | engine/scanner.rs `run` | dump scans with 1/2 and 4/4 threads, 8 on \\localhost | checked |
+| 1.51 | Copy into its own folder = "name - Copy", "name - Copy (2)" (as Explorer); a move there = "Already in this folder" | Scanner.cs:62,315 | `copy_name` | dump scan-same-folder, scan-move-same | checked |
+| 1.52 | A folder can't be copied into itself | Scanner.cs:69 | `run` | dump scan-into-itself | checked |
+| 1.53 | Junctions and folder links inside a folder are not followed (they can loop or point anywhere), noted | Scanner.cs:221 | `list_source` | dump scan-move-all | checked |
+| 1.54 | An unreadable folder = "Couldn't read folder ... - <error>"; an empty one is no error; a missing source = "Not found: ..." | Scanner.cs:56,207 | `list_source`, `run` | dump scan-unreadable (C:\System Volume Information), scan-main | checked |
+| 1.55 | Conflicts by name in any case, one listing per folder: there, a folder, size, date; "<name>.chpart" = a leftover | Scanner.cs:269 | `mark` | dump scan-main (Same.TXT / same.txt, LAST.txt.CHPART) | checked |
+| 1.56 | A file where a folder goes = DestIsFile (not listed); existing folders = DestExisted and listed | Scanner.cs:280 | `scan_destination` | dump scan-main | checked |
+| 1.57 | Order: a folder's files, then its subfolders, depth first; median of the sorted sizes; the 4 largest (equal ones keep their order) | Scanner.cs:100,123 | `flatten`, `top_largest` | dump scans | checked |
+| 1.58 | A pool of threads over a growing set of folders, done when nothing is pending; cancel stops the listing | Scanner.cs:151 | `run_pool` | dump 4/4 threads; cargo test `canceled_scan_lists_nothing` | checked |
+| 1.59 | Same volume + a move (not a retry) = instant move (rename only) | Plan.cs:58 | engine/plan.rs `choose` | dump: every pair x copy / move / retry move | checked |
+| 1.60 | Network: 1 / 4 / 8 (more than 16 files, median under 8 MB) / 16 (more than 64) in flight, tuning up to 64, no pipeline | Plan.cs:68 | `choose` | dump `UNC` pairs x 12 shapes | checked |
+| 1.61 | The same ReFS volume = Windows' own copy (block clone), 1 / 4 / 8 in flight | Plan.cs:84 | `choose` | self-test ReFS x3 | checked |
+| 1.62 | One SSD in a USB case at both ends: 8 MB x 4, one read out, small batches, no trials (more in flight hung a USB case: event 129 resets) | Plan.cs:99 | `choose` | dump F:>F: | checked |
+| 1.63 | A hard disk, USB stick or disc at either end: one file at a time, 32 MB x 8 | Plan.cs:116 | `choose` | dump C/D/X/F pairs | checked |
+| 1.64 | A hard disk into a fast drive: 1 MB x 32, 4 reads out, no trials | Plan.cs:127,188 | `choose` | self-test `hard disk into an SSD...`; dump D>C, X>C | checked |
+| 1.65 | One disk at both ends: phased (read a batch, then write it) | Plan.cs:135 | `choose` | dump D>D, X>X | checked |
+| 1.66 | Into a hard disk: 4 pieces per write (not one disk), cached writes in 4 MB, no size reserved | Plan.cs:137-148 | `choose` | dump C>D, C>X | checked |
+| 1.67 | Two hard disks: 2 MB x 256, 4 reads out, 32 pieces per write, the cached end once read, no trials | Plan.cs:149 | `choose` | self-test `two hard disks unchanged`; dump D>X | checked |
+| 1.68 | One hard disk: 1 MB x 512, 32 reads out, 64 MB writes, size reserved, the cached end once read, no trials | Plan.cs:165 | `choose` | self-test `one hard disk...`; dump D>D | checked |
+| 1.69 | Trials: one disk 32x16 / 16x8 phased; fast -> hard disk 1x32 join32 / 8x8 join4; hard disk -> fast none; 2 s trials, 8% margin | Plan.cs:182-204 | `choose` | self-test `one USB drive...`, `SSD into a hard disk unchanged`; dump | checked |
+| 1.70 | SSD or other: 1 / 4 / 8 (more than 32 files, median under 1 MB) in flight, 1 for up to 3 files with one of 1 GB or more; 8 MB x 4 with trials 4x8, 16x4, 32x4; tuning with more than one file | Plan.cs:207 | `choose` | dump C>C, C>F, C>G x 12 shapes | checked |
+| 1.71 | Small files in batches when a hard disk is at either end: one worker, no tuning, at most 4 | Plan.cs:227 | `with_small_batch` | dump | checked |
+| 1.72 | Trials take the plan's alignment, reservation and cached write size; alignment = 4096 or the larger sector | Plan.cs:97,240 | `aligned` | dump (`ways` columns) | checked |
+| 1.73 | Badge, Detail, Why texts | Plan.cs:26-52 | `badge`, `why` | dump (every plan line) | checked |
+| 1.74 | `--usb [out.txt]`: every drive but network and CD, "X:\ disk n KIND: link  [ms]", UTF-8 with BOM, the console without a file | Cli.cs:258 | cli/usb.rs | `--usb` identical (ms masked), with a faked link too | checked |
+| 1.75 | `--selftest out.txt`: "PASS/FAIL name", then "ALL PASS" or "n FAILED", no BOM, exit 0 / 2; step 1's 27 checks | Cli.cs:552 | cli/selftest.rs | the Rust lines are the C# 1.48 ones of step 1 (names, order, results) | checked |
+| 1.76 | A command line error -> %TEMP%\choppy-cli-error.txt, exit 1 | Cli.cs:97 | cli.rs `run` (catch_unwind) | both: `--usb` to a folder that doesn't exist | checked |
+| 1.77 | `--plan-dump out.txt [--scan copy\|move dest src...]` (new, in both) | Cli.cs (rust branch) | cli/plan_dump.rs | rust/tools/plandump/run-all.sh | checked |
+| 1.78 | The exe carries app.manifest, Choppy.ico and the version info (FileVersion = VERSION + .0, the C# strings) | Choppy.csproj | build.rs | manifest extracted with mt.exe = src/app.manifest; icon pixels identical; VersionInfo fields identical (C#'s ProductVersion adds the SDK's +commit) | checked |
+| 1.79 | No VC++ runtime needed (+crt-static) | - | .cargo/config.toml | dumpbin: system DLLs only | checked |
+| 2.1 | (from Native.cs) RenameByHandle: the new name must be the full `\\?\` path (Windows resolves a plain name against the current folder, not the file's); never replaces | Native.cs:280 | sys (step 2) | | |
+| 2.2 | (from XxHash64.cs) HashFile: unbuffered = straight from the disk / server, not what Windows still holds; 8 MB x 4 read ahead while hashing; progress can stop it | XxHash64.cs:99 | xxhash64.rs + big_copy.rs RingReader (step 2) | self-test `hash unbuffered / buffered <n> B` | |
+| 2.3 | (from Settings.cs) LoadUnfinished ends with Handoff.CleanStale (administrator copies whose Choppy is gone) | Settings.cs:276 | engine/handoff.rs (stub now) | | |
+| 2.4 | (from Native.cs) FSCTL_GET_RETRIEVAL_POINTERS: where a file starts on the disk, no admin needed (small files read in disk order) | Native.cs:241 | sys (step 2) | | |
+| 2.5 | (from Native.cs) SetThreadExecutionState: the PC doesn't sleep while a copy runs (CopyJob; the Benchmark too, step 4) | Native.cs:400 | sys (step 2) | | |
+| 2.x | (the rest filled in step 2) | | | | |
 | 3.x | (filled in step 3) | | | | |
 | 4.x | (filled in step 4) | | | | |
 | 5.x | (filled in step 5) | | | | |

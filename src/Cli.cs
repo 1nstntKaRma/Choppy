@@ -29,6 +29,7 @@ namespace Choppy
                 if (args.Length >= 1 && args[0] == "--selftest") return SelfTest(args.Length > 1 ? args[1] : null);
                 if (args.Length >= 1 && args[0] == "--where") return Where(args.Length > 1 ? args[1] : null);
                 if (args.Length >= 1 && args[0] == "--usb") return Usb(args.Length > 1 ? args[1] : null);
+                if (args.Length >= 2 && args[0] == "--plan-dump") return PlanDump(args);
                 if (args.Length >= 1 && args[0] == "--benchmark") return BenchCli(args);
                 if (args.Length >= 2 && args[0] == "--shellcopy") return Bench.ShellCopy.Child(args[1]);
                 var rest = new List<string>();
@@ -271,6 +272,240 @@ namespace Choppy
             }
             if (outFile != null) File.WriteAllText(outFile, sb.ToString(), Encoding.UTF8); else Console.Write(sb.ToString());
             return 0;
+        }
+
+        // ---------------- --plan-dump (rust branch only: the move to Rust) ----------------
+        // A read-only check that the Rust Choppy sees the drives and picks the plan exactly as this one does. Both print
+        // the same lines (rust/choppy/src/cli/plan_dump.rs): what VolumeProbe sees on every drive; the plan Plan.Choose
+        // picks for every pair of drives, each kind of job and each shape of scan; Paths on tricky input; ErrorText; in
+        // test mode (CHOPPY_DATA) the settings as loaded and a job record written and read back.
+        // --plan-dump out.txt --scan copy|move <dest> <src>...: the Scanner's result instead (one thread, then four).
+
+        static string B(bool b) { return b ? "1" : "0"; }
+        static string G(double d) { return d.ToString(CultureInfo.InvariantCulture); }
+
+        static string VolText(VolumeInfo v)
+        {
+            var u = v.Usb;
+            return "root " + v.Root + " | id " + v.Id + " | kind " + v.Kind + " " + v.KindText + " | fs " + (v.FileSystem ?? "(null)") + " | label " + (v.Label ?? "(null)")
+                + " | disk " + v.Disk + " | sector " + v.Sector + " | removable " + B(v.Removable) + " | fsflags " + v.FsFlags.ToString("X8") + " | onusb " + B(v.OnUsb)
+                + " | rtt " + (v.RttMs >= 0 ? "measured" : G(v.RttMs)) + " | maxfile " + v.MaxFileSize + " | clone " + B(v.CanClone) + " | slowseek " + B(v.IsSlowSeek)
+                + " | usb " + (u == null ? "-" : u.Speed + " " + u.SpeedText + ", can " + u.Capable + (u.CapableKnown ? "" : "?") + ", port " + (u.PortKnown ? (u.PortUsb3 ? "3" : "2") : "?")
+                    + ", bcd " + u.BcdUsb.ToString("X4") + ", uasp " + B(u.Uasp) + ", heldback " + B(u.HeldBack) + ", advice " + (u.Advice ?? "-") + ", ceiling " + G(UsbLink.CeilingMBps(u.Speed)));
+        }
+
+        static string PipeText(PipeTuning t)
+        {
+            return PipeTuner.Describe(t) + " (chunk " + t.Chunk + " slots " + t.Slots + " align " + t.Align + " batch " + t.WriteBatch + " phased " + B(t.Phased)
+                + " prealloc " + B(t.Prealloc) + " cached " + t.CachedWriteChunk + " tail " + B(t.TailAfterRead) + " depth " + t.ReadDepth + " step " + t.WriteStep + ")";
+        }
+
+        static string PlanText(Plan p)
+        {
+            var s = new StringBuilder();
+            s.Append(p.Kind + " | workers " + p.Workers + " max " + p.MaxWorkers + " | big " + p.BigSlots + " from " + p.BigThreshold
+                + " | pipeline " + B(p.Pipeline) + " from " + p.PipeThreshold + " " + PipeText(p.Pipe) + " | ways " + p.PipeWays.Count);
+            foreach (var w in p.PipeWays) s.Append(" [" + PipeText(w) + "]");
+            s.Append(" | instant " + B(p.InstantMove) + " network " + B(p.Network) + " clone " + B(p.Clone) + " oneusb " + B(p.OneUsb) + " smallbatch " + B(p.SmallBatch)
+                + " | tune " + B(p.CanTune) + " " + G(p.TuneSeconds) + " s, x" + G(p.TuneMargin) + " tuned " + B(p.Tuned) + " " + (p.TuneNote ?? "-") + " | " + p.Badge + " | " + p.Why);
+            return s.ToString();
+        }
+
+        const long GB = 1L << 30, MB = 1L << 20, KB = 1L << 10;
+        static readonly string[] ShapeNames = { "none", "empty", "1 x 2 GB", "3 x 1 GB", "4 x 1 GB", "20 x 4 MB", "20 x 16 MB", "40 x 512 KB", "40 x 2 MB", "100 x 64 KB", "100 x 16 MB", "1001 mixed" };
+        static readonly long[,] Shapes =
+        {
+            { -1, 0, 0 }, { 0, 0, 0 }, { 1, 2 * GB, 2 * GB }, { 3, GB, GB }, { 4, GB, GB }, { 20, 4 * MB, 4 * MB }, { 20, 16 * MB, 16 * MB },
+            { 40, 512 * KB, 512 * KB }, { 40, 2 * MB, 2 * MB }, { 100, 64 * KB, MB }, { 100, 16 * MB, 16 * MB }, { 1001, 100 * KB, 2 * GB },
+        };
+
+        static readonly string[] PathInputs =
+        {
+            @"C:\a\b\", @"C:\", "C:\"", "C:", @"C:\\x\\\\y", "D:\\Games\"", "\"D:\\Games\"", "  C:\\x  ", @"\\srv\share\x", @"\\srv\share\", @"\\srv\share",
+            @"\\?\C:\x\\", @"\\?\C:""", @"\\?\UNC\srv\share\x", @"\\.\COM1", @"relative\x", @".\x\..\y", "..", @"C:\a\..\b\.\c", @"C:\a/b//c", @"C:\a\b. ",
+            @"C:\a\b...", @"C:\a*b", @"C:\a?b", @"C:\a|b", @"C:\a<b", "a:b", @"C:\x\f:s", ":x", @"1:\x", "C:x", @"\x", @"C:\PROGRA~1\x",
+            @"C:\PROGRA~1\Common Files", @"C:\PROGRA~1", @"C:\PROGRA~1\Common Files\x", @"C:\PROGRA~2\..\PROGRA~1", @"C:\PROGRA~1\aaa", @"C:\PROGRA~1\aaaa", @"C:\PROGRA~1\COMMON~1\x", @"\\localhost\C$\PROGRA~1\x", @"C:\Users\Public\..\Public", @"C:\con", @"C:\a\b\NUL", "", "   ", "\t C:\\tab", "\u00e9\\\u00fc",
+            "C:\\x\\\U0001F600.txt", "C:\\x\u00A0", "C:\\x\\\u2028",
+        };
+
+        static readonly string[,] PathPairs =
+        {
+            { @"\\?\C:\a\b\c", @"\\?\C:\a\b" }, { @"\\?\C:\a\bc", @"\\?\C:\a\b" }, { @"\\?\C:\A\B", @"\\?\c:\a\b\" }, { @"C:\x", @"\\?\C:\X" },
+            { @"\\?\UNC\srv\share\x", @"\\srv\SHARE" }, { "\\\\?\\C:\\\u00c4\\x", "\\\\?\\C:\\\u00e4" }, { "\\\\?\\C:\\\u00df", "\\\\?\\C:\\SS" },
+            { "\\\\?\\C:\\\u0131", "\\\\?\\C:\\I" }, { "\\\\?\\C:\\\u03a3", "\\\\?\\C:\\\u03c3" }, { @"\\?\C:\a", @"\\?\C:\a" },
+        };
+
+        static readonly string[] NumberedNames = { "photo.jpg", "README", ".hidden", "dir.name", "a.b.c", "x." };
+        static readonly int[] NumberedN = { 2, 3, 2, 2, 10, 4 };
+        static readonly bool[] NumberedDir = { false, false, false, true, false, false };
+
+        static readonly long[] MoreErrors = { 2250, 4390, 4392, 6800, 8202, 10054, 10060, 12002, 0x7FFFFFFF, -1, -2147024891 };
+
+        static int PlanDump(string[] args)
+        {
+            var sb = new StringBuilder();
+            if (args.Length > 2 && args[2] == "--scan") DumpScan(args, sb);
+            else
+            {
+                sb.AppendLine("drives");
+                var vols = new List<KeyValuePair<string, VolumeInfo>>();
+                foreach (var di in DriveInfo.GetDrives())
+                {
+                    var v = VolumeProbe.Probe(Paths.ToLong(di.Name));
+                    string letter = di.Name.Substring(0, 2);
+                    sb.AppendLine(letter + " " + VolText(v));
+                    vols.Add(new KeyValuePair<string, VolumeInfo>(letter, v));
+                }
+                // a network share too (this PC's own, through the network): network plans for every shape
+                var net = VolumeProbe.Probe(Paths.ToLong(@"\\localhost\C$\"));
+                sb.AppendLine("UNC " + VolText(net).Replace(" | rtt measured", " | rtt -"));
+                vols.Add(new KeyValuePair<string, VolumeInfo>("UNC", net));
+                sb.AppendLine("plans");
+                var opNames = new[] { "copy", "move", "retry move" };
+                var ops = new[] { OpKind.Copy, OpKind.Move, OpKind.Move };
+                foreach (var a in vols)
+                    foreach (var b in vols)
+                        for (int o = 0; o < ops.Length; o++)
+                        {
+                            var spec = new JobSpec { Op = ops[o] };
+                            if (o == 2) spec.ExplicitItems = new List<FileItem>();
+                            for (int k = 0; k < ShapeNames.Length; k++)
+                            {
+                                ScanResult scan = null;
+                                if (Shapes[k, 0] >= 0)
+                                {
+                                    scan = new ScanResult();
+                                    for (long i = 0; i < Shapes[k, 0]; i++) scan.Files.Add(new FileItem());
+                                    scan.MedianSize = Shapes[k, 1];
+                                    if (Shapes[k, 0] > 0) scan.Largest.Add(new KeyValuePair<string, long>("big.bin", Shapes[k, 2]));
+                                }
+                                var p = Plan.Choose(spec, a.Value, b.Value, scan);
+                                sb.AppendLine(a.Key + ">" + b.Key + " " + opNames[o] + " " + ShapeNames[k] + " | " + PlanText(p));
+                            }
+                        }
+                // no drive at one end (a job with no sources)
+                sb.AppendLine("(none)>first copy none | " + PlanText(Plan.Choose(new JobSpec { Op = OpKind.Copy }, null, vols.Count > 0 ? vols[0].Value : null, null)));
+
+                sb.AppendLine("paths");
+                foreach (var i in PathInputs)
+                {
+                    string l = Paths.ToLong(i);
+                    sb.AppendLine("[" + i + "] long [" + l + "] short [" + Paths.ToShort(l) + "] fix [" + Paths.FixArg(i) + "] parent [" + (Paths.Parent(l) ?? "(null)")
+                        + "] name [" + Paths.FileName(l) + "] unc " + B(Paths.IsUnc(l)) + " exists " + B(Paths.Exists(l)));
+                }
+                for (int k = 0; k < PathPairs.GetLength(0); k++)
+                    sb.AppendLine("[" + PathPairs[k, 0] + "] [" + PathPairs[k, 1] + "] inside " + B(Paths.IsSameOrInside(PathPairs[k, 0], PathPairs[k, 1])) + " same " + B(Paths.SamePath(PathPairs[k, 0], PathPairs[k, 1])));
+                for (int k = 0; k < NumberedNames.Length; k++)
+                    sb.AppendLine("[" + NumberedNames[k] + "] " + NumberedN[k] + " " + B(NumberedDir[k]) + " => [" + Paths.NumberedName(NumberedNames[k], NumberedN[k], NumberedDir[k]) + "]");
+                sb.AppendLine("errors");
+                for (long code = 0; code < 2000; code++) sb.AppendLine(code + " " + Native.ErrorText((int)code));
+                foreach (long code in MoreErrors) sb.AppendLine(code + " " + Native.ErrorText(unchecked((int)code)));
+                if (AppPaths.TestMode) DumpSettings(sb);
+            }
+            File.WriteAllText(args[1], sb.ToString());
+            return 0;
+        }
+
+        static void DumpSettings(StringBuilder sb)
+        {
+            sb.AppendLine("settings");
+            var s = Settings.Load();
+            sb.AppendLine("verify " + B(s.VerifyCopies) + " | policy " + s.Policy + " | limit " + G(s.SpeedLimitMbps) + " | value " + G(s.LimitValueMbps) + " | close " + B(s.CloseWhenDone)
+                + " after " + s.CloseAfterSeconds + " | takeover " + B(s.ExplorerTakeover) + " | unit " + (s.SpeedUnit ?? "(null)") + " | backup " + (s.UltracopierRunBackup ?? "(null)")
+                + " | extended " + B(s.Extended) + " | runs " + s.BenchRunsQuick + " " + s.BenchRunsThorough);
+            sb.AppendLine("settings.ini");
+            string ini = Path.Combine(AppPaths.DataDir, "settings.ini");
+            if (File.Exists(ini)) sb.Append(File.ReadAllText(ini));
+            sb.AppendLine("journal");
+            var spec = new JobSpec { Id = "plandump", Op = OpKind.Move, Dest = Paths.ToLong(@"X:\Dest folder\"), Verify = true, Policy = ConflictPolicy.KeepBoth, SpeedLimitMbps = 57 * 8 * 1.048576, Origin = "Right-click" };
+            spec.Sources.Add(Paths.ToLong(@"C:\a\b.txt"));
+            spec.Sources.Add(Paths.ToLong("\\\\srv\\share\\\u00e9 \u00fc"));
+            spec.ExplicitItems = new List<FileItem> { new FileItem { Src = @"\\?\C:\a\c.bin", Rel = @"sub\c.bin" } };
+            spec.ExplicitDirs = new List<DirItem> { new DirItem { Src = @"\\?\C:\a\sub", Rel = @"x\sub" } };
+            Directory.CreateDirectory(AppPaths.JobDir);
+            string f = Path.Combine(AppPaths.JobDir, "plandump.job");
+            Journal.Write(spec, f, new[] { "extra=1" });
+            sb.Append(File.ReadAllText(f, Encoding.UTF8));
+            var r = Journal.Read(f);
+            File.Delete(f);
+            sb.AppendLine("read " + r.Id + " | " + r.Op + " | " + r.Dest + " | verify " + B(r.Verify) + " | " + r.Policy + " | limit " + G(r.SpeedLimitMbps) + " | " + r.Origin
+                + " | " + string.Join(" ; ", r.Sources) + " | " + string.Join(" ; ", (r.ExplicitItems ?? new List<FileItem>()).Select(i => i.Src + " > " + i.Rel))
+                + " | " + string.Join(" ; ", (r.ExplicitDirs ?? new List<DirItem>()).Select(d => d.Src + " > " + d.Rel + " @" + d.Depth)) + " | " + r.Title);
+            // titles
+            var t = new JobSpec { Op = OpKind.Copy };
+            t.Sources.Add(Paths.ToLong(@"C:\x\photo.jpg"));
+            sb.AppendLine(t.Title);
+            t.Sources.Add(Paths.ToLong(@"C:\x\other"));
+            sb.AppendLine(t.Title);
+            t.Op = OpKind.Move;
+            t.ExplicitItems = new List<FileItem> { new FileItem() };
+            sb.AppendLine(t.Title);
+            t.ExplicitItems = new List<FileItem> { new FileItem(), new FileItem(), new FileItem() };
+            t.Elevated = true;
+            sb.AppendLine(t.Title);
+            // records: an administrator copy has none; one still being written is removed once it is written;
+            // unfinished ones come back to resume, one with nothing to do is deleted
+            Func<string, string> has = id => File.Exists(Path.Combine(AppPaths.JobDir, id + ".job")) ? "1" : "0";
+            var el = new JobSpec { Id = "plandump-admin", Op = OpKind.Copy, Dest = Paths.ToLong(@"C:\x"), Elevated = true };
+            el.Sources.Add(Paths.ToLong(@"C:\y"));
+            Journal.Save(el);
+            Journal.SaveSoon(el);
+            var soon = new JobSpec { Id = "plandump-soon", Op = OpKind.Copy, Dest = Paths.ToLong(@"C:\x") };
+            soon.Sources.Add(Paths.ToLong(@"C:\y"));
+            Journal.SaveSoon(soon);
+            Journal.Remove(soon);
+            System.Threading.Thread.Sleep(1500);
+            var kept = new JobSpec { Id = "plandump-kept", Op = OpKind.Move, Dest = Paths.ToLong(@"C:\x"), Policy = ConflictPolicy.Replace };
+            kept.Sources.Add(Paths.ToLong(@"C:\y"));
+            Journal.Save(kept);
+            File.WriteAllText(Path.Combine(AppPaths.JobDir, "plandump-empty.job"), "op=Copy\r\n");
+            File.WriteAllText(Path.Combine(AppPaths.JobDir, "plandump-x.jobx"), "op=Copy\r\ndest=C:\\x\r\nsrc=C:\\y\r\n");
+            sb.AppendLine("records admin " + has("plandump-admin") + " soon " + has("plandump-soon") + " kept " + has("plandump-kept"));
+            foreach (var u in Journal.LoadUnfinished())
+                sb.AppendLine("unfinished " + u.Id + " | " + u.Op + " | " + u.Policy + " | resume " + B(u.ResumeMode) + " | " + u.Dest + " | " + string.Join(" ; ", u.Sources));
+            sb.AppendLine("after load empty " + has("plandump-empty"));
+            foreach (var j in Directory.GetFiles(AppPaths.JobDir)) File.Delete(j);
+            // local times of file times (the conflict window shows them)
+            foreach (long ft in new[] { 0L, 132000000000000000L, 132700000000000000L, 133500000000000000L, 134400243957103472L, -1L, 2650467743999999999L, 2650467744000000000L })
+            {
+                var lt = FileTimes.ToLocal(ft);
+                sb.AppendLine("time " + ft + " " + (lt == DateTime.MinValue ? "min" : lt.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture)));
+            }
+            for (int sp = 0; sp <= 4; sp++) sb.AppendLine("usb " + sp + " " + UsbLink.Name(sp) + " | " + UsbLink.Short(sp) + " | " + G(UsbLink.CeilingMBps(sp)) + " | " + UsbLink.Aka(sp));
+        }
+
+        static void DumpScan(string[] args, StringBuilder sb)
+        {
+            var op = args.Length > 3 && args[3].Equals("move", StringComparison.OrdinalIgnoreCase) ? OpKind.Move : OpKind.Copy;
+            var spec = new JobSpec { Op = op, Dest = Paths.ToLong(args[4]) };
+            for (int i = 5; i < args.Length; i++) spec.Sources.Add(Paths.ToLong(args[i]));
+            var srcVol = spec.Sources.Count > 0 ? VolumeProbe.Probe(spec.Sources[0]) : null;
+            var dstVol = VolumeProbe.Probe(spec.Dest);
+            sb.AppendLine("scan " + op.ToString().ToLowerInvariant());
+            sb.AppendLine("src " + (srcVol != null ? VolText(srcVol) : "(null)"));
+            sb.AppendLine("dst " + VolText(dstVol));
+            // as CopyJob.RunCopy: 8 listings at once on a network, else 1 (source) and 2 (destination); then 4 and 4
+            int st = srcVol != null && srcVol.IsNetwork ? 8 : 1, dt = dstVol.IsNetwork ? 8 : 2;
+            foreach (var th in new[] { new[] { st, dt }, new[] { 4, 4 } })
+            {
+                var scanner = new Scanner(() => false);
+                var res = scanner.Run(spec, th[0], th[1]);
+                sb.AppendLine("threads " + th[0] + " " + th[1]);
+                sb.AppendLine("problems " + res.Problems.Count);
+                foreach (var p in res.Problems) sb.AppendLine(p);
+                sb.AppendLine("files " + res.Files.Count);
+                foreach (var f in res.Files)
+                    sb.AppendLine(f.Src + " | " + f.Rel + " | " + f.Size + " | " + f.Attr.ToString("X") + " | c " + f.CTime + " a " + f.ATime + " m " + f.MTime + " | dest " + B(f.DestExists)
+                        + " dir " + B(f.DestIsDir) + " " + f.DestSize + " " + f.DestMTime + " | temp " + B(f.TempExists));
+                sb.AppendLine("dirs " + res.Dirs.Count);
+                foreach (var d in res.Dirs)
+                    sb.AppendLine(d.Src + " | " + d.Rel + " | " + d.Attr.ToString("X") + " | c " + d.CTime + " a " + d.ATime + " m " + d.MTime + " | existed " + B(d.DestExisted)
+                        + " isfile " + B(d.DestIsFile) + " | depth " + d.Depth);
+                sb.AppendLine("total " + res.TotalBytes + " conflicts " + res.Conflicts + " median " + res.MedianSize);
+                sb.AppendLine("largest " + string.Join(", ", res.Largest.Select(l => l.Key + "=" + l.Value)));
+                sb.AppendLine("seen " + scanner.FilesSeen + " " + scanner.BytesSeen + " | " + scanner.Stage);
+                sb.AppendLine("plan " + PlanText(Plan.Choose(new JobSpec { Op = OpKind.Copy }, srcVol, dstVol, res)));
+            }
         }
 
         /// <summary>Read-only check: every open Explorer window and the folder a paste would go to.</summary>

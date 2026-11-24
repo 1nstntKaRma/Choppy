@@ -5,6 +5,9 @@ version = 4
 [[package]]
 name = "choppy"
 version = "1.48.0"
+dependencies = [
+ "windows",
+]
 
 [[package]]
 name = "look-a-d2d"
