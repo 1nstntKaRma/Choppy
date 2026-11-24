@@ -23,21 +23,31 @@ namespace Choppy.Engine
         public static bool TestMode { get { return !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CHOPPY_DATA")); } }
     }
 
-    /// <summary>User settings in HKCU\Software\Choppy (or a settings.ini in the data folder in test mode).</summary>
+    /// <summary>
+    /// User settings in HKCU\Software\Choppy (or a settings.ini in the data folder in test mode). They stay as the user
+    /// set them through updates; settings saved before v1.48 (no SettingsVersion) are put back to the defaults once.
+    /// </summary>
     internal sealed class Settings
     {
         public bool VerifyCopies;                       // check every copy with xxHash64 (copies and moves)
         public ConflictPolicy Policy = ConflictPolicy.Ask;
         public double SpeedLimitMbps;                   // 0 = off
-        public double LimitValueMbps = 101;             // the limit's value, kept while it is off
-        public bool CloseWhenDone = true;               // close the window a few seconds after a clean finish
-        public int CloseAfterSeconds = 2;               // ... this many seconds after it (0 = right away)
+        public double LimitValueMbps = 12 * 8 * 1.048576;   // the limit's value, kept while it is off (12 MB/s)
+        public bool CloseWhenDone = true;               // close the window when a copy finishes with no problems
+        public int CloseAfterSeconds;                   // ... this many seconds after it (0 = right away)
         public bool ExplorerTakeover;                   // Ctrl+V in Explorer + right-click "Paste with Choppy"
         public string SpeedUnit = "auto";               // auto | mbps | mbs
         public string UltracopierRunBackup;             // Ultracopier's startup entry, put back when takeover is turned off
         public bool Extended;                           // copy window: extended view (else compact)
-        public bool BenchDrivesShut;                    // Benchmark window: the drives list collapsed to one line
         public int BenchRunsQuick, BenchRunsThorough;   // Benchmark: runs each of a Quick / Thorough run (0 = the default, 2 / 3)
+
+        /// <summary>
+        /// The settings' layout. Settings saved with an older one (before v1.48: none) are put back to the defaults once -
+        /// all but the Default file manager (chosen at install, and it changes Explorer) and what Choppy keeps to undo it.
+        /// </summary>
+        const int Layout = 2;
+
+        static readonly string[] Gone = { "BenchDrives" };   // no longer kept
 
         static Settings current;
         public static Settings Current { get { if (current == null) current = Load(); return current; } }
@@ -62,9 +72,15 @@ namespace Choppy.Engine
                 if (d.TryGetValue("SpeedUnit", out v)) s.SpeedUnit = v;
                 if (d.TryGetValue("UltracopierRunBackup", out v)) s.UltracopierRunBackup = v;
                 if (d.TryGetValue("View", out v)) s.Extended = v == "extended";
-                if (d.TryGetValue("BenchDrives", out v)) s.BenchDrivesShut = v == "collapsed";
                 if (d.TryGetValue("BenchRunsQuick", out v)) s.BenchRunsQuick = Runs(v);
                 if (d.TryGetValue("BenchRunsThorough", out v)) s.BenchRunsThorough = Runs(v);
+                int layout;
+                if (!d.TryGetValue("SettingsVersion", out v) || !int.TryParse(v, out layout) || layout < Layout)
+                {
+                    // from an older version (or none yet): the defaults, once; from now on they stay as they are set
+                    s = new Settings { ExplorerTakeover = s.ExplorerTakeover, UltracopierRunBackup = s.UltracopierRunBackup };
+                    s.Save();
+                }
             }
             catch { }
             return s;
@@ -84,9 +100,9 @@ namespace Choppy.Engine
                 { "SpeedUnit", SpeedUnit ?? "auto" },
                 { "UltracopierRunBackup", UltracopierRunBackup ?? "" },
                 { "View", Extended ? "extended" : "compact" },
-                { "BenchDrives", BenchDrivesShut ? "collapsed" : "expanded" },
                 { "BenchRunsQuick", BenchRunsQuick.ToString(System.Globalization.CultureInfo.InvariantCulture) },
                 { "BenchRunsThorough", BenchRunsThorough.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                { "SettingsVersion", Layout.ToString(System.Globalization.CultureInfo.InvariantCulture) },
             };
             try { Write(d); } catch { }
         }
@@ -129,7 +145,10 @@ namespace Choppy.Engine
                 return;
             }
             using (var k = Registry.CurrentUser.CreateSubKey(Key))
+            {
                 foreach (var kv in d) k.SetValue(kv.Key, kv.Value);
+                foreach (var g in Gone) k.DeleteValue(g, false);
+            }
         }
     }
 

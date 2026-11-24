@@ -41,7 +41,11 @@ namespace Choppy.UI
         bool keepOpen;              // ... and opened again with the +: they stay open
         double barFraction;
         bool scanning;              // looking at the drives
-        int usable = -1;            // drives that would be tested (-1: not known yet)
+        int usable = -1;            // drives that can be tested (-1: not known yet)
+        int chosen = -1;            // ... and are checked
+        readonly HashSet<string> off = new HashSet<string>();   // drives unchecked: left out of the run (while the window is open)
+        Dictionary<string, BenchDrive> measured;                // the last run's drives, with their read and write speeds
+        bool folded;                // the − pressed (while the window is open: it always opens with every drive showing)
         bool loadingRuns;
         readonly DispatcherTimer rescanSoon;   // a drive plugged in or removed: looked at again a moment later
 
@@ -58,7 +62,7 @@ namespace Choppy.UI
             timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
             timer.Tick += (s, e) => Tick();
             rescanSoon = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
-            rescanSoon.Tick += (s, e) => { rescanSoon.Stop(); if (worker == null) Scan(); };
+            rescanSoon.Tick += (s, e) => { rescanSoon.Stop(); if (bench == null) Scan(); };
             WholeNumberBox.Attach(RunsBox);
             BuildHead();
             ShowFold();
@@ -82,7 +86,8 @@ namespace Choppy.UI
 
         /// <summary>
         /// Looks at the drives on a worker thread (a network drive can take a moment to answer): when the window opens,
-        /// with the arrows beside DRIVES, and by itself when a drive is plugged in or removed - while nothing runs.
+        /// when Network drives changes, and - until a run starts - with the arrows beside DRIVES and by itself when a
+        /// drive is plugged in or removed.
         /// </summary>
         void Scan()
         {
@@ -107,7 +112,7 @@ namespace Choppy.UI
             });
         }
 
-        void Rescan_Click(object sender, RoutedEventArgs e) { if (worker == null) Scan(); }
+        void Rescan_Click(object sender, RoutedEventArgs e) { if (bench == null) Scan(); }
 
         /// <summary>The drives that would be tested and how long it would take, for the chosen mode and runs.</summary>
         void Preview()
@@ -115,19 +120,23 @@ namespace Choppy.UI
             if (drives == null) return;
             double est = NewBench().Preview(drives);
             usable = drives.Count(d => d.Skip == null);
-            ShowDrives(drives, false);
+            chosen = drives.Count(d => d.Skip == null && !off.Contains(d.Letter));
+            ShowDrives();
             Estimate.Visibility = Visibility.Visible;
-            Estimate.Text = usable == 0 ? "" : "about " + Format.Short(TimeSpan.FromSeconds(Math.Max(60, est)));
-            ShowHint(usable == 0 ? "No drive here can be tested - each one's reason is listed above." : KeepOff);
+            Estimate.Text = chosen == 0 ? "" : "about " + Format.Short(TimeSpan.FromSeconds(Math.Max(60, est)));
+            ShowHint(usable == 0 ? "No drive here can be tested - each one's reason is listed above."
+                : chosen == 0 ? "Check at least one drive to test." : KeepOff);
             ShowButtons();
         }
 
-        /// <summary>A Benchmark as chosen: Quick or Thorough, network drives or not, and the runs.</summary>
+        /// <summary>A Benchmark as chosen: Quick or Thorough, network drives or not, the runs, and the drives checked.</summary>
         Benchmark NewBench()
         {
             bool thorough = ModeThorough.IsChecked == true;
             int runs = Runs;
-            return new Benchmark { Thorough = thorough, Network = NetworkToggle.IsChecked == true, RoundsOverride = runs != Benchmark.DefaultRounds(thorough) ? runs : 0 };
+            var b = new Benchmark { Thorough = thorough, Network = NetworkToggle.IsChecked == true, RoundsOverride = runs != Benchmark.DefaultRounds(thorough) ? runs : 0 };
+            if (off.Count > 0 && drives != null) b.Only = new HashSet<string>(drives.Select(d => d.Letter).Where(l => !off.Contains(l)));
+            return b;
         }
 
         /// <summary>The line under the progress (and under the drives before it starts).</summary>
@@ -165,7 +174,7 @@ namespace Choppy.UI
             int n = Runs, d = Benchmark.DefaultRounds(thorough);
             RunsPanel.ToolTip = "How many times each one copies every case, taking turns. " + (thorough ? "Thorough" : "Quick") + ": " + d
                 + (n == d ? "" : " if not changed") + ". Kept for the next time";
-            Intro.Text = "Both copy the same test files on every drive of this PC - one big file and many small files, from the system drive to each other drive and back, and within each drive. They take turns, each one "
+            Intro.Text = "Both copy the same test files on each drive checked below - one big file and many small files, from the system drive to each other drive and back, and within each drive. They take turns, each one "
                 + (n == 1 ? "once" : n == 2 ? "twice" : n + " times") + ", and the source is never in memory. The test files go into a temporary folder on each drive and are removed at the end.";
         }
 
@@ -187,30 +196,48 @@ namespace Choppy.UI
 
         void Runs_LostFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e) { ShowRuns(); }
 
-        void ShowDrives(List<BenchDrive> list, bool measured)
+        /// <summary>
+        /// The drives, each with a checkbox: every one that can be tested starts checked, and one unchecked is left out of
+        /// the run (while the window is open). Once a run has started, the drives that can't be tested share one line and
+        /// the checkboxes wait for the end; then each tested drive shows its measured speeds.
+        /// </summary>
+        void ShowDrives()
         {
+            var list = drives ?? (report != null ? report.Drives : null);
             listed = list;
             ShowDrivesLine();
             DriveList.Children.Clear();
+            if (list == null) return;
             // once it runs, the drives left out share one line (the window stays within the screen)
             bool compact = bench != null;   // started (running or done)
+            bool running = bench != null && report == null;   // the checkboxes wait for the end
             var order = list.Where(d => !compact || d.Skip == null).OrderBy(d => d.Skip != null).ThenBy(d => !d.System).ThenBy(d => d.Letter).ToList();
             var left = list.Where(d => d.Skip != null).OrderBy(d => d.Letter).ToList();
             for (int i = 0; i < order.Count; i++)
             {
                 var d = order[i];
-                bool on = d.Skip == null;
+                bool can = d.Skip == null, on = can && !off.Contains(d.Letter);
                 var g = new Grid { Margin = new Thickness(0, 7, 0, 7) };
                 g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                 g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(34) });
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(34) });
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(190) });
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                g.Children.Add(new TextBlock { Text = d.Letter, FontSize = 14.5, FontWeight = FontWeights.SemiBold, Foreground = on ? Res("B.Text") : Res("B.Faint") });
-                Cell(g, 1, new TextBlock { Text = d.Label ?? d.Remote ?? "", FontSize = 14, Foreground = on ? Res("B.Text2") : Res("B.Faint"), TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 12, 0) });
+                var box = new CheckBox
+                {
+                    Style = (Style)FindResource("Tick"), IsChecked = on, IsEnabled = can && !running, Tag = d.Letter,
+                    ToolTip = !can ? null : on ? "Tested - uncheck to leave " + d.Letter + " out" : "Left out - check to test " + d.Letter
+                };
+                box.Checked += Drive_Toggled;
+                box.Unchecked += Drive_Toggled;
+                g.Children.Add(box);
+                Brush name = on ? Res("B.Text") : can ? Res("B.Dim") : Res("B.Faint"), label = on ? Res("B.Text2") : can ? Res("B.Dim") : Res("B.Faint");
+                Cell(g, 1, new TextBlock { Text = d.Letter, FontSize = 14.5, FontWeight = FontWeights.SemiBold, Foreground = name, VerticalAlignment = VerticalAlignment.Center });
+                Cell(g, 2, new TextBlock { Text = d.Label ?? d.Remote ?? "", FontSize = 14, Foreground = label, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center });
                 string detail;
-                if (on)
+                if (can)
                 {
                     var parts = new List<string> { d.Kind };
                     if (d.Usb != null) parts.Add(UsbLink.Short(d.Usb.Speed));
@@ -220,18 +247,19 @@ namespace Choppy.UI
                     detail = string.Join(" · ", parts);
                 }
                 else detail = d.Skip;
-                Cell(g, 2, new TextBlock { Text = detail, FontSize = 13, Foreground = on ? Res("B.Dim") : Res("B.Faint"), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, ToolTip = detail });
-                string state = !on ? "left out" : measured && d.Measured ? "read " + BenchText.Speed(d.ReadMBps) + " · write " + BenchText.Speed(d.WriteMBps) : d.System ? "system drive" : "";
-                Cell(g, 3, new TextBlock { Text = state, FontSize = 13, Foreground = on ? (measured ? Res("B.SizeDone") : Res("B.Label")) : Res("B.Faint"), Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
+                Cell(g, 3, new TextBlock { Text = detail, FontSize = 13, Foreground = on ? Res("B.Dim") : Res("B.Faint"), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, ToolTip = detail });
+                var m = Measured(d);
+                string state = !can ? "left out" : !on ? "" : m != null ? "read " + BenchText.Speed(m.ReadMBps) + " · write " + BenchText.Speed(m.WriteMBps) : d.System ? "system drive" : "";
+                Cell(g, 4, new TextBlock { Text = state, FontSize = 13, Foreground = on ? (m != null ? Res("B.SizeDone") : Res("B.Label")) : Res("B.Faint"), Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
                 // known before it runs: a USB drive that its port (or cable, or a hub) holds back
-                if (d.Usb != null && d.Usb.HeldBack)
+                if (can && d.Usb != null && d.Usb.HeldBack)
                 {
                     var warn = new TextBlock { FontSize = 13, Foreground = Res("B.Warn"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0), ToolTip = UsbLink.Aka(d.Usb.Speed) };
                     warn.Inlines.Add(new Run("  ") { FontFamily = (FontFamily)Application.Current.FindResource("F.Icons"), FontSize = 12 });
                     warn.Inlines.Add(new Run(d.Usb.Advice));
                     Grid.SetRow(warn, 1);
                     Grid.SetColumnSpan(warn, 3);
-                    Cell(g, 1, warn);
+                    Cell(g, 2, warn);
                 }
                 var row = new Border { Child = g, BorderBrush = Res("B.Sep"), BorderThickness = new Thickness(0, 0, 0, i < order.Count - 1 || (compact && left.Count > 0) ? 1 : 0) };
                 DriveList.Children.Add(row);
@@ -243,19 +271,41 @@ namespace Choppy.UI
             }
         }
 
+        /// <summary>The drive as the last run measured it (its read and write speeds), else null.</summary>
+        BenchDrive Measured(BenchDrive d)
+        {
+            BenchDrive m;
+            return measured != null && measured.TryGetValue(d.Letter, out m) ? m : null;
+        }
+
+        IEnumerable<CheckBox> DriveBoxes()
+        {
+            return DriveList.Children.OfType<Border>().Select(b => b.Child as Grid).Where(g => g != null).SelectMany(g => g.Children.OfType<CheckBox>());
+        }
+
+        /// <summary>A drive checked or unchecked: the estimate and Start follow.</summary>
+        void Drive_Toggled(object sender, RoutedEventArgs e)
+        {
+            var box = (CheckBox)sender;
+            string letter = (string)box.Tag;
+            bool focus = box.IsKeyboardFocused;
+            if (box.IsChecked == true) off.Remove(letter); else off.Add(letter);
+            if (worker != null) return;
+            if (drives != null) Preview(); else ShowDrives();
+            if (focus) foreach (var c in DriveBoxes()) if ((string)c.Tag == letter) c.Focus();
+        }
+
         static void Cell(Grid g, int col, UIElement e) { Grid.SetColumn(e, col); g.Children.Add(e); }
 
-        // the − folds the drives to one line beside DRIVES (kept for the next time), the + opens the list again
+        // the − folds the drives to one line beside DRIVES (until the window closes), the + opens the list again
         void Fold_Click(object sender, RoutedEventArgs e) { ToggleFold(); }
 
-        bool Shut { get { return Settings.Current.BenchDrivesShut || foldedForRoom; } }
+        bool Shut { get { return folded || foldedForRoom; } }
 
         void ToggleFold()
         {
             bool open = Shut;
-            var st = Settings.Current;
-            st.BenchDrivesShut = !open;
-            st.Save();
+            folded = !open;
             foldedForRoom = false;
             keepOpen = open;
             ShowFold();
@@ -271,13 +321,17 @@ namespace Choppy.UI
             ShowDrivesLine();
         }
 
-        /// <summary>Folded: "C: NVMe · D: HDD · F: USB SSD · 2 left out" beside DRIVES (a held-back USB drive in amber), the details as its tooltip.</summary>
+        /// <summary>
+        /// Folded: "C: NVMe · D: HDD · F: USB SSD · 1 unchecked · 2 left out" beside DRIVES (a held-back USB drive in amber),
+        /// the details as its tooltip.
+        /// </summary>
         void ShowDrivesLine()
         {
             DrivesLine.Inlines.Clear();
             DrivesLine.ToolTip = null;
             if (!Shut || listed == null) return;
-            var on = listed.Where(d => d.Skip == null).OrderBy(d => !d.System).ThenBy(d => d.Letter).ToList();
+            var on = listed.Where(d => d.Skip == null && !off.Contains(d.Letter)).OrderBy(d => !d.System).ThenBy(d => d.Letter).ToList();
+            var unticked = listed.Where(d => d.Skip == null && off.Contains(d.Letter)).OrderBy(d => d.Letter).ToList();
             var left = listed.Where(d => d.Skip != null).OrderBy(d => d.Letter).ToList();
             var tip = new List<string>();
             foreach (var d in on)
@@ -288,12 +342,18 @@ namespace Choppy.UI
                 DrivesLine.Inlines.Add(new Run(" " + d.Short) { Foreground = held ? Res("B.Warn") : Res("B.Dim") });
                 var parts = new List<string> { d.Letter + (string.IsNullOrEmpty(d.Label) ? "" : " " + d.Label), d.Kind };
                 if (!string.IsNullOrEmpty(d.Model)) parts.Add(d.Model);
-                if (d.Measured) parts.Add("read " + BenchText.Speed(d.ReadMBps) + ", write " + BenchText.Speed(d.WriteMBps));
+                var m = Measured(d);
+                if (m != null) parts.Add("read " + BenchText.Speed(m.ReadMBps) + ", write " + BenchText.Speed(m.WriteMBps));
                 tip.Add(string.Join(" · ", parts) + (held ? "\n    " + d.Usb.Advice : ""));
+            }
+            if (unticked.Count > 0)
+            {
+                DrivesLine.Inlines.Add(new Run((DrivesLine.Inlines.Count > 0 ? "  ·  " : "") + unticked.Count + " unchecked") { Foreground = Res("B.Dim") });
+                tip.Add("Unchecked: " + string.Join(", ", unticked.Select(d => d.Letter)));
             }
             if (left.Count > 0)
             {
-                DrivesLine.Inlines.Add(new Run((on.Count > 0 ? "  ·  " : "") + left.Count + " left out") { Foreground = Res("B.Faint") });
+                DrivesLine.Inlines.Add(new Run((DrivesLine.Inlines.Count > 0 ? "  ·  " : "") + left.Count + " left out") { Foreground = Res("B.Faint") });
                 tip.Add("Left out: " + string.Join(", ", left.Select(d => d.Letter + " " + d.Skip)));
             }
             DrivesLine.ToolTip = string.Join("\n", tip);
@@ -515,7 +575,7 @@ namespace Choppy.UI
                     {
                         int ev = wParam.ToInt32();
                         if ((ev == DBT_DEVICEARRIVAL || ev == DBT_DEVICEREMOVECOMPLETE) && lParam != IntPtr.Zero
-                            && System.Runtime.InteropServices.Marshal.ReadInt32(lParam, 4) == DBT_DEVTYP_VOLUME && worker == null)
+                            && System.Runtime.InteropServices.Marshal.ReadInt32(lParam, 4) == DBT_DEVTYP_VOLUME && bench == null)
                         {
                             rescanSoon.Stop();
                             rescanSoon.Start();
@@ -558,15 +618,16 @@ namespace Choppy.UI
         }
 
         /// <summary>
-        /// The results showing, and no room on this screen (or in the maximized window) for the drives and a few rows of
-        /// results: the drives fold to one line. Only for now (the + opens them, and then they stay open).
+        /// The drives stay open, and the results list gives up room first. Only when this screen (or the maximized
+        /// window) is too short for the drives, a row of results and the buttons do they fold to one line - for now (the
+        /// + opens them, and then they stay open).
         /// </summary>
         void MakeRoom()
         {
-            if (foldedForRoom || keepOpen || Settings.Current.BenchDrivesShut || ResultsPanel.Visibility != Visibility.Visible || !IsLoaded) return;
+            if (foldedForRoom || keepOpen || folded || ResultsPanel.Visibility != Visibility.Visible || !IsLoaded) return;
             UpdateLayout();
             double room = WindowState == WindowState.Maximized ? ActualHeight : Native2.WorkArea(this).Height - (autoHeight ? 24 : 0);
-            if (Need(150) <= room) return;
+            if (Need(60) <= room) return;
             foldedForRoom = true;
             ShowFold();
         }
@@ -615,20 +676,22 @@ namespace Choppy.UI
             FolderBtn.Visibility = ReportBtn.Visibility = done && htmlPath != null ? Visibility.Visible : Visibility.Collapsed;
             ReportBtn.Style = (Style)app.FindResource(aborted ? "Btn" : "Btn.Primary");
             AgainBtn.Visibility = aborted ? Visibility.Visible : Visibility.Collapsed;
-            AgainBtn.IsEnabled = !scanning && usable != 0;
+            AgainBtn.IsEnabled = !scanning && chosen != 0;
             string text, style = "Btn.Stop", tip = null;
             bool on = true;
             if (aborting) { text = closeWhenDone ? "Closing..." : "Close"; on = !closeWhenDone; tip = "Closes the window as soon as the test files are removed"; }
             else if (running) { text = "Abort"; tip = "Stops the Benchmark and removes its test files. The cases that finished stay in the report."; }
             else if (aborted) text = "Close";
-            else if (done) { text = "Run again"; style = "Btn"; on = !scanning && usable != 0; }
-            else { text = "Start"; style = "Btn.Primary"; on = !scanning && usable > 0; }
+            else if (done) { text = "Run again"; style = "Btn"; on = !scanning && chosen != 0; }
+            else { text = "Start"; style = "Btn.Primary"; on = !scanning && chosen > 0; }
             StartBtn.Content = text;
             StartBtn.Style = (Style)app.FindResource(style);
             StartBtn.IsEnabled = on;
             StartBtn.ToolTip = tip;
             ModeQuick.IsEnabled = ModeThorough.IsEnabled = NetworkToggle.IsEnabled = RunsBox.IsEnabled = !running;
-            RescanBtn.IsEnabled = !running && !scanning;
+            // looking at the drives again: only before a run (after it, the list keeps what was measured)
+            RescanBtn.Visibility = bench == null ? Visibility.Visible : Visibility.Collapsed;
+            RescanBtn.IsEnabled = !scanning;
         }
 
         void Begin(Benchmark b)
@@ -643,7 +706,8 @@ namespace Choppy.UI
             Intro.Visibility = Visibility.Collapsed;
             ShowTotals(null);
             Estimate.Visibility = Visibility.Collapsed;   // the progress line has the times now
-            if (drives != null) ShowDrives(drives, false);
+            measured = null;
+            ShowDrives();
             SummaryNote.Text = "";
             ShowSummary(new List<BenchResult>(), false);
             ShowHint(KeepOff);
@@ -712,7 +776,8 @@ namespace Choppy.UI
             if (rep.Scored > 0)
                 notes.Add("The time decides: the average of each one's runs until the copies are on the disk. Less than " + (int)(Benchmark.TieMargin * 100) + "% apart is a " + BenchReport.TieWord + ".");
             SummaryNote.Text = string.Join(" ", notes);
-            if (rep.Drives != null) ShowDrives(rep.Drives, true);
+            measured = rep.Drives == null ? null : rep.Drives.Where(d => d.Measured).GroupBy(d => d.Letter).ToDictionary(g => g.Key, g => g.First());
+            ShowDrives();
             ResultsScroll.ScrollToTop();
             FitToScreen();
             Estimate.Text = "";
@@ -789,6 +854,16 @@ namespace Choppy.UI
                     bench.Cancel();
                     ShowButtons();
                     return "ok";
+                case "drive":
+                    // "drive D: off": as its checkbox clicked
+                    {
+                        string letter = p.Length > 1 ? p[1].TrimEnd(':').ToUpperInvariant() + ":" : "";
+                        var box = DriveBoxes().FirstOrDefault(c => (string)c.Tag == letter);
+                        if (box == null) return "no checkbox for " + letter;
+                        if (!box.IsEnabled) return "can't be changed now";
+                        box.IsChecked = p.Length < 3 || p[2] != "off";
+                        return "ok";
+                    }
                 case "mode":
                     (p.Length > 1 && p[1] == "thorough" ? ModeThorough : ModeQuick).IsChecked = true;
                     return "ok";
@@ -816,7 +891,9 @@ namespace Choppy.UI
                             : x.Content + (x.IsEnabled ? "" : " (off)") + (x.Style == Application.Current.FindResource("Btn.Stop") ? " [red]" : x.Style == Application.Current.FindResource("Btn.Primary") ? " [blue]" : "");
                         var shownBtns = new[] { FolderBtn, ReportBtn, AgainBtn, StartBtn }.Select(btn).Where(x => x != null);
                         return "buttons: " + string.Join(", ", shownBtns) + " | runs " + RunsBox.Text + (RunsBox.IsEnabled ? "" : " (off)") + " | estimate " + Estimate.Text
-                            + " | rescan " + (RescanBtn.IsEnabled ? "on" : "off") + " | drives " + (drives == null ? "-" : string.Join(",", drives.Select(d => d.Letter + (d.Skip == null ? "" : "(out)"))))
+                            + " | rescan " + (RescanBtn.Visibility != Visibility.Visible ? "hidden" : RescanBtn.IsEnabled ? "on" : "off") + (Shut ? " | folded" : "")
+                            + " | drives " + string.Join(" ", DriveBoxes().Select(c => (string)c.Tag + (c.IsChecked == true ? "[x]" : "[ ]") + (c.IsEnabled ? "" : "(locked)")))
+                            + (listed == null ? "" : " out:" + string.Join(",", listed.Where(d => d.Skip != null).Select(d => d.Letter)))
                             + " | hint " + Hint.Text + " | step " + StepText.Text;
                     }
                 case "state":

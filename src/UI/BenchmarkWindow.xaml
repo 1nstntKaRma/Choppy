@@ -50,6 +50,47 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- a drive's checkbox: checked = tested in this run -->
+        <Style x:Key="Tick" TargetType="CheckBox">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Border x:Name="b" Width="20" Height="20" CornerRadius="5" Background="#FF15181C" BorderBrush="#FF4A515C" BorderThickness="1" SnapsToDevicePixels="True">
+                            <TextBlock x:Name="t" Text="&#xE73E;" FontFamily="{StaticResource F.Icons}" FontSize="12" Foreground="White"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Hidden"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="BorderBrush" Value="#FF6A737F"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource B.Accent}"/>
+                                <Setter TargetName="b" Property="BorderBrush" Value="#FF2A86EE"/>
+                                <Setter TargetName="t" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsChecked" Value="True"/>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource B.AccentHover}"/>
+                            </MultiTrigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="b" Property="BorderBrush" Value="#FFBFE3FF"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
     <Grid>
         <Grid.RowDefinitions>
@@ -80,7 +121,7 @@
             <StackPanel>
                 <TextBlock Text="Choppy VS Windows" FontSize="20" FontWeight="SemiBold" FontFamily="{StaticResource F.Display}"/>
                 <TextBlock x:Name="Intro" Style="{StaticResource Sub}" FontSize="13.5" Margin="0,6,0,0" LineHeight="20"
-                           Text="Both copy the same test files on every drive of this PC - one big file and many small files, from the system drive to each other drive and back, and within each drive. They take turns, each one twice, and the source is never in memory. The test files go into a temporary folder on each drive and are removed at the end."/>
+                           Text="Both copy the same test files on each drive checked below - one big file and many small files, from the system drive to each other drive and back, and within each drive. They take turns, each one twice, and the source is never in memory. The test files go into a temporary folder on each drive and are removed at the end."/>
 
                 <!-- the whole run in four numbers: average time saved, each one's average speed, the time saved -->
                 <Border x:Name="TotalsCard" Style="{StaticResource Card}" Padding="0,12,0,13" Margin="0,14,0,0" Visibility="Collapsed">
@@ -114,7 +155,7 @@
                 </Grid>
             </StackPanel>
 
-            <!-- drives: the arrows look at them again (a drive plugged in), the − folds the list to one line, the + opens it again -->
+            <!-- drives: a checkbox each; the arrows look at them again (a drive plugged in; only before a run), the − folds the list to one line, the + opens it again -->
             <StackPanel Grid.Row="1">
                 <Grid x:Name="DrivesHead" Margin="0,13,0,6">
                     <Grid.ColumnDefinitions>

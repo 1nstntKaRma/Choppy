@@ -25,7 +25,7 @@ namespace Choppy.Bench
 
         public bool Thorough;                     // bigger files, a mixed folder, three runs each
         public bool Network;                      // mapped network drives too
-        public HashSet<string> Only;              // tests: only these drive letters ("C:", "D:")
+        public HashSet<string> Only;              // only these drive letters ("C:", "D:"): the ones checked in the window, or a test's
         public bool Tiny;                         // tests: very small sizes
         public Action<string> Log;                // a line per step (the command line's --log)
         public Action<JobSpec> Tweak;             // tests: engine switches for Choppy's side
@@ -301,6 +301,7 @@ namespace Choppy.Bench
                 if (d.Free < NeedBytes) d.Skip = "only " + Gb(d.Free) + " free; the test needs " + Gb(NeedBytes);
             }
             usable = usable.Where(d => d.Skip == null).ToList();
+            if (Only != null) usable = usable.Where(d => Only.Contains(d.Letter)).ToList();   // the drives chosen (the others can still be)
             var routes = PlanRoutes(usable);
             SizeRoutes(routes);
             return routes.Sum(r => r.Est) + usable.Sum(d => ProbeSeconds(d));
