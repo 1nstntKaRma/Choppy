@@ -504,6 +504,7 @@ mod tests {
     /// The registry side of Settings, on a scratch key (never HKCU\Software\Choppy itself).
     #[test]
     fn settings_in_the_registry() {
+        let _g = super::super::step2_tests::ENV.lock().unwrap_or_else(|e| e.into_inner()); // no test mode meanwhile
         if app_paths::test_mode() {
             return; // CHOPPY_DATA set: Settings use settings.ini
         }

@@ -178,6 +178,12 @@ pub fn set_env_var(key: &str, value: &str) {
     unsafe { std::env::set_var(key, value) }
 }
 
+/// Removes an environment variable of this process (tests: back out of test mode).
+#[cfg(test)]
+pub fn remove_env_var(key: &str) {
+    unsafe { std::env::remove_var(key) }
+}
+
 /// The Win32 error code inside a `windows` crate error (HRESULT_FROM_WIN32), as GetLastError gave it.
 fn win32_code(e: &windows::core::Error) -> u32 {
     let hr = e.code().0 as u32;

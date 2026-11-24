@@ -18,6 +18,9 @@ pub mod usb_link;
 pub mod volume_probe;
 pub mod xxhash64;
 
+#[cfg(test)]
+mod step2_tests;
+
 /// Locks a mutex; one a panicking thread left behind is used as it is (the panic was caught and reported where it
 /// happened, as C#'s locks don't know about exceptions either).
 pub fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {

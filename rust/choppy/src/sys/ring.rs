@@ -188,9 +188,12 @@ fn overlapped_result(h: HANDLE, ov: &OVERLAPPED) -> Result<u32, u32> {
 impl PendingRead {
     /// GetOverlappedResult(wait = TRUE): the slot back, with Ok(bytes read) or Err(the Win32 error).
     pub fn wait(mut self) -> (Slot, Result<u32, u32>) {
-        let slot = self.slot.take().expect("a pending read without its slot");
-        let r = overlapped_result(self.h.0, slot.ov.as_deref().expect("a ring without OVERLAPPED"));
-        (slot, r)
+        // the slot leaves the PendingRead only once Windows is done with it
+        let r = {
+            let slot = self.slot.as_ref().expect("a pending read without its slot");
+            overlapped_result(self.h.0, slot.ov.as_deref().expect("a ring without OVERLAPPED"))
+        };
+        (self.slot.take().expect("a pending read without its slot"), r)
     }
 }
 
