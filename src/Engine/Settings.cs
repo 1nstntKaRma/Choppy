@@ -36,6 +36,7 @@ namespace Choppy.Engine
         public string SpeedUnit = "auto";               // auto | mbps | mbs
         public string UltracopierRunBackup;             // Ultracopier's startup entry, put back when takeover is turned off
         public bool Extended;                           // copy window: extended view (else compact)
+        public bool BenchDrivesShut;                    // Benchmark window: the drives list collapsed to one line
 
         static Settings current;
         public static Settings Current { get { if (current == null) current = Load(); return current; } }
@@ -60,6 +61,7 @@ namespace Choppy.Engine
                 if (d.TryGetValue("SpeedUnit", out v)) s.SpeedUnit = v;
                 if (d.TryGetValue("UltracopierRunBackup", out v)) s.UltracopierRunBackup = v;
                 if (d.TryGetValue("View", out v)) s.Extended = v == "extended";
+                if (d.TryGetValue("BenchDrives", out v)) s.BenchDrivesShut = v == "collapsed";
             }
             catch { }
             return s;
@@ -79,6 +81,7 @@ namespace Choppy.Engine
                 { "SpeedUnit", SpeedUnit ?? "auto" },
                 { "UltracopierRunBackup", UltracopierRunBackup ?? "" },
                 { "View", Extended ? "extended" : "compact" },
+                { "BenchDrives", BenchDrivesShut ? "collapsed" : "expanded" },
             };
             try { Write(d); } catch { }
         }

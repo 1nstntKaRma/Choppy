@@ -161,7 +161,7 @@ namespace Choppy
             if (stop != null) stop.Dispose();
             string html, json;
             rep.Save(outPath, out html, out json);
-            if (lw != null) { lw.WriteLine(rep.Summary); lw.WriteLine(html); lw.Dispose(); }
+            if (lw != null) { lw.WriteLine(rep.Summary); if (rep.Totals != null) lw.WriteLine(rep.Totals.Line); lw.WriteLine(html); lw.Dispose(); }
             return rep.Canceled ? 3 : rep.Error != null ? 1 : 0;
         }
 
@@ -449,6 +449,12 @@ namespace Choppy
                 Bench.BenchReport.SummaryOf(10, 9, 0, true) == "Choppy is Faster 10 of 19 · Marginal Tie 9 of 19 · Never Slower"
                 && Bench.BenchReport.SummaryOf(10, 9, 0, false) == "Choppy is Faster 10 of 19 · Marginal Tie 9 of 19"
                 && Bench.BenchReport.SummaryOf(5, 0, 0, true) == "Choppy is Faster 5 of 5");
+            var tot = rep.Totals;
+            check("bench: totals (the measured cases only; each one's speed over the times added up)", tot != null && tot.Cases == 1 && Math.Abs(tot.AvgSaved - r1.Saved) < 1e-9
+                && Math.Abs(tot.ChoppySecs - 5.15) < 1e-9 && Math.Abs(tot.SecsSaved - 0.9) < 1e-9 && Math.Abs(tot.ChoppyMBps - 1024 / 5.15) < 1e-6
+                && tot.Line == "+15% faster on average · Choppy 199 MB/s · Windows 169 MB/s · Time saved 0.90 s" && Bench.BenchTotals.Of(new[] { r2 }) == null);
+            check("bench: time saved as a span", Bench.BenchText.SignedSpan(-12.34) == "−12.3 s" && Bench.BenchText.SignedSpan(0.001) == "0 s"
+                && Bench.BenchText.SignedSpan(75) == "1 min 15 s" && Bench.BenchText.Span(0.41) == "0.41 s");
             string json = rep.ToJson(), html = rep.ToHtml("x.json"), text = rep.ToText();
             int depth = 0; bool inStr = false, esc = false, balanced = true;
             foreach (char ch in json)
@@ -456,10 +462,10 @@ namespace Choppy
                 if (inStr) { if (esc) esc = false; else if (ch == '\\') esc = true; else if (ch == '"') inStr = false; continue; }
                 if (ch == '"') inStr = true; else if (ch == '{' || ch == '[') depth++; else if (ch == '}' || ch == ']') { depth--; if (depth < 0) balanced = false; }
             }
-            check("bench: JSON well formed", balanced && depth == 0 && !inStr && json.Contains("\"verdict\": \"faster\"") && json.Contains("\\\"NVMe\\\"") && json.Contains("\"error\": \"test error\""));
+            check("bench: JSON well formed", balanced && depth == 0 && !inStr && json.Contains("\"verdict\": \"faster\"") && json.Contains("\\\"NVMe\\\"") && json.Contains("\"error\": \"test error\"") && json.Contains("\"totals\": { \"cases\": 1,"));
             check("bench: HTML escaped", html.Contains("&lt;b&gt;&amp;amp;") && !html.Contains("<b>&amp;</b>") && html.Contains("Faster 1 of 1") && html.Contains("Choppy VS Windows")
-                && html.Contains("not a disk of this PC") && !html.Contains(">done "));
-            check("bench: text table", text.Contains("| C: → D: (NVMe → HDD) | One big file, 1 GB | 199 MB/s, 5.15 s | 169 MB/s, 6.05 s | +15% | Faster |") && text.Contains("error: test error"));
+                && html.Contains("not a disk of this PC") && !html.Contains(">done ") && html.Contains("<section class=\"totals\">"));
+            check("bench: text table", text.Contains("| C: → D: (NVMe → HDD) | One big file, 1 GB | 199 MB/s, 5.15 s | 169 MB/s, 6.05 s | +15% | Faster |") && text.Contains("error: test error") && text.Contains("**+15% faster on average · Choppy 199 MB/s"));
 
             // test folders: removed with what's in them; a link inside is removed, never followed; a folder that isn't ours stays
             string root = Path.Combine(Path.GetTempPath(), "choppy-selftest-bench-" + Guid.NewGuid().ToString("N").Substring(0, 8));

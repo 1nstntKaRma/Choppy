@@ -7,6 +7,7 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -18,6 +19,7 @@ namespace Choppy.UI
     /// <summary>
     /// Benchmark: Choppy VS Windows (its own copy engine) on every drive of this PC. Lists the drives (and why one is left
     /// out), runs on its own thread with progress and an estimate, shows each case as it finishes, and saves the report.
+    /// It can be resized and maximized at any time, running or not.
     /// </summary>
     public partial class BenchmarkWindow : Window
     {
@@ -31,8 +33,16 @@ namespace Choppy.UI
         int scanNo;
         bool closeWhenDone;
         BenchDrive lastFrom, lastTo;
+        List<BenchDrive> listed;    // the drives shown (for the folded line)
+        bool autoHeight = true;     // the height follows the content, until the top or bottom edge is dragged
+        bool sizingHeight;          // the edge being dragged moves the top or the bottom
+        bool foldedForRoom;         // the drives folded by themselves: no room on this screen (not kept for the next time)
+        bool keepOpen;              // ... and opened again with the +: they stay open
+        double barFraction;
 
         static Brush Res(string key) { return (Brush)Application.Current.FindResource(key); }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
 
         public BenchmarkWindow()
         {
@@ -41,6 +51,16 @@ namespace Choppy.UI
             timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
             timer.Tick += (s, e) => Tick();
             BuildHead();
+            ShowFold();
+            SourceInitialized += (o, e) =>
+            {
+                Native2.MaximizeToWorkArea(this);
+                var src = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+                if (src != null) src.AddHook(SizeHook);
+            };
+            StateChanged += (o, e) => OnStateChanged();
+            LayoutUpdated += (o, e) => UpdateMinHeight();
+            ((FrameworkElement)Bar.Parent).SizeChanged += (o, e) => SetBar(barFraction);
             Loaded += (o, e) => { Native2.Rounded(this); Scan(); };
             MouseLeftButtonDown += (o, e) => { if (e.GetPosition(this).Y < 46) try { DragMove(); } catch { } };
             KeyDown += (o, e) => { if (e.Key == System.Windows.Input.Key.Escape) Close(); };
@@ -85,6 +105,8 @@ namespace Choppy.UI
 
         void ShowDrives(List<BenchDrive> list, bool measured)
         {
+            listed = list;
+            ShowDrivesLine();
             DriveList.Children.Clear();
             // once it runs, the drives left out share one line (the window stays within the screen)
             bool compact = bench != null;   // started (running or done)
@@ -138,6 +160,62 @@ namespace Choppy.UI
         }
 
         static void Cell(Grid g, int col, UIElement e) { Grid.SetColumn(e, col); g.Children.Add(e); }
+
+        // the − folds the drives to one line beside DRIVES (kept for the next time), the + opens the list again
+        void Fold_Click(object sender, RoutedEventArgs e) { ToggleFold(); }
+
+        void DrivesHead_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) { if (!e.Handled) ToggleFold(); }
+
+        bool Shut { get { return Settings.Current.BenchDrivesShut || foldedForRoom; } }
+
+        void ToggleFold()
+        {
+            bool open = Shut;
+            var st = Settings.Current;
+            st.BenchDrivesShut = !open;
+            st.Save();
+            foldedForRoom = false;
+            keepOpen = open;
+            ShowFold();
+            FitToScreen();
+        }
+
+        void ShowFold()
+        {
+            bool shut = Shut;
+            DrivesCard.Visibility = shut ? Visibility.Collapsed : Visibility.Visible;
+            FoldBtn.Content = shut ? "\uE710" : "\uE738";
+            FoldBtn.ToolTip = shut ? "Show every drive" : "Fold the drives to one line";
+            ShowDrivesLine();
+        }
+
+        /// <summary>Folded: "C: NVMe · D: HDD · F: USB SSD · 2 left out" beside DRIVES (a held-back USB drive in amber), the details as its tooltip.</summary>
+        void ShowDrivesLine()
+        {
+            DrivesLine.Inlines.Clear();
+            DrivesLine.ToolTip = null;
+            if (!Shut || listed == null) return;
+            var on = listed.Where(d => d.Skip == null).OrderBy(d => !d.System).ThenBy(d => d.Letter).ToList();
+            var left = listed.Where(d => d.Skip != null).OrderBy(d => d.Letter).ToList();
+            var tip = new List<string>();
+            foreach (var d in on)
+            {
+                if (DrivesLine.Inlines.Count > 0) DrivesLine.Inlines.Add(new Run("  ·  ") { Foreground = Res("B.Faint") });
+                bool held = d.Usb != null && d.Usb.HeldBack;
+                DrivesLine.Inlines.Add(new Run(d.Letter) { Foreground = Res("B.Text2"), FontWeight = FontWeights.SemiBold });
+                DrivesLine.Inlines.Add(new Run(" " + d.Short) { Foreground = held ? Res("B.Warn") : Res("B.Dim") });
+                var parts = new List<string> { d.Letter + (string.IsNullOrEmpty(d.Label) ? "" : " " + d.Label), d.Kind };
+                if (!string.IsNullOrEmpty(d.Model)) parts.Add(d.Model);
+                if (d.Measured) parts.Add("read " + BenchText.Speed(d.ReadMBps) + ", write " + BenchText.Speed(d.WriteMBps));
+                tip.Add(string.Join(" · ", parts) + (held ? "\n    " + d.Usb.Advice : ""));
+            }
+            if (left.Count > 0)
+            {
+                DrivesLine.Inlines.Add(new Run((on.Count > 0 ? "  ·  " : "") + left.Count + " left out") { Foreground = Res("B.Faint") });
+                tip.Add("Left out: " + string.Join(", ", left.Select(d => d.Letter + " " + d.Skip)));
+            }
+            DrivesLine.ToolTip = string.Join("\n", tip);
+        }
 
         void Mode_Changed(object sender, RoutedEventArgs e) { if (IsLoaded && worker == null && report == null) Preview(); }
 
@@ -198,7 +276,7 @@ namespace Choppy.UI
                 Cell(g, 2, Speed(r.ChoppyMBps, r.ChoppySecs, Res("B.NowSpeed")));
                 Cell(g, 3, Speed(r.WindowsMBps, r.WindowsSecs, Res("B.Text")));
                 Cell(g, 4, new TextBlock { Text = BenchText.Saved(r.Saved), FontSize = 14, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Right,
-                    Foreground = Res(BenchText.SavedClass(r.Saved) == "good" ? "B.Good" : BenchText.SavedClass(r.Saved) == "bad" ? "B.Bad" : "B.Dim") });
+                    Foreground = Tone(BenchText.SavedClass(r.Saved)) });
                 Cell(g, 5, Badge(BenchReport.Word(r.Verdict), r.Verdict, false));
                 g.ToolTip = "Choppy: " + string.Join(", ", r.Runs.Where(x => x.Choppy).Select(x => BenchText.Secs(x.OnDisk)))
                     + "\nWindows: " + string.Join(", ", r.Runs.Where(x => !x.Choppy).Select(x => BenchText.Secs(x.OnDisk)))
@@ -210,14 +288,24 @@ namespace Choppy.UI
             FitToScreen();
         }
 
-        /// <summary>The results list grows until the window reaches the bottom of the screen, then scrolls.</summary>
+        /// <summary>Green when Choppy took less time, red when more, gray when even ("good" / "bad" / "tie").</summary>
+        static Brush Tone(string cls) { return Res(cls == "good" ? "B.Good" : cls == "bad" ? "B.Bad" : "B.Dim"); }
+
+        /// <summary>
+        /// Sized to its content, the results list grows until the window reaches the bottom of the screen, then scrolls.
+        /// Sized by hand or maximized, the list fills the window.
+        /// </summary>
         void FitToScreen()
         {
+            MakeRoom();
+            if (!autoHeight || WindowState != WindowState.Normal) { ResultsScroll.MaxHeight = double.PositiveInfinity; return; }
             UpdateLayout();
-            double room = SystemParameters.WorkArea.Height - 24;
-            double other = ActualHeight - ResultsScroll.ActualHeight;
-            ResultsScroll.MaxHeight = Math.Max(150, room - other);
-            if (Top + ActualHeight > SystemParameters.WorkArea.Bottom && !TestHook.Park) Top = Math.Max(SystemParameters.WorkArea.Top, SystemParameters.WorkArea.Bottom - ActualHeight - 12);
+            var wa = Native2.WorkArea(this);
+            // from its parts: the window itself takes its new height a moment later
+            double other = Need(0);
+            ResultsScroll.MaxHeight = Math.Max(60, wa.Height - 24 - other);
+            double height = other + Math.Min(ResultsList.ActualHeight, ResultsScroll.MaxHeight);
+            if (Top + height > wa.Bottom && !TestHook.Park) Top = Math.Max(wa.Top, wa.Bottom - height - 12);
         }
 
         /// <summary>The average speed, and under it the average time.</summary>
@@ -261,6 +349,141 @@ namespace Choppy.UI
             else if (final && ended && t > 0) { SummaryText.Inlines.Add(new Run(" · ")); SummaryText.Inlines.Add(new Run("Never Slower") { Foreground = Res("B.Good") }); }
         }
 
+        /// <summary>The whole run in four numbers, under the title: the average time saved, each one's average speed, the time Choppy saved.</summary>
+        void ShowTotals(BenchTotals t)
+        {
+            TotalsGrid.Children.Clear();
+            TotalsGrid.ColumnDefinitions.Clear();
+            TotalsCard.Visibility = t == null ? Visibility.Collapsed : Visibility.Visible;
+            if (t == null) return;
+            string cases = t.Cases + (t.Cases == 1 ? " case" : " cases");
+            var pct = new TextBlock();
+            pct.Inlines.Add(new Run(BenchText.Saved(t.AvgSaved)));
+            pct.Inlines.Add(new Run(" " + t.Word) { FontSize = 15 });
+            Stat(0, "ON AVERAGE", pct, Tone(BenchText.SavedClass(t.AvgSaved)), "average of " + cases,
+                "The average of every case's Time saved: how much less time Choppy took than Windows (green), or more (red)");
+            Stat(1, "CHOPPY AVERAGE", new TextBlock { Text = BenchText.Speed(t.ChoppyMBps) }, Res("B.NowSpeed"), BenchText.Size(t.Bytes) + " in " + BenchText.Span(t.ChoppySecs),
+                "All the bytes over all the time until the copies were on the disk, every case copied once");
+            Stat(2, "WINDOWS AVERAGE", new TextBlock { Text = BenchText.Speed(t.WindowsMBps) }, Res("B.Text"), BenchText.Size(t.Bytes) + " in " + BenchText.Span(t.WindowsSecs),
+                "All the bytes over all the time until the copies were on the disk, every case copied once");
+            Stat(3, "TIME SAVED", new TextBlock { Text = BenchText.SignedSpan(t.SecsSaved) }, Tone(t.SecsClass), "every case copied once",
+                "How much less time Choppy took than Windows (green), or more (red), every case copied once");
+        }
+
+        void Stat(int col, string cap, TextBlock value, Brush color, string sub, string tip)
+        {
+            TotalsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            value.FontSize = 24;
+            value.FontWeight = FontWeights.SemiBold;
+            value.FontFamily = (FontFamily)Application.Current.FindResource("F.Display");
+            value.Foreground = color;
+            value.Margin = new Thickness(0, 3, 0, 1);
+            value.TextTrimming = TextTrimming.CharacterEllipsis;
+            var sp = new StackPanel { Margin = new Thickness(18, 0, 12, 0) };
+            sp.Children.Add(new TextBlock { Text = cap, Style = (Style)Application.Current.FindResource("T.Cap") });
+            sp.Children.Add(value);
+            sp.Children.Add(new TextBlock { Text = sub, FontSize = 12.5, Foreground = Res("B.Faint"), TextTrimming = TextTrimming.CharacterEllipsis });
+            var cell = new Border { Child = sp, Background = Brushes.Transparent, ToolTip = tip, BorderBrush = Res("B.Sep"), BorderThickness = new Thickness(col > 0 ? 1 : 0, 0, 0, 0) };
+            Cell(TotalsGrid, col, cell);
+        }
+
+        // ================= size =================
+
+        void Min_Click(object sender, RoutedEventArgs e) { WindowState = WindowState.Minimized; }
+
+        void Max_Click(object sender, RoutedEventArgs e)
+        {
+            if (WindowState == WindowState.Maximized) { WindowState = WindowState.Normal; return; }
+            SizeToContent = SizeToContent.Manual;   // else the content keeps the maximized window at its height
+            WindowState = WindowState.Maximized;
+        }
+
+        void OnStateChanged()
+        {
+            bool max = WindowState == WindowState.Maximized;
+            MaxBtn.Content = max ? "\uE923" : "\uE922";
+            MaxBtn.ToolTip = max ? "Restore" : "Maximize";
+            if (max)
+            {
+                // maximized some other way (the title bar double-clicked, Windows+Up, dragged to the top) while the height
+                // still followed the content: it may have kept that height
+                if (SizeToContent != SizeToContent.Manual) { SizeToContent = SizeToContent.Manual; Native2.FillWorkArea(this); }
+            }
+            else if (WindowState == WindowState.Normal) SizeToContent = autoHeight ? SizeToContent.Height : SizeToContent.Manual;
+            if (WindowState != WindowState.Minimized) FitToScreen();
+        }
+
+        /// <summary>Dragging the top or bottom edge makes the height the user's; dragging only a side keeps it following the content.</summary>
+        IntPtr SizeHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            const int WM_SIZING = 0x0214, WM_ENTERSIZEMOVE = 0x0231, WM_EXITSIZEMOVE = 0x0232, WM_SYSCOMMAND = 0x0112, SC_MAXIMIZE = 0xF030;
+            switch (msg)
+            {
+                case WM_SYSCOMMAND:
+                    // about to be maximized (the title bar double-clicked, Windows+Up, the window menu): the content lets go of the height first
+                    if ((wParam.ToInt32() & 0xFFF0) == SC_MAXIMIZE) SizeToContent = SizeToContent.Manual;
+                    break;
+                case WM_ENTERSIZEMOVE:
+                    sizingHeight = false;
+                    break;
+                case WM_SIZING:
+                    // 1 left, 2 right, 3 top, 4 top left, 5 top right, 6 bottom, 7 bottom left, 8 bottom right
+                    if (wParam.ToInt32() >= 3 && !sizingHeight)
+                    {
+                        sizingHeight = true;
+                        autoHeight = false;
+                        SizeToContent = SizeToContent.Manual;
+                        FitToScreen();
+                    }
+                    break;
+                case WM_EXITSIZEMOVE:
+                    if (WindowState == WindowState.Normal && autoHeight && SizeToContent != SizeToContent.Height) { SizeToContent = SizeToContent.Height; FitToScreen(); }
+                    break;
+            }
+            return IntPtr.Zero;
+        }
+
+        /// <summary>
+        /// The window can be made as small as everything but the results list, and a few of its rows: the buttons never go
+        /// out of sight.
+        /// </summary>
+        void UpdateMinHeight()
+        {
+            if (!IsLoaded || WindowState != WindowState.Normal) return;
+            double min = Math.Ceiling(Math.Min(Need(Math.Min(120, ResultsList.ActualHeight)), Native2.WorkArea(this).Height));
+            if (Math.Abs(MinHeight - min) > 0.5) MinHeight = min;
+        }
+
+        /// <summary>
+        /// The results showing, and no room on this screen (or in the maximized window) for the drives and a few rows of
+        /// results: the drives fold to one line. Only for now (the + opens them, and then they stay open).
+        /// </summary>
+        void MakeRoom()
+        {
+            if (foldedForRoom || keepOpen || Settings.Current.BenchDrivesShut || ResultsPanel.Visibility != Visibility.Visible || !IsLoaded) return;
+            UpdateLayout();
+            double room = WindowState == WindowState.Maximized ? ActualHeight : Native2.WorkArea(this).Height - (autoHeight ? 24 : 0);
+            if (Need(150) <= room) return;
+            foldedForRoom = true;
+            ShowFold();
+        }
+
+        /// <summary>The height everything takes but the results list, with this much of the list.</summary>
+        double Need(double list)
+        {
+            var rows = Body.RowDefinitions;
+            double min = 46 + BorderThickness.Top + BorderThickness.Bottom + Body.Margin.Top + Body.Margin.Bottom
+                + rows[0].ActualHeight + rows[1].ActualHeight + rows[2].ActualHeight + rows[4].ActualHeight;
+            if (ResultsPanel.Visibility == Visibility.Visible)
+            {
+                var card = ResultsCard;
+                min += ResultsPanel.Margin.Top + ResultsPanel.RowDefinitions[0].ActualHeight + ResultsPanel.RowDefinitions[1].ActualHeight
+                    + card.Margin.Top + card.BorderThickness.Top + card.BorderThickness.Bottom + card.Padding.Top + card.Padding.Bottom
+                    + ResultsBox.RowDefinitions[0].ActualHeight + list;
+            }
+            return min;
+        }
+
         // ================= running =================
 
         void Start_Click(object sender, RoutedEventArgs e)
@@ -282,14 +505,16 @@ namespace Choppy.UI
             ProgressPanel.Visibility = Visibility.Visible;
             ResultsPanel.Visibility = Visibility.Visible;
             Intro.Visibility = Visibility.Collapsed;
+            ShowTotals(null);
             Estimate.Visibility = Visibility.Collapsed;   // the progress line has the times now
             if (drives != null) ShowDrives(drives, false);
             SummaryNote.Text = "";
             ShowSummary(new List<BenchResult>(), false);
             FootNote.Text = "Keep other work off these drives while it runs: it measures them.";
-            Bar.Width = 0;
+            SetBar(0);
             StepText.Text = "Starting";
             ElapsedVal.Text = "0 s"; RemainLabel.Text = ""; RemainVal.Text = "";
+            FitToScreen();
             worker = new Thread(() =>
             {
                 BenchReport rep;
@@ -301,14 +526,20 @@ namespace Choppy.UI
             timer.Start();
         }
 
+        /// <summary>The progress bar filled this much (and kept so when the window changes size).</summary>
+        void SetBar(double fraction)
+        {
+            barFraction = fraction;
+            Bar.Width = Math.Max(0, ((FrameworkElement)Bar.Parent).ActualWidth * fraction);
+        }
+
         void Tick()
         {
             if (bench == null) return;
             var s = bench.Status();
             if (bench.IsCanceled) StepText.Text = "Stopping - removing the test files...";
             else StepText.Text = s.Text;
-            double track = ((FrameworkElement)Bar.Parent).ActualWidth;
-            Bar.Width = Math.Max(0, track * s.Fraction);
+            SetBar(s.Fraction);
             // the copy window's wording and colors: Elapsed 2 min    Remaining 6 min
             ElapsedVal.Text = Format.Short(s.Elapsed);
             RemainLabel.Text = bench.IsCanceled ? "" : "    Remaining ";
@@ -330,9 +561,10 @@ namespace Choppy.UI
             report = rep;
             AddNew(rep.Results.ToList(), true);
             ShowSummary(rep.Results.ToList(), true, rep.Ended);
+            ShowTotals(rep.Totals);
             // the progress line stays, finished: the time it took, nothing remaining
             StepText.Text = rep.Canceled ? "Stopped" : rep.Error != null ? "Couldn't finish" : "Finished";
-            if (rep.Ended) Bar.Width = ((FrameworkElement)Bar.Parent).ActualWidth;
+            if (rep.Ended) SetBar(1);
             ElapsedVal.Text = BenchText.Duration(rep.Seconds); RemainLabel.Text = ""; RemainVal.Text = "";
             string saved = null;
             try { rep.Save(null, out htmlPath, out jsonPath); saved = Path.GetFileName(htmlPath); }
@@ -410,7 +642,7 @@ namespace Choppy.UI
 
         // ================= test hook =================
 
-        /// <summary>"start tiny C,D" / "start quick" / "stop" (the test hook drives the window without the mouse).</summary>
+        /// <summary>"start tiny C,D" / "start quick" / "stop" / "state" / "fold" / "unfold" / "max" / "maxsys" / "normal" / "size w [h]" / "move x y" / "rect" (the test hook drives the window without the mouse).</summary>
         internal string ForTest(string cmd)
         {
             var p = cmd.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
@@ -432,7 +664,45 @@ namespace Choppy.UI
                     StartBtn.Content = "Stopping...";
                     return "ok";
                 case "state":
-                    return worker != null ? "running " + (int)(bench.Status().Fraction * 100) + "%" : report != null ? "done: " + report.Summary + (report.Canceled ? " (stopped)" : "") + " | " + htmlPath : "idle";
+                    return worker != null ? "running " + (int)(bench.Status().Fraction * 100) + "%" : report != null ? "done: " + report.Summary + (report.Canceled ? " (stopped)" : "")
+                        + (report.Totals != null ? " | " + report.Totals.Line : "") + " | " + htmlPath : "idle";
+                case "fold":
+                case "unfold":
+                    if (Shut != (p[0] == "fold")) ToggleFold();
+                    return "ok";
+                case "max":
+                    Max_Click(null, null);
+                    return "ok";
+                case "maxsys":
+                    // as the title bar double-clicked does it
+                    SendMessage(new WindowInteropHelper(this).Handle, 0x0112, (IntPtr)0xF030, IntPtr.Zero);
+                    return "ok";
+                case "normal":
+                    WindowState = WindowState.Normal;
+                    return "ok";
+                case "size":
+                    // "size 900 600": as if both were dragged by hand; "size 900": only the width (the height follows the content)
+                    {
+                        if (p.Length > 2) { autoHeight = false; SizeToContent = SizeToContent.Manual; Height = double.Parse(p[2], System.Globalization.CultureInfo.InvariantCulture); }
+                        if (p.Length > 1) Width = double.Parse(p[1], System.Globalization.CultureInfo.InvariantCulture);
+                        if (autoHeight) SizeToContent = SizeToContent.Height;
+                        FitToScreen();
+                        return "ok";
+                    }
+                case "move":
+                    Left = double.Parse(p[1], System.Globalization.CultureInfo.InvariantCulture);
+                    Top = double.Parse(p[2], System.Globalization.CultureInfo.InvariantCulture);
+                    return "ok";
+                case "rect":
+                    {
+                        UpdateLayout();
+                        var src = PresentationSource.FromVisual(this);
+                        double k = src != null && src.CompositionTarget != null ? src.CompositionTarget.TransformToDevice.M11 : 1;
+                        var wa = Native2.WorkArea(this);
+                        return WindowState + " " + (int)Left + "," + (int)Top + " " + (int)ActualWidth + "x" + (int)ActualHeight + " min " + (int)MinWidth + "x" + (int)MinHeight
+                            + " sizeToContent " + SizeToContent + " list " + (int)ResultsScroll.ActualHeight + "/" + (int)ResultsList.ActualHeight
+                            + " workArea " + (int)wa.Left + "," + (int)wa.Top + " " + (int)wa.Width + "x" + (int)wa.Height + " dpi " + k;
+                    }
             }
             return "unknown";
         }

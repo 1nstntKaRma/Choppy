@@ -1,13 +1,13 @@
 <Window x:Class="Choppy.UI.BenchmarkWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Choppy Benchmark" Width="860" SizeToContent="Height"
-        WindowStyle="None" ResizeMode="NoResize" WindowStartupLocation="CenterScreen"
+        Title="Choppy Benchmark" Width="860" MinWidth="800" SizeToContent="Height"
+        WindowStyle="None" ResizeMode="CanResize" WindowStartupLocation="CenterScreen"
         Background="{StaticResource B.Window}" BorderBrush="{StaticResource B.WinBorder}" BorderThickness="1"
         FontFamily="{StaticResource F.Ui}" Foreground="{StaticResource B.Text}"
         UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
     <WindowChrome.WindowChrome>
-        <WindowChrome CaptionHeight="46" ResizeBorderThickness="0" GlassFrameThickness="0,0,0,1" UseAeroCaptionButtons="False"/>
+        <WindowChrome CaptionHeight="46" ResizeBorderThickness="6" GlassFrameThickness="0,0,0,1" UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
     <Window.Resources>
         <Style x:Key="Sub" TargetType="TextBlock">
@@ -15,53 +15,115 @@
             <Setter Property="Foreground" Value="{StaticResource B.Dim}"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
+        <!-- the small + / − beside DRIVES -->
+        <Style x:Key="Fold" TargetType="Button">
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Foreground" Value="{StaticResource B.Dim}"/>
+            <Setter Property="FontFamily" Value="{StaticResource F.Icons}"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="#FF22262C" BorderBrush="#FF383E47" BorderThickness="1" CornerRadius="5" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#FF2F353D"/>
+                                <Setter TargetName="b" Property="BorderBrush" Value="#FF454C56"/>
+                                <Setter Property="Foreground" Value="{StaticResource B.Text}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#FF1E2227"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="b" Property="BorderBrush" Value="#FF5CB8FF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="46"/>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
         <Grid>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="18,0,0,0">
                 <Image x:Name="AppIcon" Width="20" Height="20"/>
                 <TextBlock Text="Benchmark" FontSize="15" FontWeight="SemiBold" Margin="10,0,0,1" VerticalAlignment="Center" Foreground="#FFE9ECF0"/>
             </StackPanel>
-            <Button Style="{StaticResource Btn.TitleClose}" Content="&#xE8BB;" FontSize="12" Height="46" HorizontalAlignment="Right" WindowChrome.IsHitTestVisibleInChrome="True" Click="Close_Click"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" WindowChrome.IsHitTestVisibleInChrome="True">
+                <Button Style="{StaticResource Btn.Title}" Content="&#xE921;" Height="46" ToolTip="Minimize" Click="Min_Click"/>
+                <Button x:Name="MaxBtn" Style="{StaticResource Btn.Title}" Content="&#xE922;" Height="46" ToolTip="Maximize" Click="Max_Click"/>
+                <Button Style="{StaticResource Btn.TitleClose}" Content="&#xE8BB;" FontSize="12" Height="46" ToolTip="Close" Click="Close_Click"/>
+            </StackPanel>
         </Grid>
 
-        <StackPanel Grid.Row="1" Margin="24,2,24,20">
-            <TextBlock Text="Choppy VS Windows" FontSize="20" FontWeight="SemiBold" FontFamily="{StaticResource F.Display}"/>
-            <TextBlock x:Name="Intro" Style="{StaticResource Sub}" FontSize="13.5" Margin="0,6,0,0" LineHeight="20"
-                       Text="Both copy the same test files on every drive of this PC - one big file and many small files, from the system drive to each other drive and back, and within each drive. They take turns, each one twice, and the source is never in memory. The test files go into a temporary folder on each drive and are removed at the end."/>
+        <Grid x:Name="Body" Grid.Row="1" Margin="24,2,24,20">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
-            <!-- options -->
-            <Grid x:Name="Options" Margin="0,16,0,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <RadioButton x:Name="ModeQuick" GroupName="mode" Style="{StaticResource Seg}" Margin="0,0,6,0" Content="Quick" IsChecked="True" Checked="Mode_Changed"
-                                 ToolTip="Big files of 1-2 GB and up to 1,000 small files, two runs each"/>
-                    <RadioButton x:Name="ModeThorough" GroupName="mode" Style="{StaticResource Seg}" Margin="0" Content="Thorough" Checked="Mode_Changed"
-                                 ToolTip="Big files of 2-4 GB, up to 2,000 small files and a mixed folder, three runs each"/>
-                </StackPanel>
-                <CheckBox x:Name="NetworkToggle" Grid.Column="1" Style="{StaticResource Toggle}" Margin="22,0,0,0" VerticalAlignment="Center" Checked="Network_Changed" Unchecked="Network_Changed"
-                          ToolTip="Mapped network drives too: to and from the system drive, and within the share">
-                    <TextBlock Text="Network drives" FontSize="14" Foreground="{StaticResource B.Text2}"/>
-                </CheckBox>
-                <TextBlock x:Name="Estimate" Grid.Column="2" FontSize="14" Foreground="{StaticResource B.Time}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-            </Grid>
+            <StackPanel>
+                <TextBlock Text="Choppy VS Windows" FontSize="20" FontWeight="SemiBold" FontFamily="{StaticResource F.Display}"/>
+                <TextBlock x:Name="Intro" Style="{StaticResource Sub}" FontSize="13.5" Margin="0,6,0,0" LineHeight="20"
+                           Text="Both copy the same test files on every drive of this PC - one big file and many small files, from the system drive to each other drive and back, and within each drive. They take turns, each one twice, and the source is never in memory. The test files go into a temporary folder on each drive and are removed at the end."/>
 
-            <!-- drives -->
-            <TextBlock Text="DRIVES" Style="{StaticResource T.Cap}" Margin="0,18,0,6"/>
-            <Border Style="{StaticResource Card}" Padding="14,6,14,6">
-                <StackPanel x:Name="DriveList"/>
-            </Border>
+                <!-- the whole run in four numbers: average time saved, each one's average speed, the time saved -->
+                <Border x:Name="TotalsCard" Style="{StaticResource Card}" Padding="0,12,0,13" Margin="0,14,0,0" Visibility="Collapsed">
+                    <Grid x:Name="TotalsGrid"/>
+                </Border>
+
+                <!-- options -->
+                <Grid x:Name="Options" Margin="0,16,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <RadioButton x:Name="ModeQuick" GroupName="mode" Style="{StaticResource Seg}" Margin="0,0,6,0" Content="Quick" IsChecked="True" Checked="Mode_Changed"
+                                     ToolTip="Big files of 1-2 GB and up to 1,000 small files, two runs each"/>
+                        <RadioButton x:Name="ModeThorough" GroupName="mode" Style="{StaticResource Seg}" Margin="0" Content="Thorough" Checked="Mode_Changed"
+                                     ToolTip="Big files of 2-4 GB, up to 2,000 small files and a mixed folder, three runs each"/>
+                    </StackPanel>
+                    <CheckBox x:Name="NetworkToggle" Grid.Column="1" Style="{StaticResource Toggle}" Margin="22,0,0,0" VerticalAlignment="Center" Checked="Network_Changed" Unchecked="Network_Changed"
+                              ToolTip="Mapped network drives too: to and from the system drive, and within the share">
+                        <TextBlock Text="Network drives" FontSize="14" Foreground="{StaticResource B.Text2}"/>
+                    </CheckBox>
+                    <TextBlock x:Name="Estimate" Grid.Column="2" FontSize="14" Foreground="{StaticResource B.Time}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                </Grid>
+            </StackPanel>
+
+            <!-- drives: the − folds the list to one line, the + opens it again -->
+            <StackPanel Grid.Row="1">
+                <Grid x:Name="DrivesHead" Margin="0,18,0,6" Background="Transparent" Cursor="Hand" MouseLeftButtonUp="DrivesHead_Click">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="DRIVES" Style="{StaticResource T.Cap}" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="DrivesLine" Grid.Column="1" FontSize="12.5" Foreground="{StaticResource B.Dim}" Margin="12,0,12,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    <Button x:Name="FoldBtn" Grid.Column="2" Style="{StaticResource Fold}" Content="&#xE738;" Margin="0,-5,0,-5" VerticalAlignment="Center" Click="Fold_Click"/>
+                </Grid>
+                <Border x:Name="DrivesCard" Style="{StaticResource Card}" Padding="14,6,14,6">
+                    <StackPanel x:Name="DriveList"/>
+                </Border>
+            </StackPanel>
 
             <!-- progress -->
-            <StackPanel x:Name="ProgressPanel" Margin="0,18,0,0" Visibility="Collapsed">
+            <StackPanel x:Name="ProgressPanel" Grid.Row="2" Margin="0,18,0,0" Visibility="Collapsed">
                 <Grid>
                     <TextBlock x:Name="StepText" FontSize="14" Foreground="{StaticResource B.Text2}" TextTrimming="CharacterEllipsis" Margin="0,0,280,0"/>
                     <!-- as in the copy window: Elapsed 2 min    Remaining 6 min -->
@@ -75,22 +137,31 @@
                 </Grid>
             </StackPanel>
 
-            <!-- results -->
-            <StackPanel x:Name="ResultsPanel" Margin="0,18,0,0" Visibility="Collapsed">
+            <!-- results: as tall as its rows, and no taller than the window leaves room for (then the list scrolls) -->
+            <Grid x:Name="ResultsPanel" Grid.Row="3" Margin="0,18,0,0" VerticalAlignment="Top" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
                 <TextBlock x:Name="SummaryText" FontSize="21" FontWeight="SemiBold" FontFamily="{StaticResource F.Display}" TextWrapping="Wrap"/>
-                <TextBlock x:Name="SummaryNote" Style="{StaticResource Sub}" Margin="0,4,0,0"/>
-                <Border Style="{StaticResource Card}" Padding="14,4,14,4" Margin="0,12,0,0">
-                    <StackPanel>
+                <TextBlock x:Name="SummaryNote" Grid.Row="1" Style="{StaticResource Sub}" Margin="0,4,0,0"/>
+                <Border x:Name="ResultsCard" Grid.Row="2" Style="{StaticResource Card}" Padding="14,4,14,4" Margin="0,12,0,0">
+                    <Grid x:Name="ResultsBox">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
                         <Grid x:Name="ResultsHead" Margin="0,8,0,6"/>
-                        <ScrollViewer x:Name="ResultsScroll" MaxHeight="420" VerticalScrollBarVisibility="Auto">
+                        <ScrollViewer x:Name="ResultsScroll" Grid.Row="1" MaxHeight="420" VerticalScrollBarVisibility="Auto">
                             <StackPanel x:Name="ResultsList"/>
                         </ScrollViewer>
-                    </StackPanel>
+                    </Grid>
                 </Border>
-            </StackPanel>
+            </Grid>
 
             <!-- buttons -->
-            <Grid Margin="0,20,0,0">
+            <Grid Grid.Row="4" Margin="0,20,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
@@ -106,6 +177,6 @@
                     <Button x:Name="StartBtn" Style="{StaticResource Btn.Primary}" Content="Start" Height="38" Padding="26,0" Click="Start_Click"/>
                 </StackPanel>
             </Grid>
-        </StackPanel>
+        </Grid>
     </Grid>
 </Window>

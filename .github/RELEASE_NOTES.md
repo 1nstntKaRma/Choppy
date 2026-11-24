@@ -1,16 +1,17 @@
-## Choppy v1.45
+## Choppy v1.46
 
 📋⚡ Windows 10 / 11 - fast, clear file copier ⚡ everything that matters in one plain, dark window.
 
-### What's in v1.45
-- **Copies within one SSD in a USB case, fixed:** a 10 Gbps NVMe case stopped answering when Choppy had much in flight on it at once (8 small files, or several big reads beside a write) - Windows reset it 19 times in six minutes, and a 2 GB copy within it took 6-25 s instead of 4. Now Choppy copies one file at a time there, big files read and written at once in 8 MB pieces with one read out, small files read in batches, then written. No resets since. Five runs each, time until the copy is on the disk against Windows' copy:
-  - 2 GB: **+32%** (2.86 s vs 4.20 s; was −297%)
-  - 2,000 small files, 366 MB: **+65%** (3.2 s vs 9.2 s; 1,000 files were −1701%)
-  - mixed folder (3 big + 400 small): **+48%** (was −838%)
-- **Big files from a hard disk or USB drive into an internal SSD, done on the disk:** the reads set the pace there, so the end of the file no longer waits in memory to be written after *done* - every byte goes straight to the disk. Into the NVMe, time to the disk against Windows' copy: 2 GB from a 10 Gbps USB drive **+8.6%** (was −5%), from a 10 Gbps USB SSD **+6.6%** (was −4%), from a hard disk **0% / 0%** (was −5%) - both read the disk as fast as it goes.
-- **Benchmark on that PC (Thorough, with network drives, v1.44):** 6 of 48 cases were Slower - these two fixes are for all six.
+### What's in v1.46
+- **Benchmark window, sized as you like:** drag any edge, maximize it (button, double-click the title bar, Windows+Up) or minimize it - before, during or after a run. Maximized, it fills the screen it is on up to the taskbar, on any monitor; the results list fills whatever height it has. It never gets smaller than its buttons and a couple of result rows.
+- **Drives fold to one line:** the **−** beside *Drives* folds the list to `C: NVMe · D: HDD · F: USB SSD · 1 left out` (details in its tooltip, a held-back USB drive in amber), the **+** opens it again; the choice is kept for next time. On a screen too short for the drives and the results, they fold by themselves once results show.
+- **The whole run in four numbers**, at the top of the window and of the report once it ends:
+  - **On average** - the average *Time saved* of all cases, green when Choppy is faster, red when slower
+  - **Choppy average** and **Windows average** - each one's speed over the whole run: all the bytes over all the time, every case copied once
+  - **Time saved** - how much less time Choppy took in all (red when more)
+  - also in *Copy results* and in the `.json` (`totals`).
 
 ### Install / Update
-1. Download **Choppy-v1.45.zip** and extract all files (or use the PowerShell one-liner from the README).
+1. Download **Choppy-v1.46.zip** and extract all files (or use the PowerShell one-liner from the README).
 2. Double-click **Activate Choppy.cmd** (or run `build.ps1` and choose **[1]**).
 3. Remove at any time with **Revert to Windows Copy.cmd**.

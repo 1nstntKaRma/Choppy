@@ -97,7 +97,7 @@ namespace Choppy
                     else if (app.SettingsWin != null) app.SettingsWin.Close();
                     return "ok";
                 case "benchmark":
-                    // benchmark open | close | start tiny|quick|thorough [C,D] | stop | state
+                    // benchmark open | close | start tiny|quick|thorough [C,D] | stop | state | fold | unfold | max | maxsys | normal | size w [h] | move x y | rect
                     if (arg.Trim() == "open") { app.ShowBenchmark(); return "ok"; }
                     if (app.BenchWin == null) return "benchmark not open";
                     if (arg.Trim() == "close") { app.BenchWin.Close(); return "ok"; }

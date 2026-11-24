@@ -29,6 +29,77 @@ namespace Choppy.UI
             }
             catch { }
         }
+
+        [StructLayout(LayoutKind.Sequential)] struct POINT { public int x, y; }
+        [StructLayout(LayoutKind.Sequential)] struct RECT { public int left, top, right, bottom; }
+        [StructLayout(LayoutKind.Sequential)] struct MINMAXINFO { public POINT ptReserved, ptMaxSize, ptMaxPosition, ptMinTrackSize, ptMaxTrackSize; }
+        [StructLayout(LayoutKind.Sequential)] struct MONITORINFO { public int cbSize; public RECT rcMonitor, rcWork; public int dwFlags; }
+        [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hwnd, int flags);
+        [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
+        [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+
+        /// <summary>The work area of the screen the window is on (the taskbar left out), in WPF units.</summary>
+        public static Rect WorkArea(Window w)
+        {
+            try
+            {
+                IntPtr h = new WindowInteropHelper(w).Handle;
+                var src = PresentationSource.FromVisual(w);
+                var mi = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
+                IntPtr mon = h != IntPtr.Zero ? MonitorFromWindow(h, 2) : IntPtr.Zero;   // MONITOR_DEFAULTTONEAREST
+                if (mon != IntPtr.Zero && GetMonitorInfo(mon, ref mi) && src != null && src.CompositionTarget != null)
+                {
+                    var m = src.CompositionTarget.TransformFromDevice;
+                    return new Rect(m.Transform(new Point(mi.rcWork.left, mi.rcWork.top)), m.Transform(new Point(mi.rcWork.right, mi.rcWork.bottom)));
+                }
+            }
+            catch { }
+            return SystemParameters.WorkArea;
+        }
+
+        /// <summary>A maximized window that its content had held smaller: stretched over the work area of its screen.</summary>
+        public static void FillWorkArea(Window w)
+        {
+            try
+            {
+                IntPtr h = new WindowInteropHelper(w).Handle;
+                var mi = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
+                IntPtr mon = MonitorFromWindow(h, 2);   // MONITOR_DEFAULTTONEAREST
+                if (mon == IntPtr.Zero || !GetMonitorInfo(mon, ref mi)) return;
+                // SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER
+                SetWindowPos(h, IntPtr.Zero, mi.rcWork.left, mi.rcWork.top, mi.rcWork.right - mi.rcWork.left, mi.rcWork.bottom - mi.rcWork.top, 0x0004 | 0x0010 | 0x0200);
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// A window without a frame that can be maximized: it fills the work area of its screen (the taskbar stays in view)
+        /// instead of the whole screen and a frame's width past each edge.
+        /// </summary>
+        public static void MaximizeToWorkArea(Window w)
+        {
+            try
+            {
+                var src = HwndSource.FromHwnd(new WindowInteropHelper(w).Handle);
+                if (src == null) return;
+                src.AddHook((IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) =>
+                {
+                    if (msg != 0x0024) return IntPtr.Zero;   // WM_GETMINMAXINFO
+                    IntPtr mon = MonitorFromWindow(hwnd, 2);   // MONITOR_DEFAULTTONEAREST
+                    var mi = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
+                    if (mon == IntPtr.Zero || !GetMonitorInfo(mon, ref mi)) return IntPtr.Zero;
+                    var mmi = (MINMAXINFO)Marshal.PtrToStructure(lParam, typeof(MINMAXINFO));
+                    // relative to the screen's own corner (Windows moves it to the screen the window is on)
+                    mmi.ptMaxPosition.x = mi.rcWork.left - mi.rcMonitor.left;
+                    mmi.ptMaxPosition.y = mi.rcWork.top - mi.rcMonitor.top;
+                    mmi.ptMaxSize.x = mi.rcWork.right - mi.rcWork.left;
+                    mmi.ptMaxSize.y = mi.rcWork.bottom - mi.rcWork.top;
+                    Marshal.StructureToPtr(mmi, lParam, true);
+                    return IntPtr.Zero;   // not handled: WPF still adds the window's MinWidth / MinHeight
+                });
+            }
+            catch { }
+        }
     }
 
     /// <summary>Explorer's own thumbnails (photos, videos, RAW with codecs) for the conflict dialog.</summary>

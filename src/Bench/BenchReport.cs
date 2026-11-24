@@ -149,6 +149,56 @@ namespace Choppy.Bench
         }
     }
 
+    /// <summary>
+    /// Every measured case together: the average of their time saved, each one's average speed (all the bytes over all
+    /// the time, every case copied once) and the time Choppy saved, added up.
+    /// </summary>
+    internal sealed class BenchTotals
+    {
+        public int Cases;
+        public double AvgSaved;                  // the average of the cases' time saved (0.12 = 12% less time; below 0 = more)
+        public long Bytes;                       // every case once
+        public double ChoppySecs, WindowsSecs;   // the cases' average times, added up
+        public double ChoppyMBps, WindowsMBps;   // the bytes over those times
+
+        /// <summary>How much less time Choppy took, every case copied once (below 0 = more).</summary>
+        public double SecsSaved { get { return WindowsSecs - ChoppySecs; } }
+
+        /// <summary>null when no case was measured.</summary>
+        public static BenchTotals Of(IEnumerable<BenchResult> results)
+        {
+            var rs = results.Where(r => r.Scored).ToList();
+            if (rs.Count == 0) return null;
+            var t = new BenchTotals
+            {
+                Cases = rs.Count,
+                AvgSaved = rs.Average(r => r.Saved),
+                Bytes = rs.Sum(r => r.Case.Bytes),
+                ChoppySecs = rs.Sum(r => r.ChoppySecs),
+                WindowsSecs = rs.Sum(r => r.WindowsSecs),
+            };
+            t.ChoppyMBps = t.ChoppySecs > 0 ? t.Bytes / (double)Benchmark.MB / t.ChoppySecs : 0;
+            t.WindowsMBps = t.WindowsSecs > 0 ? t.Bytes / (double)Benchmark.MB / t.WindowsSecs : 0;
+            return t;
+        }
+
+        /// <summary>"faster" / "slower" / "even", as the average rounds to a whole percent.</summary>
+        public string Word { get { string c = BenchText.SavedClass(AvgSaved); return c == "good" ? "faster" : c == "bad" ? "slower" : "even"; } }
+
+        /// <summary>"good" / "bad" / "tie" for the seconds saved (to a hundredth of a second).</summary>
+        public string SecsClass { get { double s = Math.Round(SecsSaved, 2); return s > 0 ? "good" : s < 0 ? "bad" : "tie"; } }
+
+        /// <summary>"+23% faster on average · Choppy 1.21 GB/s · Windows 980 MB/s · Time saved 1 min 2 s"</summary>
+        public string Line
+        {
+            get
+            {
+                return BenchText.Saved(AvgSaved) + " " + Word + " on average · Choppy " + BenchText.Speed(ChoppyMBps) + " · Windows " + BenchText.Speed(WindowsMBps)
+                    + " · Time saved " + BenchText.SignedSpan(SecsSaved);
+            }
+        }
+    }
+
     /// <summary>The whole run: this PC, its drives, every case's numbers. Saved as an HTML page and as JSON.</summary>
     internal sealed class BenchReport
     {
@@ -171,6 +221,9 @@ namespace Choppy.Bench
         public int Ties { get { return Results.Count(r => r.Scored && r.Verdict == 0); } }
         public int Slower { get { return Results.Count(r => r.Scored && r.Verdict < 0); } }
         public int Scored { get { return Results.Count(r => r.Scored); } }
+
+        /// <summary>Every measured case together (null when none was).</summary>
+        public BenchTotals Totals { get { return BenchTotals.Of(Results); } }
 
         /// <summary>The whole run ended (not stopped, no error): only then can it say "Never Slower".</summary>
         public bool Ended { get { return !Canceled && Error == null; } }
@@ -309,6 +362,12 @@ namespace Choppy.Bench
             j.Append("  \"machine\": { \"cpu\": " + S(Cpu) + ", \"threads\": " + Threads + ", \"ramGB\": " + N(RamGB) + ", \"windows\": " + S(Windows) + ", \"admin\": " + (Admin ? "true" : "false") + " },\n");
             j.Append("  \"summary\": { \"text\": " + S(Summary) + ", \"cases\": " + Scored + ", \"faster\": " + Faster + ", \"marginalTie\": " + Ties + ", \"slower\": " + Slower
                 + ", \"byDone\": " + S(DoneSummary) + " },\n");
+            var tot = Totals;
+            if (tot != null)
+                j.Append("  \"totals\": { \"cases\": " + tot.Cases + ", \"averageTimeSaved\": " + N(tot.AvgSaved, "0.0000") + ", \"bytes\": " + tot.Bytes
+                    + ", \"choppySeconds\": " + N(tot.ChoppySecs, "0.000") + ", \"windowsSeconds\": " + N(tot.WindowsSecs, "0.000") + ", \"secondsSaved\": " + N(tot.SecsSaved, "0.000")
+                    + ", \"choppyMBps\": " + N(tot.ChoppyMBps, "0.0") + ", \"windowsMBps\": " + N(tot.WindowsMBps, "0.0")
+                    + ", \"about\": \"averageTimeSaved = the average of the cases' timeSaved; seconds = the cases' average times added up (every case copied once); MBps = all the bytes over those seconds\" },\n");
             j.Append("  \"drives\": [");
             var ds = Drives ?? new List<BenchDrive>();
             for (int i = 0; i < ds.Count; i++)
@@ -375,6 +434,8 @@ namespace Choppy.Bench
             t.AppendLine(Machine);
             t.AppendLine();
             t.AppendLine("**" + Summary + "**");
+            var tot = Totals;
+            if (tot != null) t.AppendLine("**" + tot.Line + "** (every case copied once)");
             t.AppendLine("The average of each one's runs until the copies are on the disk; less than " + (int)(Benchmark.TieMargin * 100) + "% apart is a " + TieWord + ".");
             foreach (var hb in HeldBack()) t.AppendLine("Held back: " + hb);
             t.AppendLine();
@@ -412,6 +473,29 @@ namespace Choppy.Bench
             return h.ToString();
         }
 
+        /// <summary>Average time saved · Choppy's average speed · Windows' · the time saved, each in its color (none measured: nothing).</summary>
+        string TotalsHtml()
+        {
+            var t = Totals;
+            if (t == null) return "";
+            string cases = t.Cases + (t.Cases == 1 ? " case" : " cases");
+            return "<section class=\"totals\">"
+                + Stat("On average", "<span class=\"" + BenchText.SavedClass(t.AvgSaved) + "\">" + H(BenchText.Saved(t.AvgSaved)) + "<small> " + t.Word + "</small></span>",
+                    "average of " + cases, "The average of every case's Time saved")
+                + Stat("Choppy average", "<span class=\"c\">" + H(BenchText.Speed(t.ChoppyMBps)) + "</span>",
+                    BenchText.Size(t.Bytes) + " in " + BenchText.Span(t.ChoppySecs), "All the bytes over all the time, every case copied once")
+                + Stat("Windows average", "<span class=\"w\">" + H(BenchText.Speed(t.WindowsMBps)) + "</span>",
+                    BenchText.Size(t.Bytes) + " in " + BenchText.Span(t.WindowsSecs), "All the bytes over all the time, every case copied once")
+                + Stat("Time saved", "<span class=\"" + t.SecsClass + "\">" + H(BenchText.SignedSpan(t.SecsSaved)) + "</span>",
+                    "every case copied once", "How much less time Choppy took than Windows (green), or more (red)")
+                + "</section>\n";
+        }
+
+        static string Stat(string cap, string valueHtml, string sub, string title)
+        {
+            return "<div class=\"stat\" title=\"" + H(title) + "\"><div class=\"cap\">" + H(cap) + "</div><div class=\"big\">" + valueHtml + "</div><div class=\"faint\">" + H(sub) + "</div></div>";
+        }
+
         public string ToHtml(string jsonName)
         {
             var h = new StringBuilder();
@@ -423,6 +507,9 @@ namespace Choppy.Bench
             h.Append("<header>" + (icon != null ? "<img src=\"" + icon + "\" width=\"52\" height=\"52\" alt=\"\">" : "")
                 + "<div><h1>Choppy VS Windows</h1><div class=\"dim\">Choppy v" + H(Version) + " Benchmark · "
                 + H(Started.ToString("d MMM yyyy, HH:mm", CultureInfo.InvariantCulture)) + " · " + H(Cap(Mode)) + " · took " + H(BenchText.Duration(Seconds)) + "</div></div></header>\n");
+
+            // the whole run in four numbers
+            h.Append(TotalsHtml());
 
             // summary
             int n = Scored;
@@ -532,6 +619,10 @@ namespace Choppy.Bench
             + "h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--label);margin:0 0 10px;font-weight:600;display:inline-block}\n"
             + ".card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-top:14px}\n"
             + ".summary{font-size:23px;font-weight:600;line-height:1.3}.summary+p{margin:8px 0 0}\n"
+            + ".totals{display:grid;grid-template-columns:repeat(4,1fr);background:var(--card);border:1px solid var(--border);border-radius:10px;margin-top:14px}\n"
+            + ".stat{padding:13px 18px 14px;border-left:1px solid var(--sep);min-width:0}.stat:first-child{border-left:0}\n"
+            + ".cap{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--label);font-weight:600}\n"
+            + ".big{font:600 28px/1.25 \"Segoe UI Variable Display\",\"Segoe UI\",sans-serif;margin:5px 0 2px;font-variant-numeric:tabular-nums;white-space:nowrap}.big small{font-size:17px}\n"
             + ".dim{color:var(--dim)}.faint{color:var(--faint);font-size:12.5px}.good{color:var(--good)}.bad{color:var(--bad)}.tie{color:var(--dim)}.warn{color:var(--warn);margin:0 0 8px}\n"
             + ".c{color:var(--c);font-weight:600}.w{color:var(--w);font-weight:600}\n"
             + ".scroll{overflow-x:auto}table{width:100%;border-collapse:collapse}\n"
@@ -546,7 +637,7 @@ namespace Choppy.Bench
             + "dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 18px;margin:0 0 14px}dt{color:var(--label)}dd{margin:0}\n"
             + "details summary{cursor:pointer;list-style:none}details summary::-webkit-details-marker{display:none}details summary h2::after{content:\"  ▸ show\";color:var(--faint);text-transform:none;letter-spacing:0}details[open] summary h2::after{content:\"  ▾\"}\n"
             + "ul{margin:0;padding-left:20px}li{margin:3px 0}footer{margin-top:16px;text-align:center}\n"
-            + "@media (max-width:640px){.summary{font-size:19px}td,th{padding:7px 6px}.bars{width:70px}}\n";
+            + "@media (max-width:640px){.summary{font-size:19px}td,th{padding:7px 6px}.bars{width:70px}.totals{grid-template-columns:1fr 1fr}.stat:nth-child(3){border-left:0}.stat:nth-child(n+3){border-top:1px solid var(--sep)}.big{font-size:23px}}\n";
     }
 
     /// <summary>Numbers as the report shows them (the same on every PC, whatever its language settings).</summary>
@@ -587,6 +678,16 @@ namespace Choppy.Bench
         public static string Secs(double s)
         {
             return (s < 10 ? s.ToString("0.00", C) : s < 100 ? s.ToString("0.0", C) : s.ToString("0", C)) + " s";
+        }
+
+        /// <summary>"0.41 s", "12.3 s", "1 min 12 s", "1 h 5 min"</summary>
+        public static string Span(double secs) { return secs < 59.95 ? Secs(secs) : Duration(secs); }
+
+        /// <summary>Span with "−" before a time lost; "0 s" when it rounds to nothing.</summary>
+        public static string SignedSpan(double secs)
+        {
+            if (Math.Round(secs, 2) == 0) return "0 s";
+            return secs < 0 ? "−" + Span(-secs) : Span(secs);
         }
 
         public static string Duration(double secs)
