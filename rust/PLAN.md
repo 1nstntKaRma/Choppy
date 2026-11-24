@@ -49,7 +49,11 @@ than today's < 1 MB exe (the .NET runtime ships with Windows, Rust carries what 
   `strip = "symbols"`.
 - Workspace `rust/`: `choppy/` = the app (modules `sys`, `engine`, `bench`, `explorer`, `ui`, `cli`, `testhook`),
   `tools/` = scripts for screenshot parity and numbers (WPF layout dump, test-mode demo copy, window driver, measure),
-  `look-test/` = the step-0 prototypes (removed once the pick is recorded).
+  `look-test/` = the step-0 prototype A (`a-d2d` + `common`), kept as the starting point of step 4's windows.
+- **UI: our own small UI layer on Direct2D + DirectWrite through the `windows` crate** (look test A, picked by the
+  user 2026-11-24). No UI framework. Step 4 moves look-test A's layers (`gfx`, `ui`, `textbox`, `popup`, `controls`)
+  into `choppy/src/ui` (the Direct2D / DirectWrite calls into `sys`) and builds every window on them, laid out with
+  WPF's rounding (see PROGRESS.md, step 0) and checked against `tools/wpflayout.ps1`.
 
 ## Steps and gates
 
@@ -57,7 +61,7 @@ A step is done only when its gate is met **and** every fix-list entry of that st
 
 | # | Step | Gate |
 |---|------|------|
-| 0 | Tools + UI look test | Rust + MSVC build a hello-world. The copy window built twice (A = Direct2D/DirectWrite via `windows`, B = Slint), compared with today's WPF window (pictures at 125 % and 100 %, open time, memory, CPU, exe size). **The user picks A or B by looking.** |
+| 0 | Tools + UI look test | Rust + MSVC build a hello-world. The copy window built twice (A = Direct2D/DirectWrite via `windows`, B = Slint), compared with today's WPF window (pictures at 125 % and 100 %, open time, memory, CPU, exe size). **The user picks A or B by looking.** Done: **A** (2026-11-24). |
 | 1 | Basics | Native, Paths, Settings, XxHash64, Model, VolumeProbe, UsbLink, Scanner, Plan ported. Their self-tests pass. A **plan dump** for every drive pair on the user's PC matches C# 1.48 line for line: the same dump command (`--plan-dump out.txt`) is added to both; the C# side on the `rust` branch only. `--usb out.txt` matches too. |
 | 2 | Copy engine | BigCopy, CopyJob, Handoff, JobManager, the headless copy/move parts of Cli. On a fixture set, the destination trees are identical to C#'s: contents, sizes, dates, attributes, alternate data streams (Zone.Identifier), long and unicode names, "name - Copy (2)" conflicts, the FAT32 4 GB limit, ReFS same-volume cases. The engine self-tests pass. |
 | 3 | Speed proof | The proven C# Benchmark (on the `rust` branch only) learns to run the Rust engine as the Choppy side. A Thorough + Network run matches 1.48 on every route with no new Slower. HDD placement noise reaches ~20 %, so disputed routes get 5 rounds. **The user signs off.** |
@@ -173,11 +177,12 @@ its rows are `checked`.
 Today's copy window (MainWindow.xaml + Theme.xaml + Controls.cs + Helpers.cs) built twice with equal care:
 
 - **A** = our own UI on Direct2D + DirectWrite through the `windows` crate (`rust/look-test/a-d2d`).
-- **B** = Slint (`rust/look-test/b-slint`). Its free (royalty-free) license needs a "Made with Slint" badge on the
-  README / download page, or an AboutSlint box in the app.
+- **B** = Slint (removed after the pick; it was `rust/look-test/b-slint`, commit 1aa7bbf).
 
 Both show the README demo (D: 4TB - Shadow `D:\Home Videos` -> X: 4TB - uTorrent `X:\Backup\Home Videos`,
 Adaptive · 1 stream, 57 MB/s limit, the four demo videos + 2 small files) animated every 100 ms, both views, the
 custom title bar, hover/pressed states, the quick toggles, the speed-limit box, the Queue pop-up, keyboard focus,
-dragging and closing. Measured against WPF: open time, memory, CPU while animating, exe size. The result and the
-user's pick are in PROGRESS.md.
+dragging and closing. Measured against WPF: open time, memory, CPU while animating, exe size (PROGRESS.md).
+
+**The user picked A** (2026-11-24): it opens fastest (0.035 s vs B 0.24 s, today 1.9 s), uses the least CPU and
+memory, the exe is about 15 times smaller than B's (0.66 MB vs 10.1 MB), and its window looks the same as today's.

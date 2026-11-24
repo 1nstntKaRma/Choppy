@@ -6,7 +6,7 @@ Read [PLAN.md](PLAN.md) first (steps, gates, rules, file map). One step per sess
 
 | # | Step | Status |
 |---|------|--------|
-| 0 | Tools + UI look test | **waiting for the user's pick (A or B)** - tools done, both prototypes built and compared |
+| 0 | Tools + UI look test | **done** (2026-11-24): tools installed, both prototypes compared, **the user picked A** |
 | 1 | Basics | not started |
 | 2 | Copy engine | not started |
 | 3 | Speed proof | not started |
@@ -21,7 +21,8 @@ Read [PLAN.md](PLAN.md) first (steps, gates, rules, file map). One step per sess
 (The Build Tools installer asked for a restart "to finish"; building works without it.)
 
 **Workspace** `rust/`: `choppy/` (the app, empty modules), `look-test/common` (the README demo job, Format, the
-speed graph's math - shared so A and B show identical numbers), `look-test/a-d2d`, `look-test/b-slint`,
+speed graph's math - shared so A and B showed identical numbers), `look-test/a-d2d` (B, `look-test/b-slint`, was
+removed after the pick; see commit 1aa7bbf),
 `tools/` (scripts for the pictures and numbers below). `rust/target/` is ignored.
 
 **Look test.** Both prototypes show the README demo (`--at 29 --freeze` / `--compact --at 17` for pictures,
@@ -66,8 +67,15 @@ everything outside the app's own windows in its pictures.
 
 - 2026-11-24: Build Tools 2026 (current winget package) rather than 2022.
 - 2026-11-24: look test B uses Slint's femtovg renderer (see above).
+- 2026-11-24: **the user picked A** (own UI on Direct2D + DirectWrite): "open in is BLAZING FAST", lowest CPU,
+  exe about 15 times smaller than B, smallest memory, and the window looks impeccable. B deleted; A stays in
+  `look-test/` as step 4's starting point.
 
 ## Next session
 
-Record the user's pick (PLAN.md, here, memory `choppy-rust-migration.md`), delete the losing prototype, push.
-Then step 1 starts from this file.
+**Step 1 (basics).** Read PLAN.md (rules, step 1 gate, file map, self-test names). Port Native (into `sys`), Paths,
+Settings, XxHash64, Model, VolumeProbe, UsbLink, Scanner, Plan into `choppy/`, reading each C# file fully once and
+filling the step-1 fix list as you go. `build.rs` embeds app.manifest, Choppy.ico and the version info (FileVersion
+from VERSION). Add `--plan-dump out.txt` to both the Rust app and the C# app (C# change on the `rust` branch only,
+never main), dump every drive pair on the user's PC with both and compare line for line; `--usb out.txt` too. The
+step-1 self-test checks (27, listed in PLAN.md) must print the same names and pass.

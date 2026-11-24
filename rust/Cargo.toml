@@ -1,7 +1,7 @@
 # Choppy in Rust. See PLAN.md (the steps, rules and file map) and PROGRESS.md (where the work is).
 [workspace]
 resolver = "3"
-members = ["choppy", "look-test/common", "look-test/a-d2d", "look-test/b-slint"]
+members = ["choppy", "look-test/common", "look-test/a-d2d"]
 
 [workspace.package]
 edition = "2024"
