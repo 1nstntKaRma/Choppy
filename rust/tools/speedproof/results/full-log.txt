@@ -1,0 +1,441 @@
+0.0s Removing what an earlier run left behind
+0.0s Looking at the drives
+0.5s Measuring C: (NVMe SSD)
+1.0s Measuring D: (Hard disk)
+3.9s Measuring F: (USB SSD)
+4.9s Measuring N: (Network share)
+16.8s Measuring X: (Hard disk)
+plan: C:>C: 2048 MB + 1000 files, C:>D: 1024 MB + 500 files, D:>C: 1024 MB + 500 files, D:>D: 1024 MB + 500 files, C:>F: 2048 MB + 1000 files, F:>C: 2048 MB + 1000 files, F:>F: 2048 MB + 1000 files, C:>X: 1024 MB + 500 files, X:>C: 1024 MB + 500 files, X:>X: 1024 MB + 500 files, C:>N: 512 MB + 250 files, N:>C: 512 MB + 250 files, N:>N: 512 MB + 250 files; about 1 h 0 min
+19.7s C: → C: · One big file · writing the test files
+20.7s C: → C: · One big file · Choppy (C#), run 1 of 3
+21.8s C: → C: · One big file · Choppy (Rust), run 1 of 3
+23.0s C: → C: · One big file · Windows, run 1 of 3
+24.3s C: → C: · One big file · Windows, run 2 of 3
+25.8s C: → C: · One big file · Choppy (Rust), run 2 of 3
+26.9s C: → C: · One big file · Choppy (C#), run 2 of 3
+28.0s C: → C: · One big file · Choppy (C#), run 3 of 3
+29.2s C: → C: · One big file · Choppy (Rust), run 3 of 3
+30.3s C: → C: · One big file · Windows, run 3 of 3
+result: C>C big: C# 0.821 s, Rust 0.811 s, Windows 0.955 s; Rust vs C# +1.2% (C# vs Windows +14.0%, Rust vs Windows +15.0%); Rust's process end 9 ms
+31.7s C: → C: · 1,000 small files · writing the test files
+32.7s C: → C: · 1,000 small files · Choppy (Rust), run 1 of 3
+33.7s C: → C: · 1,000 small files · Windows, run 1 of 3
+37.9s C: → C: · 1,000 small files · Choppy (C#), run 1 of 3
+39.0s C: → C: · 1,000 small files · Choppy (C#), run 2 of 3
+40.0s C: → C: · 1,000 small files · Windows, run 2 of 3
+44.0s C: → C: · 1,000 small files · Choppy (Rust), run 2 of 3
+45.1s C: → C: · 1,000 small files · Choppy (Rust), run 3 of 3
+46.2s C: → C: · 1,000 small files · Windows, run 3 of 3
+50.2s C: → C: · 1,000 small files · Choppy (C#), run 3 of 3
+result: C>C small: C# 0.622 s, Rust 0.647 s, Windows 3.488 s; Rust vs C# -4.0% (C# vs Windows +82.2%, Rust vs Windows +81.4%); Rust's process end 9 ms
+51.4s C: → C: · Mixed folder · writing the test files
+52.0s C: → C: · Mixed folder · Windows, run 1 of 3
+54.1s C: → C: · Mixed folder · Choppy (C#), run 1 of 3
+54.9s C: → C: · Mixed folder · Choppy (Rust), run 1 of 3
+55.8s C: → C: · Mixed folder · Choppy (Rust), run 2 of 3
+56.5s C: → C: · Mixed folder · Choppy (C#), run 2 of 3
+57.3s C: → C: · Mixed folder · Windows, run 2 of 3
+59.4s C: → C: · Mixed folder · Windows, run 3 of 3
+61.5s C: → C: · Mixed folder · Choppy (C#), run 3 of 3
+62.3s C: → C: · Mixed folder · Choppy (Rust), run 3 of 3
+result: C>C mixed: C# 0.398 s, Rust 0.431 s, Windows 1.574 s; Rust vs C# -8.3% (C# vs Windows +74.7%, Rust vs Windows +72.6%); Rust's process end 9 ms
+63.1s C: → D: · One big file · writing the test files
+63.6s C: → D: · One big file · Choppy (C#), run 1 of 3
+69.5s C: → D: · One big file · Choppy (Rust), run 1 of 3
+75.3s C: → D: · One big file · Windows, run 1 of 3
+81.2s C: → D: · One big file · Windows, run 2 of 3
+87.1s C: → D: · One big file · Choppy (Rust), run 2 of 3
+93.0s C: → D: · One big file · Choppy (C#), run 2 of 3
+98.7s C: → D: · One big file · Choppy (C#), run 3 of 3
+104.5s C: → D: · One big file · Choppy (Rust), run 3 of 3
+110.4s C: → D: · One big file · Windows, run 3 of 3
+result: C>D big: C# 4.990 s, Rust 5.008 s, Windows 4.934 s; Rust vs C# -0.4% (C# vs Windows -1.1%, Rust vs Windows -1.5%); Rust's process end 13 ms
+116.5s C: → D: · 500 small files · writing the test files
+117.0s C: → D: · 500 small files · Choppy (Rust), run 1 of 3
+120.0s C: → D: · 500 small files · Windows, run 1 of 3
+124.4s C: → D: · 500 small files · Choppy (C#), run 1 of 3
+127.3s C: → D: · 500 small files · Choppy (C#), run 2 of 3
+129.9s C: → D: · 500 small files · Windows, run 2 of 3
+134.7s C: → D: · 500 small files · Choppy (Rust), run 2 of 3
+137.9s C: → D: · 500 small files · Choppy (Rust), run 3 of 3
+140.6s C: → D: · 500 small files · Windows, run 3 of 3
+145.3s C: → D: · 500 small files · Choppy (C#), run 3 of 3
+result: C>D small: C# 1.821 s, Rust 1.795 s, Windows 3.340 s; Rust vs C# +1.5% (C# vs Windows +45.5%, Rust vs Windows +46.3%); Rust's process end 17 ms
+148.7s C: → D: · Mixed folder · writing the test files
+149.3s C: → D: · Mixed folder · Windows, run 1 of 3
+157.4s C: → D: · Mixed folder · Choppy (C#), run 1 of 3
+163.7s C: → D: · Mixed folder · Choppy (Rust), run 1 of 3
+169.6s C: → D: · Mixed folder · Choppy (Rust), run 2 of 3
+175.4s C: → D: · Mixed folder · Choppy (C#), run 2 of 3
+181.4s C: → D: · Mixed folder · Windows, run 2 of 3
+187.7s C: → D: · Mixed folder · Windows, run 3 of 3
+195.2s C: → D: · Mixed folder · Choppy (C#), run 3 of 3
+201.3s C: → D: · Mixed folder · Choppy (Rust), run 3 of 3
+result: C>D mixed: C# 5.029 s, Rust 4.669 s, Windows 6.057 s; Rust vs C# +7.2% (C# vs Windows +17.0%, Rust vs Windows +22.9%); Rust's process end 53 ms
+206.9s D: → C: · One big file · writing the test files
+218.7s D: → C: · One big file · Choppy (C#), run 1 of 3
+225.1s D: → C: · One big file · Choppy (Rust), run 1 of 3
+231.5s D: → C: · One big file · Windows, run 1 of 3
+238.1s D: → C: · One big file · Windows, run 2 of 3
+244.8s D: → C: · One big file · Choppy (Rust), run 2 of 3
+251.2s D: → C: · One big file · Choppy (C#), run 2 of 3
+257.6s D: → C: · One big file · Choppy (C#), run 3 of 3
+263.9s D: → C: · One big file · Choppy (Rust), run 3 of 3
+270.3s D: → C: · One big file · Windows, run 3 of 3
+result: D>C big: C# 5.565 s, Rust 5.573 s, Windows 5.653 s; Rust vs C# -0.2% (C# vs Windows +1.6%, Rust vs Windows +1.4%); Rust's process end 9 ms
+276.9s D: → C: · 500 small files · writing the test files
+279.3s D: → C: · 500 small files · Choppy (Rust), run 1 of 3
+282.2s D: → C: · 500 small files · Windows, run 1 of 3
+289.1s D: → C: · 500 small files · Choppy (C#), run 1 of 3
+292.1s D: → C: · 500 small files · Choppy (C#), run 2 of 3
+294.9s D: → C: · 500 small files · Windows, run 2 of 3
+301.9s D: → C: · 500 small files · Choppy (Rust), run 2 of 3
+304.8s D: → C: · 500 small files · Choppy (Rust), run 3 of 3
+307.7s D: → C: · 500 small files · Windows, run 3 of 3
+314.5s D: → C: · 500 small files · Choppy (C#), run 3 of 3
+result: D>C small: C# 2.032 s, Rust 2.047 s, Windows 5.882 s; Rust vs C# -0.7% (C# vs Windows +65.5%, Rust vs Windows +65.2%); Rust's process end 31 ms
+317.9s D: → C: · Mixed folder · writing the test files
+325.7s D: → C: · Mixed folder · Windows, run 1 of 3
+333.5s D: → C: · Mixed folder · Choppy (C#), run 1 of 3
+338.6s D: → C: · Mixed folder · Choppy (Rust), run 1 of 3
+343.8s D: → C: · Mixed folder · Choppy (Rust), run 2 of 3
+348.9s D: → C: · Mixed folder · Choppy (C#), run 2 of 3
+354.0s D: → C: · Mixed folder · Windows, run 2 of 3
+361.8s D: → C: · Mixed folder · Windows, run 3 of 3
+369.6s D: → C: · Mixed folder · Choppy (C#), run 3 of 3
+374.6s D: → C: · Mixed folder · Choppy (Rust), run 3 of 3
+result: D>C mixed: C# 4.204 s, Rust 4.222 s, Windows 6.791 s; Rust vs C# -0.4% (C# vs Windows +38.1%, Rust vs Windows +37.8%); Rust's process end 21 ms
+379.9s D: → D: · One big file · writing the test files
+392.3s D: → D: · One big file · Choppy (C#), run 1 of 3
+404.2s D: → D: · One big file · Choppy (Rust), run 1 of 3
+416.1s D: → D: · One big file · Windows, run 1 of 3
+428.3s D: → D: · One big file · Windows, run 2 of 3
+440.6s D: → D: · One big file · Choppy (Rust), run 2 of 3
+452.4s D: → D: · One big file · Choppy (C#), run 2 of 3
+464.0s D: → D: · One big file · Choppy (C#), run 3 of 3
+475.6s D: → D: · One big file · Choppy (Rust), run 3 of 3
+487.2s D: → D: · One big file · Windows, run 3 of 3
+result: D>D big: C# 10.883 s, Rust 10.845 s, Windows 11.315 s; Rust vs C# +0.3% (C# vs Windows +3.8%, Rust vs Windows +4.2%); Rust's process end 8 ms
+499.4s D: → D: · 500 small files · writing the test files
+501.9s D: → D: · 500 small files · Choppy (Rust), run 1 of 3
+506.4s D: → D: · 500 small files · Windows, run 1 of 3
+515.5s D: → D: · 500 small files · Choppy (C#), run 1 of 3
+520.0s D: → D: · 500 small files · Choppy (C#), run 2 of 3
+524.3s D: → D: · 500 small files · Windows, run 2 of 3
+533.5s D: → D: · 500 small files · Choppy (Rust), run 2 of 3
+538.0s D: → D: · 500 small files · Choppy (Rust), run 3 of 3
+542.3s D: → D: · 500 small files · Windows, run 3 of 3
+551.6s D: → D: · 500 small files · Choppy (C#), run 3 of 3
+result: D>D small: C# 3.116 s, Rust 3.214 s, Windows 7.842 s; Rust vs C# -3.1% (C# vs Windows +60.3%, Rust vs Windows +59.0%); Rust's process end 27 ms
+556.3s D: → D: · Mixed folder · writing the test files
+564.8s D: → D: · Mixed folder · Windows, run 1 of 3
+580.0s D: → D: · Mixed folder · Choppy (C#), run 1 of 3
+590.2s D: → D: · Mixed folder · Choppy (Rust), run 1 of 3
+600.3s D: → D: · Mixed folder · Choppy (Rust), run 2 of 3
+610.2s D: → D: · Mixed folder · Choppy (C#), run 2 of 3
+620.9s D: → D: · Mixed folder · Windows, run 2 of 3
+636.6s D: → D: · Mixed folder · Windows, run 3 of 3
+651.9s D: → D: · Mixed folder · Choppy (C#), run 3 of 3
+661.9s D: → D: · Mixed folder · Choppy (Rust), run 3 of 3
+result: D>D mixed: C# 9.151 s, Rust 8.986 s, Windows 14.171 s; Rust vs C# +1.8% (C# vs Windows +35.4%, Rust vs Windows +36.6%); Rust's process end 30 ms
+672.9s C: → F: · One big file · writing the test files
+673.9s C: → F: · One big file · Choppy (C#), run 1 of 3
+676.5s C: → F: · One big file · Choppy (Rust), run 1 of 3
+679.2s C: → F: · One big file · Windows, run 1 of 3
+682.6s C: → F: · One big file · Windows, run 2 of 3
+686.1s C: → F: · One big file · Choppy (Rust), run 2 of 3
+688.9s C: → F: · One big file · Choppy (C#), run 2 of 3
+691.6s C: → F: · One big file · Choppy (C#), run 3 of 3
+694.2s C: → F: · One big file · Choppy (Rust), run 3 of 3
+696.9s C: → F: · One big file · Windows, run 3 of 3
+result: C>F big: C# 2.378 s, Rust 2.414 s, Windows 3.017 s; Rust vs C# -1.5% (C# vs Windows +21.2%, Rust vs Windows +20.0%); Rust's process end 9 ms
+700.4s C: → F: · 1,000 small files · writing the test files
+701.3s C: → F: · 1,000 small files · Choppy (Rust), run 1 of 3
+702.2s C: → F: · 1,000 small files · Windows, run 1 of 3
+707.3s C: → F: · 1,000 small files · Choppy (C#), run 1 of 3
+708.4s C: → F: · 1,000 small files · Choppy (C#), run 2 of 3
+709.6s C: → F: · 1,000 small files · Windows, run 2 of 3
+714.4s C: → F: · 1,000 small files · Choppy (Rust), run 2 of 3
+715.5s C: → F: · 1,000 small files · Choppy (Rust), run 3 of 3
+716.6s C: → F: · 1,000 small files · Windows, run 3 of 3
+721.5s C: → F: · 1,000 small files · Choppy (C#), run 3 of 3
+result: C>F small: C# 0.607 s, Rust 0.487 s, Windows 4.222 s; Rust vs C# +19.7% (C# vs Windows +85.6%, Rust vs Windows +88.5%); Rust's process end 8 ms
+722.9s C: → F: · Mixed folder · writing the test files
+723.5s C: → F: · Mixed folder · Windows, run 1 of 3
+726.5s C: → F: · Mixed folder · Choppy (C#), run 1 of 3
+727.8s C: → F: · Mixed folder · Choppy (Rust), run 1 of 3
+729.0s C: → F: · Mixed folder · Choppy (Rust), run 2 of 3
+730.4s C: → F: · Mixed folder · Choppy (C#), run 2 of 3
+731.6s C: → F: · Mixed folder · Windows, run 2 of 3
+734.6s C: → F: · Mixed folder · Windows, run 3 of 3
+737.6s C: → F: · Mixed folder · Choppy (C#), run 3 of 3
+738.8s C: → F: · Mixed folder · Choppy (Rust), run 3 of 3
+result: C>F mixed: C# 0.821 s, Rust 0.844 s, Windows 2.470 s; Rust vs C# -2.9% (C# vs Windows +66.8%, Rust vs Windows +65.8%); Rust's process end 8 ms
+740.1s F: → C: · One big file · writing the test files
+745.1s F: → C: · One big file · Choppy (C#), run 1 of 3
+747.5s F: → C: · One big file · Choppy (Rust), run 1 of 3
+750.0s F: → C: · One big file · Windows, run 1 of 3
+752.7s F: → C: · One big file · Windows, run 2 of 3
+755.4s F: → C: · One big file · Choppy (Rust), run 2 of 3
+757.9s F: → C: · One big file · Choppy (C#), run 2 of 3
+760.4s F: → C: · One big file · Choppy (C#), run 3 of 3
+762.9s F: → C: · One big file · Choppy (Rust), run 3 of 3
+765.3s F: → C: · One big file · Windows, run 3 of 3
+result: F>C big: C# 2.201 s, Rust 2.192 s, Windows 2.232 s; Rust vs C# +0.4% (C# vs Windows +1.4%, Rust vs Windows +1.8%); Rust's process end 10 ms
+768.0s F: → C: · 1,000 small files · writing the test files
+769.0s F: → C: · 1,000 small files · Choppy (Rust), run 1 of 3
+770.0s F: → C: · 1,000 small files · Windows, run 1 of 3
+774.6s F: → C: · 1,000 small files · Choppy (C#), run 1 of 3
+775.8s F: → C: · 1,000 small files · Choppy (C#), run 2 of 3
+777.0s F: → C: · 1,000 small files · Windows, run 2 of 3
+781.3s F: → C: · 1,000 small files · Choppy (Rust), run 2 of 3
+782.4s F: → C: · 1,000 small files · Choppy (Rust), run 3 of 3
+783.5s F: → C: · 1,000 small files · Windows, run 3 of 3
+787.8s F: → C: · 1,000 small files · Choppy (C#), run 3 of 3
+result: F>C small: C# 0.761 s, Rust 0.618 s, Windows 3.800 s; Rust vs C# +18.7% (C# vs Windows +80.0%, Rust vs Windows +83.7%); Rust's process end 9 ms
+789.3s F: → C: · Mixed folder · writing the test files
+791.1s F: → C: · Mixed folder · Windows, run 1 of 3
+793.7s F: → C: · Mixed folder · Choppy (C#), run 1 of 3
+794.9s F: → C: · Mixed folder · Choppy (Rust), run 1 of 3
+796.0s F: → C: · Mixed folder · Choppy (Rust), run 2 of 3
+797.1s F: → C: · Mixed folder · Choppy (C#), run 2 of 3
+798.3s F: → C: · Mixed folder · Windows, run 2 of 3
+800.9s F: → C: · Mixed folder · Windows, run 3 of 3
+803.4s F: → C: · Mixed folder · Choppy (C#), run 3 of 3
+804.7s F: → C: · Mixed folder · Choppy (Rust), run 3 of 3
+result: F>C mixed: C# 0.855 s, Rust 0.769 s, Windows 2.064 s; Rust vs C# +10.1% (C# vs Windows +58.6%, Rust vs Windows +62.8%); Rust's process end 9 ms
+806.0s F: → F: · One big file · writing the test files
+810.8s F: → F: · One big file · Choppy (C#), run 1 of 3
+813.9s F: → F: · One big file · Choppy (Rust), run 1 of 3
+817.0s F: → F: · One big file · Windows, run 1 of 3
+821.6s F: → F: · One big file · Windows, run 2 of 3
+826.4s F: → F: · One big file · Choppy (Rust), run 2 of 3
+829.7s F: → F: · One big file · Choppy (C#), run 2 of 3
+832.8s F: → F: · One big file · Choppy (C#), run 3 of 3
+836.0s F: → F: · One big file · Choppy (Rust), run 3 of 3
+839.2s F: → F: · One big file · Windows, run 3 of 3
+result: F>F big: C# 2.851 s, Rust 2.903 s, Windows 4.222 s; Rust vs C# -1.8% (C# vs Windows +32.5%, Rust vs Windows +31.2%); Rust's process end 10 ms
+843.8s F: → F: · 1,000 small files · writing the test files
+844.8s F: → F: · 1,000 small files · Choppy (Rust), run 1 of 3
+847.1s F: → F: · 1,000 small files · Windows, run 1 of 3
+852.5s F: → F: · 1,000 small files · Choppy (C#), run 1 of 3
+854.6s F: → F: · 1,000 small files · Choppy (C#), run 2 of 3
+856.7s F: → F: · 1,000 small files · Windows, run 2 of 3
+861.8s F: → F: · 1,000 small files · Choppy (Rust), run 2 of 3
+863.9s F: → F: · 1,000 small files · Choppy (Rust), run 3 of 3
+866.1s F: → F: · 1,000 small files · Windows, run 3 of 3
+871.1s F: → F: · 1,000 small files · Choppy (C#), run 3 of 3
+result: F>F small: C# 1.624 s, Rust 1.632 s, Windows 4.517 s; Rust vs C# -0.5% (C# vs Windows +64.1%, Rust vs Windows +63.9%); Rust's process end 7 ms
+873.6s F: → F: · Mixed folder · writing the test files
+875.3s F: → F: · Mixed folder · Windows, run 1 of 3
+878.8s F: → F: · Mixed folder · Choppy (C#), run 1 of 3
+880.6s F: → F: · Mixed folder · Choppy (Rust), run 1 of 3
+882.5s F: → F: · Mixed folder · Choppy (Rust), run 2 of 3
+884.3s F: → F: · Mixed folder · Choppy (C#), run 2 of 3
+886.1s F: → F: · Mixed folder · Windows, run 2 of 3
+889.5s F: → F: · Mixed folder · Windows, run 3 of 3
+893.0s F: → F: · Mixed folder · Choppy (C#), run 3 of 3
+894.8s F: → F: · Mixed folder · Choppy (Rust), run 3 of 3
+result: F>F mixed: C# 1.402 s, Rust 1.477 s, Windows 2.911 s; Rust vs C# -5.4% (C# vs Windows +51.8%, Rust vs Windows +49.2%); Rust's process end 7 ms
+896.8s C: → X: · One big file · writing the test files
+897.4s C: → X: · One big file · Choppy (C#), run 1 of 3
+903.3s C: → X: · One big file · Choppy (Rust), run 1 of 3
+909.6s C: → X: · One big file · Windows, run 1 of 3
+915.6s C: → X: · One big file · Windows, run 2 of 3
+921.6s C: → X: · One big file · Choppy (Rust), run 2 of 3
+928.0s C: → X: · One big file · Choppy (C#), run 2 of 3
+933.9s C: → X: · One big file · Choppy (C#), run 3 of 3
+939.7s C: → X: · One big file · Choppy (Rust), run 3 of 3
+946.0s C: → X: · One big file · Windows, run 3 of 3
+result: C>X big: C# 5.073 s, Rust 5.439 s, Windows 5.103 s; Rust vs C# -7.2% (C# vs Windows +0.6%, Rust vs Windows -6.6%); Rust's process end 9 ms
+952.1s C: → X: · 500 small files · writing the test files
+952.5s C: → X: · 500 small files · Choppy (Rust), run 1 of 3
+956.2s C: → X: · 500 small files · Windows, run 1 of 3
+961.2s C: → X: · 500 small files · Choppy (C#), run 1 of 3
+964.6s C: → X: · 500 small files · Choppy (C#), run 2 of 3
+968.5s C: → X: · 500 small files · Windows, run 2 of 3
+973.6s C: → X: · 500 small files · Choppy (Rust), run 2 of 3
+977.0s C: → X: · 500 small files · Choppy (Rust), run 3 of 3
+980.2s C: → X: · 500 small files · Windows, run 3 of 3
+985.1s C: → X: · 500 small files · Choppy (C#), run 3 of 3
+result: C>X small: C# 2.580 s, Rust 2.431 s, Windows 3.834 s; Rust vs C# +5.8% (C# vs Windows +32.7%, Rust vs Windows +36.6%); Rust's process end 26 ms
+988.7s C: → X: · Mixed folder · writing the test files
+989.4s C: → X: · Mixed folder · Windows, run 1 of 3
+997.1s C: → X: · Mixed folder · Choppy (C#), run 1 of 3
+1003.3s C: → X: · Mixed folder · Choppy (Rust), run 1 of 3
+1010.6s C: → X: · Mixed folder · Choppy (Rust), run 2 of 3
+1017.9s C: → X: · Mixed folder · Choppy (C#), run 2 of 3
+1024.3s C: → X: · Mixed folder · Windows, run 2 of 3
+1032.0s C: → X: · Mixed folder · Windows, run 3 of 3
+1039.6s C: → X: · Mixed folder · Choppy (C#), run 3 of 3
+1046.1s C: → X: · Mixed folder · Choppy (Rust), run 3 of 3
+result: C>X mixed: C# 5.353 s, Rust 6.082 s, Windows 6.610 s; Rust vs C# -13.6% (C# vs Windows +19.0%, Rust vs Windows +8.0%); Rust's process end 56 ms
+1053.0s X: → C: · One big file · writing the test files
+1065.0s X: → C: · One big file · Choppy (C#), run 1 of 3
+1071.4s X: → C: · One big file · Choppy (Rust), run 1 of 3
+1077.9s X: → C: · One big file · Windows, run 1 of 3
+1084.7s X: → C: · One big file · Windows, run 2 of 3
+1091.4s X: → C: · One big file · Choppy (Rust), run 2 of 3
+1097.9s X: → C: · One big file · Choppy (C#), run 2 of 3
+1104.4s X: → C: · One big file · Choppy (C#), run 3 of 3
+1110.8s X: → C: · One big file · Choppy (Rust), run 3 of 3
+1117.3s X: → C: · One big file · Windows, run 3 of 3
+result: X>C big: C# 5.630 s, Rust 5.685 s, Windows 5.736 s; Rust vs C# -1.0% (C# vs Windows +1.9%, Rust vs Windows +0.9%); Rust's process end 10 ms
+1124.0s X: → C: · 500 small files · writing the test files
+1126.7s X: → C: · 500 small files · Choppy (Rust), run 1 of 3
+1129.9s X: → C: · 500 small files · Windows, run 1 of 3
+1139.2s X: → C: · 500 small files · Choppy (C#), run 1 of 3
+1142.6s X: → C: · 500 small files · Choppy (C#), run 2 of 3
+1145.9s X: → C: · 500 small files · Windows, run 2 of 3
+1155.0s X: → C: · 500 small files · Choppy (Rust), run 2 of 3
+1158.3s X: → C: · 500 small files · Choppy (Rust), run 3 of 3
+1161.6s X: → C: · 500 small files · Windows, run 3 of 3
+1170.8s X: → C: · 500 small files · Choppy (C#), run 3 of 3
+result: X>C small: C# 2.447 s, Rust 2.381 s, Windows 8.221 s; Rust vs C# +2.7% (C# vs Windows +70.2%, Rust vs Windows +71.0%); Rust's process end 18 ms
+1174.4s X: → C: · Mixed folder · writing the test files
+1184.2s X: → C: · Mixed folder · Windows, run 1 of 3
+1195.4s X: → C: · Mixed folder · Choppy (C#), run 1 of 3
+1201.6s X: → C: · Mixed folder · Choppy (Rust), run 1 of 3
+1207.9s X: → C: · Mixed folder · Choppy (Rust), run 2 of 3
+1214.3s X: → C: · Mixed folder · Choppy (C#), run 2 of 3
+1220.5s X: → C: · Mixed folder · Windows, run 2 of 3
+1231.5s X: → C: · Mixed folder · Windows, run 3 of 3
+1242.5s X: → C: · Mixed folder · Choppy (C#), run 3 of 3
+1248.7s X: → C: · Mixed folder · Choppy (Rust), run 3 of 3
+result: X>C mixed: C# 5.373 s, Rust 5.402 s, Windows 10.004 s; Rust vs C# -0.5% (C# vs Windows +46.3%, Rust vs Windows +46.0%); Rust's process end 29 ms
+1255.1s X: → X: · One big file · writing the test files
+1268.0s X: → X: · One big file · Choppy (C#), run 1 of 3
+1280.0s X: → X: · One big file · Choppy (Rust), run 1 of 3
+1292.6s X: → X: · One big file · Windows, run 1 of 3
+1304.8s X: → X: · One big file · Windows, run 2 of 3
+1317.8s X: → X: · One big file · Choppy (Rust), run 2 of 3
+1329.8s X: → X: · One big file · Choppy (C#), run 2 of 3
+1342.1s X: → X: · One big file · Choppy (C#), run 3 of 3
+1354.1s X: → X: · One big file · Choppy (Rust), run 3 of 3
+1366.5s X: → X: · One big file · Windows, run 3 of 3
+result: X>X big: C# 11.262 s, Rust 11.440 s, Windows 11.600 s; Rust vs C# -1.6% (C# vs Windows +2.9%, Rust vs Windows +1.4%); Rust's process end 8 ms
+1379.1s X: → X: · 500 small files · writing the test files
+1382.0s X: → X: · 500 small files · Choppy (Rust), run 1 of 3
+1387.5s X: → X: · 500 small files · Windows, run 1 of 3
+1400.2s X: → X: · 500 small files · Choppy (C#), run 1 of 3
+1405.6s X: → X: · 500 small files · Choppy (C#), run 2 of 3
+1410.8s X: → X: · 500 small files · Windows, run 2 of 3
+1423.4s X: → X: · 500 small files · Choppy (Rust), run 2 of 3
+1428.6s X: → X: · 500 small files · Choppy (Rust), run 3 of 3
+1434.3s X: → X: · 500 small files · Windows, run 3 of 3
+1446.8s X: → X: · 500 small files · Choppy (C#), run 3 of 3
+result: X>X small: C# 4.279 s, Rust 4.408 s, Windows 11.418 s; Rust vs C# -3.0% (C# vs Windows +62.5%, Rust vs Windows +61.4%); Rust's process end 24 ms
+1452.7s X: → X: · Mixed folder · writing the test files
+1462.7s X: → X: · Mixed folder · Windows, run 1 of 3
+1480.4s X: → X: · Mixed folder · Choppy (C#), run 1 of 3
+1492.2s X: → X: · Mixed folder · Choppy (Rust), run 1 of 3
+1503.9s X: → X: · Mixed folder · Choppy (Rust), run 2 of 3
+1516.4s X: → X: · Mixed folder · Choppy (C#), run 2 of 3
+1527.9s X: → X: · Mixed folder · Windows, run 2 of 3
+1546.1s X: → X: · Mixed folder · Windows, run 3 of 3
+1563.7s X: → X: · Mixed folder · Choppy (C#), run 3 of 3
+1575.2s X: → X: · Mixed folder · Choppy (Rust), run 3 of 3
+result: X>X mixed: C# 10.549 s, Rust 10.710 s, Windows 16.762 s; Rust vs C# -1.5% (C# vs Windows +37.1%, Rust vs Windows +36.1%); Rust's process end 41 ms
+1586.6s C: → N: · One big file · writing the test files
+1586.8s C: → N: · One big file · Choppy (C#), run 1 of 3
+1635.1s C: → N: · One big file · Choppy (Rust), run 1 of 3
+1683.2s C: → N: · One big file · Windows, run 1 of 3
+1731.1s C: → N: · One big file · Windows, run 2 of 3
+1779.3s C: → N: · One big file · Choppy (Rust), run 2 of 3
+1827.1s C: → N: · One big file · Choppy (C#), run 2 of 3
+1874.6s C: → N: · One big file · Choppy (C#), run 3 of 3
+1922.4s C: → N: · One big file · Choppy (Rust), run 3 of 3
+1970.1s C: → N: · One big file · Windows, run 3 of 3
+result: C>N big: C# 46.425 s, Rust 46.480 s, Windows 46.335 s; Rust vs C# -0.1% (C# vs Windows -0.2%, Rust vs Windows -0.3%); Rust's process end 10 ms
+2017.8s C: → N: · 250 small files · writing the test files
+2018.1s C: → N: · 250 small files · Choppy (Rust), run 1 of 3
+2040.5s C: → N: · 250 small files · Windows, run 1 of 3
+2074.7s C: → N: · 250 small files · Choppy (C#), run 1 of 3
+2097.9s C: → N: · 250 small files · Choppy (C#), run 2 of 3
+2121.1s C: → N: · 250 small files · Windows, run 2 of 3
+2155.6s C: → N: · 250 small files · Choppy (Rust), run 2 of 3
+2179.1s C: → N: · 250 small files · Choppy (Rust), run 3 of 3
+2202.1s C: → N: · 250 small files · Windows, run 3 of 3
+2236.1s C: → N: · 250 small files · Choppy (C#), run 3 of 3
+result: C>N small: C# 12.534 s, Rust 12.384 s, Windows 23.433 s; Rust vs C# +1.2% (C# vs Windows +46.5%, Rust vs Windows +47.2%); Rust's process end 9 ms
+2259.1s C: → N: · Mixed folder · writing the test files
+2259.7s C: → N: · Mixed folder · Windows, run 1 of 3
+2357.4s C: → N: · Mixed folder · Choppy (C#), run 1 of 3
+2433.8s C: → N: · Mixed folder · Choppy (Rust), run 1 of 3
+2510.6s C: → N: · Mixed folder · Choppy (Rust), run 2 of 3
+2588.4s C: → N: · Mixed folder · Choppy (C#), run 2 of 3
+2666.9s C: → N: · Mixed folder · Windows, run 2 of 3
+2764.6s C: → N: · Mixed folder · Windows, run 3 of 3
+2862.9s C: → N: · Mixed folder · Choppy (C#), run 3 of 3
+2941.2s C: → N: · Mixed folder · Choppy (Rust), run 3 of 3
+result: C>N mixed: C# 61.959 s, Rust 61.574 s, Windows 81.846 s; Rust vs C# +0.6% (C# vs Windows +24.3%, Rust vs Windows +24.8%); Rust's process end 9 ms
+3019.6s N: → C: · One big file · writing the test files
+3082.9s N: → C: · One big file · Choppy (C#), run 1 of 3
+3094.6s N: → C: · One big file · Choppy (Rust), run 1 of 3
+3106.0s N: → C: · One big file · Windows, run 1 of 3
+3118.1s N: → C: · One big file · Windows, run 2 of 3
+3130.6s N: → C: · One big file · Choppy (Rust), run 2 of 3
+3141.8s N: → C: · One big file · Choppy (C#), run 2 of 3
+3152.8s N: → C: · One big file · Choppy (C#), run 3 of 3
+3163.6s N: → C: · One big file · Choppy (Rust), run 3 of 3
+3174.7s N: → C: · One big file · Windows, run 3 of 3
+result: N>C big: C# 10.219 s, Rust 10.224 s, Windows 10.770 s; Rust vs C# 0.0% (C# vs Windows +5.1%, Rust vs Windows +5.1%); Rust's process end 8 ms
+3186.6s N: → C: · 250 small files · writing the test files
+3216.9s N: → C: · 250 small files · Choppy (Rust), run 1 of 3
+3220.1s N: → C: · 250 small files · Windows, run 1 of 3
+3249.7s N: → C: · 250 small files · Choppy (C#), run 1 of 3
+3253.8s N: → C: · 250 small files · Choppy (C#), run 2 of 3
+3257.8s N: → C: · 250 small files · Windows, run 2 of 3
+3287.0s N: → C: · 250 small files · Choppy (Rust), run 2 of 3
+3291.2s N: → C: · 250 small files · Choppy (Rust), run 3 of 3
+3295.3s N: → C: · 250 small files · Windows, run 3 of 3
+3324.5s N: → C: · 250 small files · Choppy (C#), run 3 of 3
+result: N>C small: C# 2.464 s, Rust 2.399 s, Windows 27.357 s; Rust vs C# +2.7% (C# vs Windows +91.0%, Rust vs Windows +91.2%); Rust's process end 8 ms
+3335.6s N: → C: · Mixed folder · writing the test files
+3446.5s N: → C: · Mixed folder · Windows, run 1 of 3
+3502.5s N: → C: · Mixed folder · Choppy (C#), run 1 of 3
+3520.1s N: → C: · Mixed folder · Choppy (Rust), run 1 of 3
+3536.2s N: → C: · Mixed folder · Choppy (Rust), run 2 of 3
+3554.1s N: → C: · Mixed folder · Choppy (C#), run 2 of 3
+3574.6s N: → C: · Mixed folder · Windows, run 2 of 3
+3630.6s N: → C: · Mixed folder · Windows, run 3 of 3
+3686.4s N: → C: · Mixed folder · Choppy (C#), run 3 of 3
+3705.9s N: → C: · Mixed folder · Choppy (Rust), run 3 of 3
+result: N>C mixed: C# 17.199 s, Rust 16.045 s, Windows 53.908 s; Rust vs C# +6.7% (C# vs Windows +68.1%, Rust vs Windows +70.2%); Rust's process end 8 ms
+3737.5s N: → N: · One big file · writing the test files
+3801.6s N: → N: · One big file · Choppy (C#), run 1 of 3
+3803.7s N: → N: · One big file · Choppy (Rust), run 1 of 3
+3805.9s N: → N: · One big file · Windows, run 1 of 3
+3809.2s N: → N: · One big file · Windows, run 2 of 3
+3812.4s N: → N: · One big file · Choppy (Rust), run 2 of 3
+3814.6s N: → N: · One big file · Choppy (C#), run 2 of 3
+3816.8s N: → N: · One big file · Choppy (C#), run 3 of 3
+3819.0s N: → N: · One big file · Choppy (Rust), run 3 of 3
+3821.2s N: → N: · One big file · Windows, run 3 of 3
+result: N>N big: C# 0.735 s, Rust 0.730 s, Windows 1.233 s; Rust vs C# +0.6% (C# vs Windows +40.4%, Rust vs Windows +40.8%); Rust's process end 9 ms
+3824.6s N: → N: · 250 small files · writing the test files
+3854.0s N: → N: · 250 small files · Choppy (Rust), run 1 of 3
+3870.7s N: → N: · 250 small files · Windows, run 1 of 3
+3964.4s N: → N: · 250 small files · Choppy (C#), run 1 of 3
+3982.4s N: → N: · 250 small files · Choppy (C#), run 2 of 3
+4000.2s N: → N: · 250 small files · Windows, run 2 of 3
+4093.0s N: → N: · 250 small files · Choppy (Rust), run 2 of 3
+4110.5s N: → N: · 250 small files · Choppy (Rust), run 3 of 3
+4127.9s N: → N: · 250 small files · Windows, run 3 of 3
+4221.0s N: → N: · 250 small files · Choppy (C#), run 3 of 3
+result: N>N small: C# 6.454 s, Rust 6.231 s, Windows 81.152 s; Rust vs C# +3.4% (C# vs Windows +92.0%, Rust vs Windows +92.3%); Rust's process end 9 ms
+4245.4s N: → N: · Mixed folder · writing the test files
+4357.1s N: → N: · Mixed folder · Windows, run 1 of 3
+4504.8s N: → N: · Mixed folder · Choppy (C#), run 1 of 3
+4531.6s N: → N: · Mixed folder · Choppy (Rust), run 1 of 3
+4558.4s N: → N: · Mixed folder · Choppy (Rust), run 2 of 3
+4585.3s N: → N: · Mixed folder · Choppy (C#), run 2 of 3
+4612.4s N: → N: · Mixed folder · Windows, run 2 of 3
+4761.4s N: → N: · Mixed folder · Windows, run 3 of 3
+4910.6s N: → N: · Mixed folder · Choppy (C#), run 3 of 3
+4937.2s N: → N: · Mixed folder · Choppy (Rust), run 3 of 3
+result: N>N mixed: C# 9.737 s, Rust 9.803 s, Windows 130.833 s; Rust vs C# -0.7% (C# vs Windows +92.6%, Rust vs Windows +92.5%); Rust's process end 9 ms
+4975.6s Removing the test files
+Choppy is Faster 31 of 39 · Marginal Tie 8 of 39 · Never Slower
++42% faster on average · Choppy 88.5 MB/s · Windows 39.2 MB/s · Time saved 5 min 55 s
+C:/Users/<user>/AppData/Local/Temp/choppy-step3/full.html

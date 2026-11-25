@@ -32,7 +32,7 @@ runs (no build, no other test copy or benchmark): the disks are timed.
 
 ## results/
 
-Masked copies (drive labels blanked, the NAS path made generic) of the reports and their logs (`run:` lines = every
+Masked copies (drive labels blanked, the NAS path made generic) of the reports (`name.json`) and their logs (`name-log.txt`: `run:` lines = every
 copy with its way, `result:` lines = each case):
 
 | file | what |

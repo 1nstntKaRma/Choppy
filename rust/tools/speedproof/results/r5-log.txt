@@ -1,0 +1,299 @@
+0.0s Removing what an earlier run left behind
+0.0s Looking at the drives
+0.2s Measuring C: (NVMe SSD)
+0.6s Measuring D: (Hard disk)
+3.2s Measuring N: (Network share)
+15.4s Measuring X: (Hard disk)
+plan: C:>D: 1024 MB + 500 files, C:>X: 1024 MB + 500 files, N:>C: 512 MB + 250 files; about 19 min 5 s
+18.1s C: → D: · One big file · writing the test files
+18.6s C: → D: · One big file · Choppy (C#), run 1 of 5
+run: C>D big C#: done 3.315 s, on the disk 4.813 s | Adaptive · 1 stream
+24.2s C: → D: · One big file · Choppy (Rust), run 1 of 5
+run: C>D big Rust: done 3.338 s, on the disk 4.804 s | Adaptive · 1 stream
+29.8s C: → D: · One big file · Windows, run 1 of 5
+run: C>D big Windows: done 2.859 s, on the disk 4.880 s
+35.6s C: → D: · One big file · Windows, run 2 of 5
+run: C>D big Windows: done 2.778 s, on the disk 4.795 s
+41.3s C: → D: · One big file · Choppy (Rust), run 2 of 5
+run: C>D big Rust: done 3.323 s, on the disk 4.849 s | Adaptive · 1 stream
+46.9s C: → D: · One big file · Choppy (C#), run 2 of 5
+run: C>D big C#: done 3.330 s, on the disk 4.909 s | Adaptive · 1 stream
+52.6s C: → D: · One big file · Choppy (C#), run 3 of 5
+run: C>D big C#: done 3.245 s, on the disk 4.771 s | Adaptive · 1 stream
+58.2s C: → D: · One big file · Choppy (Rust), run 3 of 5
+run: C>D big Rust: done 3.222 s, on the disk 4.666 s | Adaptive · 1 stream
+63.6s C: → D: · One big file · Windows, run 3 of 5
+run: C>D big Windows: done 2.861 s, on the disk 4.818 s
+69.4s C: → D: · One big file · Windows, run 4 of 5
+run: C>D big Windows: done 2.821 s, on the disk 4.824 s
+75.1s C: → D: · One big file · Choppy (Rust), run 4 of 5
+run: C>D big Rust: done 3.247 s, on the disk 4.808 s | Adaptive · 1 stream
+80.7s C: → D: · One big file · Choppy (C#), run 4 of 5
+run: C>D big C#: done 3.339 s, on the disk 4.769 s | Adaptive · 1 stream
+86.3s C: → D: · One big file · Choppy (C#), run 5 of 5
+run: C>D big C#: done 3.439 s, on the disk 4.850 s | Adaptive · 1 stream
+91.9s C: → D: · One big file · Choppy (Rust), run 5 of 5
+run: C>D big Rust: done 3.246 s, on the disk 4.775 s | Adaptive · 1 stream
+97.5s C: → D: · One big file · Windows, run 5 of 5
+run: C>D big Windows: done 2.747 s, on the disk 4.804 s
+result: C>D big: C# 4.822 s, Rust 4.780 s, Windows 4.825 s; Rust vs C# +0.9% (C# vs Windows 0.0%, Rust vs Windows +0.9%); Rust's hand-back 0.1 ms
+103.2s C: → D: · 500 small files · writing the test files
+103.8s C: → D: · 500 small files · Choppy (Rust), run 1 of 5
+run: C>D small Rust: done 0.426 s, on the disk 2.021 s | Adaptive · 1 stream
+106.9s C: → D: · 500 small files · Windows, run 1 of 5
+run: C>D small Windows: done 1.716 s, on the disk 3.011 s
+111.2s C: → D: · 500 small files · Choppy (C#), run 1 of 5
+run: C>D small C#: done 0.467 s, on the disk 1.503 s | Adaptive · 1 stream
+113.8s C: → D: · 500 small files · Choppy (C#), run 2 of 5
+run: C>D small C#: done 0.409 s, on the disk 2.351 s | Adaptive · 1 stream
+117.3s C: → D: · 500 small files · Windows, run 2 of 5
+run: C>D small Windows: done 1.732 s, on the disk 3.214 s
+121.8s C: → D: · 500 small files · Choppy (Rust), run 2 of 5
+run: C>D small Rust: done 0.463 s, on the disk 1.640 s | Adaptive · 1 stream
+124.7s C: → D: · 500 small files · Choppy (Rust), run 3 of 5
+run: C>D small Rust: done 0.475 s, on the disk 2.213 s | Adaptive · 1 stream
+128.1s C: → D: · 500 small files · Windows, run 3 of 5
+run: C>D small Windows: done 1.741 s, on the disk 3.345 s
+132.7s C: → D: · 500 small files · Choppy (C#), run 3 of 5
+run: C>D small C#: done 0.492 s, on the disk 1.833 s | Adaptive · 1 stream
+135.7s C: → D: · 500 small files · Choppy (C#), run 4 of 5
+run: C>D small C#: done 0.417 s, on the disk 2.300 s | Adaptive · 1 stream
+139.2s C: → D: · 500 small files · Windows, run 4 of 5
+run: C>D small Windows: done 1.662 s, on the disk 3.687 s
+144.3s C: → D: · 500 small files · Choppy (Rust), run 4 of 5
+run: C>D small Rust: done 0.369 s, on the disk 2.268 s | Adaptive · 1 stream
+147.8s C: → D: · 500 small files · Choppy (Rust), run 5 of 5
+run: C>D small Rust: done 0.522 s, on the disk 1.750 s | Adaptive · 1 stream
+150.7s C: → D: · 500 small files · Windows, run 5 of 5
+run: C>D small Windows: done 1.789 s, on the disk 3.236 s
+155.2s C: → D: · 500 small files · Choppy (C#), run 5 of 5
+run: C>D small C#: done 0.373 s, on the disk 2.269 s | Adaptive · 1 stream
+result: C>D small: C# 2.051 s, Rust 1.978 s, Windows 3.299 s; Rust vs C# +3.6% (C# vs Windows +37.8%, Rust vs Windows +40.0%); Rust's hand-back 0.1 ms
+158.7s C: → D: · Mixed folder · writing the test files
+159.3s C: → D: · Mixed folder · Windows, run 1 of 5
+run: C>D mixed Windows: done 2.642 s, on the disk 5.383 s
+165.8s C: → D: · Mixed folder · Choppy (C#), run 1 of 5
+run: C>D mixed C#: done 3.182 s, on the disk 4.674 s | Adaptive · 1 stream
+171.5s C: → D: · Mixed folder · Choppy (Rust), run 1 of 5
+run: C>D mixed Rust: done 3.240 s, on the disk 4.582 s | Adaptive · 1 stream
+177.4s C: → D: · Mixed folder · Choppy (Rust), run 2 of 5
+run: C>D mixed Rust: done 3.099 s, on the disk 5.019 s | Adaptive · 1 stream
+183.5s C: → D: · Mixed folder · Choppy (C#), run 2 of 5
+run: C>D mixed C#: done 3.247 s, on the disk 4.689 s | Adaptive · 1 stream
+189.3s C: → D: · Mixed folder · Windows, run 2 of 5
+run: C>D mixed Windows: done 2.472 s, on the disk 5.549 s
+196.0s C: → D: · Mixed folder · Windows, run 3 of 5
+run: C>D mixed Windows: done 2.627 s, on the disk 5.524 s
+202.7s C: → D: · Mixed folder · Choppy (C#), run 3 of 5
+run: C>D mixed C#: done 3.400 s, on the disk 5.322 s | Adaptive · 1 stream
+209.0s C: → D: · Mixed folder · Choppy (Rust), run 3 of 5
+run: C>D mixed Rust: done 2.978 s, on the disk 4.496 s | Adaptive · 1 stream
+214.6s C: → D: · Mixed folder · Choppy (Rust), run 4 of 5
+run: C>D mixed Rust: done 3.643 s, on the disk 5.575 s | Adaptive · 1 stream
+221.2s C: → D: · Mixed folder · Choppy (C#), run 4 of 5
+run: C>D mixed C#: done 3.265 s, on the disk 5.035 s | Adaptive · 1 stream
+227.3s C: → D: · Mixed folder · Windows, run 4 of 5
+run: C>D mixed Windows: done 2.476 s, on the disk 5.254 s
+233.7s C: → D: · Mixed folder · Windows, run 5 of 5
+run: C>D mixed Windows: done 2.570 s, on the disk 5.725 s
+240.6s C: → D: · Mixed folder · Choppy (C#), run 5 of 5
+run: C>D mixed C#: done 3.211 s, on the disk 4.805 s | Adaptive · 1 stream
+246.5s C: → D: · Mixed folder · Choppy (Rust), run 5 of 5
+run: C>D mixed Rust: done 2.915 s, on the disk 4.358 s | Adaptive · 1 stream
+result: C>D mixed: C# 4.905 s, Rust 4.806 s, Windows 5.487 s; Rust vs C# +2.0% (C# vs Windows +10.6%, Rust vs Windows +12.4%); Rust's hand-back 1.3 ms
+252.0s C: → X: · One big file · writing the test files
+252.6s C: → X: · One big file · Choppy (C#), run 1 of 5
+run: C>X big C#: done 3.671 s, on the disk 5.274 s | Adaptive · 1 stream
+258.6s C: → X: · One big file · Choppy (Rust), run 1 of 5
+run: C>X big Rust: done 3.547 s, on the disk 5.368 s | Adaptive · 1 stream
+264.8s C: → X: · One big file · Windows, run 1 of 5
+run: C>X big Windows: done 2.906 s, on the disk 5.062 s
+270.7s C: → X: · One big file · Windows, run 2 of 5
+run: C>X big Windows: done 3.065 s, on the disk 5.071 s
+276.7s C: → X: · One big file · Choppy (Rust), run 2 of 5
+run: C>X big Rust: done 3.673 s, on the disk 5.511 s | Adaptive · 1 stream
+283.0s C: → X: · One big file · Choppy (C#), run 2 of 5
+run: C>X big C#: done 3.282 s, on the disk 5.026 s | Adaptive · 1 stream
+288.8s C: → X: · One big file · Choppy (C#), run 3 of 5
+run: C>X big C#: done 3.482 s, on the disk 5.387 s | Adaptive · 1 stream
+295.0s C: → X: · One big file · Choppy (Rust), run 3 of 5
+run: C>X big Rust: done 3.244 s, on the disk 4.975 s | Adaptive · 1 stream
+300.8s C: → X: · One big file · Windows, run 3 of 5
+run: C>X big Windows: done 2.965 s, on the disk 5.087 s
+306.8s C: → X: · One big file · Windows, run 4 of 5
+run: C>X big Windows: done 3.101 s, on the disk 5.409 s
+313.1s C: → X: · One big file · Choppy (Rust), run 4 of 5
+run: C>X big Rust: done 3.245 s, on the disk 5.145 s | Adaptive · 1 stream
+319.0s C: → X: · One big file · Choppy (C#), run 4 of 5
+run: C>X big C#: done 3.340 s, on the disk 4.921 s | Adaptive · 1 stream
+324.7s C: → X: · One big file · Choppy (C#), run 5 of 5
+run: C>X big C#: done 3.581 s, on the disk 5.368 s | Adaptive · 1 stream
+330.9s C: → X: · One big file · Choppy (Rust), run 5 of 5
+run: C>X big Rust: done 3.452 s, on the disk 5.111 s | Adaptive · 1 stream
+336.8s C: → X: · One big file · Windows, run 5 of 5
+run: C>X big Windows: done 2.919 s, on the disk 4.949 s
+result: C>X big: C# 5.195 s, Rust 5.222 s, Windows 5.116 s; Rust vs C# -0.5% (C# vs Windows -1.6%, Rust vs Windows -2.1%); Rust's hand-back 0.1 ms
+342.6s C: → X: · 500 small files · writing the test files
+343.2s C: → X: · 500 small files · Choppy (Rust), run 1 of 5
+run: C>X small Rust: done 0.322 s, on the disk 3.088 s | Adaptive · 1 stream
+347.2s C: → X: · 500 small files · Windows, run 1 of 5
+run: C>X small Windows: done 1.547 s, on the disk 3.627 s
+351.9s C: → X: · 500 small files · Choppy (C#), run 1 of 5
+run: C>X small C#: done 0.410 s, on the disk 2.982 s | Adaptive · 1 stream
+355.9s C: → X: · 500 small files · Choppy (C#), run 2 of 5
+run: C>X small C#: done 0.403 s, on the disk 2.718 s | Adaptive · 1 stream
+359.6s C: → X: · 500 small files · Windows, run 2 of 5
+run: C>X small Windows: done 1.525 s, on the disk 3.938 s
+364.6s C: → X: · 500 small files · Choppy (Rust), run 2 of 5
+run: C>X small Rust: done 0.365 s, on the disk 2.618 s | Adaptive · 1 stream
+368.2s C: → X: · 500 small files · Choppy (Rust), run 3 of 5
+run: C>X small Rust: done 0.319 s, on the disk 2.717 s | Adaptive · 1 stream
+371.9s C: → X: · 500 small files · Windows, run 3 of 5
+run: C>X small Windows: done 1.559 s, on the disk 3.552 s
+376.5s C: → X: · 500 small files · Choppy (C#), run 3 of 5
+run: C>X small C#: done 0.329 s, on the disk 2.596 s | Adaptive · 1 stream
+380.2s C: → X: · 500 small files · Choppy (C#), run 4 of 5
+run: C>X small C#: done 0.487 s, on the disk 3.151 s | Adaptive · 1 stream
+384.3s C: → X: · 500 small files · Windows, run 4 of 5
+run: C>X small Windows: done 1.443 s, on the disk 3.266 s
+388.6s C: → X: · 500 small files · Choppy (Rust), run 4 of 5
+run: C>X small Rust: done 0.390 s, on the disk 3.003 s | Adaptive · 1 stream
+393.0s C: → X: · 500 small files · Choppy (Rust), run 5 of 5
+run: C>X small Rust: done 0.350 s, on the disk 3.081 s | Adaptive · 1 stream
+397.1s C: → X: · 500 small files · Windows, run 5 of 5
+run: C>X small Windows: done 1.520 s, on the disk 3.747 s
+401.9s C: → X: · 500 small files · Choppy (C#), run 5 of 5
+run: C>X small C#: done 0.374 s, on the disk 2.305 s | Adaptive · 1 stream
+result: C>X small: C# 2.750 s, Rust 2.901 s, Windows 3.626 s; Rust vs C# -5.5% (C# vs Windows +24.1%, Rust vs Windows +20.0%); Rust's hand-back 1.4 ms
+405.2s C: → X: · Mixed folder · writing the test files
+405.8s C: → X: · Mixed folder · Windows, run 1 of 5
+run: C>X mixed Windows: done 2.522 s, on the disk 6.557 s
+413.4s C: → X: · Mixed folder · Choppy (C#), run 1 of 5
+run: C>X mixed C#: done 3.656 s, on the disk 5.531 s | Adaptive · 1 stream
+419.8s C: → X: · Mixed folder · Choppy (Rust), run 1 of 5
+run: C>X mixed Rust: done 3.910 s, on the disk 6.103 s | Adaptive · 1 stream
+426.9s C: → X: · Mixed folder · Choppy (Rust), run 2 of 5
+run: C>X mixed Rust: done 3.838 s, on the disk 6.014 s | Adaptive · 1 stream
+433.8s C: → X: · Mixed folder · Choppy (C#), run 2 of 5
+run: C>X mixed C#: done 3.640 s, on the disk 5.873 s | Adaptive · 1 stream (32x8 join4 146 MB/s)
+440.7s C: → X: · Mixed folder · Windows, run 2 of 5
+run: C>X mixed Windows: done 2.702 s, on the disk 6.517 s
+448.3s C: → X: · Mixed folder · Windows, run 3 of 5
+run: C>X mixed Windows: done 2.350 s, on the disk 6.618 s
+456.0s C: → X: · Mixed folder · Choppy (C#), run 3 of 5
+run: C>X mixed C#: done 3.705 s, on the disk 5.741 s | Adaptive · 1 stream
+462.7s C: → X: · Mixed folder · Choppy (Rust), run 3 of 5
+run: C>X mixed Rust: done 3.664 s, on the disk 5.763 s | Adaptive · 1 stream (32x8 join4 158 MB/s)
+469.4s C: → X: · Mixed folder · Choppy (Rust), run 4 of 5
+run: C>X mixed Rust: done 3.592 s, on the disk 5.630 s | Adaptive · 1 stream
+476.1s C: → X: · Mixed folder · Choppy (C#), run 4 of 5
+run: C>X mixed C#: done 3.661 s, on the disk 5.444 s | Adaptive · 1 stream
+482.6s C: → X: · Mixed folder · Windows, run 4 of 5
+run: C>X mixed Windows: done 2.500 s, on the disk 6.157 s
+489.8s C: → X: · Mixed folder · Windows, run 5 of 5
+run: C>X mixed Windows: done 2.678 s, on the disk 6.507 s
+497.4s C: → X: · Mixed folder · Choppy (C#), run 5 of 5
+run: C>X mixed C#: done 3.765 s, on the disk 5.800 s | Adaptive · 1 stream
+504.2s C: → X: · Mixed folder · Choppy (Rust), run 5 of 5
+run: C>X mixed Rust: done 3.423 s, on the disk 5.819 s | Adaptive · 1 stream
+result: C>X mixed: C# 5.678 s, Rust 5.866 s, Windows 6.471 s; Rust vs C# -3.3% (C# vs Windows +12.3%, Rust vs Windows +9.4%); Rust's hand-back 1.2 ms
+511.1s N: → C: · One big file · writing the test files
+572.3s N: → C: · One big file · Choppy (C#), run 1 of 5
+run: N>C big C#: done 10.367 s, on the disk 10.437 s | Adaptive · 1 stream
+583.7s N: → C: · One big file · Choppy (Rust), run 1 of 5
+run: N>C big Rust: done 9.362 s, on the disk 9.437 s | Adaptive · 1 stream
+594.1s N: → C: · One big file · Windows, run 1 of 5
+run: N>C big Windows: done 10.108 s, on the disk 10.177 s
+605.6s N: → C: · One big file · Windows, run 2 of 5
+run: N>C big Windows: done 10.010 s, on the disk 10.089 s
+617.0s N: → C: · One big file · Choppy (Rust), run 2 of 5
+run: N>C big Rust: done 9.459 s, on the disk 9.535 s | Adaptive · 1 stream
+627.5s N: → C: · One big file · Choppy (C#), run 2 of 5
+run: N>C big C#: done 10.476 s, on the disk 10.548 s | Adaptive · 1 stream
+639.0s N: → C: · One big file · Choppy (C#), run 3 of 5
+run: N>C big C#: done 9.772 s, on the disk 9.844 s | Adaptive · 1 stream
+649.9s N: → C: · One big file · Choppy (Rust), run 3 of 5
+run: N>C big Rust: done 9.763 s, on the disk 9.840 s | Adaptive · 1 stream
+660.7s N: → C: · One big file · Windows, run 3 of 5
+run: N>C big Windows: done 10.639 s, on the disk 10.717 s
+672.8s N: → C: · One big file · Windows, run 4 of 5
+run: N>C big Windows: done 10.476 s, on the disk 10.552 s
+684.7s N: → C: · One big file · Choppy (Rust), run 4 of 5
+run: N>C big Rust: done 11.799 s, on the disk 11.866 s | Adaptive · 1 stream
+697.5s N: → C: · One big file · Choppy (C#), run 4 of 5
+run: N>C big C#: done 9.585 s, on the disk 9.656 s | Adaptive · 1 stream
+708.2s N: → C: · One big file · Choppy (C#), run 5 of 5
+run: N>C big C#: done 10.388 s, on the disk 10.458 s | Adaptive · 1 stream
+719.6s N: → C: · One big file · Choppy (Rust), run 5 of 5
+run: N>C big Rust: done 10.037 s, on the disk 10.121 s | Adaptive · 1 stream
+730.7s N: → C: · One big file · Windows, run 5 of 5
+run: N>C big Windows: done 10.126 s, on the disk 10.205 s
+result: N>C big: C# 10.189 s, Rust 10.160 s, Windows 10.348 s; Rust vs C# +0.3% (C# vs Windows +1.5%, Rust vs Windows +1.8%); Rust's hand-back 0.3 ms
+742.4s N: → C: · 250 small files · writing the test files
+771.8s N: → C: · 250 small files · Choppy (Rust), run 1 of 5
+run: N>C small Rust: done 2.210 s, on the disk 2.242 s | Adaptive · 16 streams
+775.0s N: → C: · 250 small files · Windows, run 1 of 5
+run: N>C small Windows: done 27.454 s, on the disk 27.484 s
+804.5s N: → C: · 250 small files · Choppy (C#), run 1 of 5
+run: N>C small C#: done 2.400 s, on the disk 2.429 s | Adaptive · 16 streams
+808.5s N: → C: · 250 small files · Choppy (C#), run 2 of 5
+run: N>C small C#: done 2.498 s, on the disk 2.533 s | Adaptive · 16 streams
+812.6s N: → C: · 250 small files · Windows, run 2 of 5
+run: N>C small Windows: done 27.683 s, on the disk 27.709 s
+842.2s N: → C: · 250 small files · Choppy (Rust), run 2 of 5
+run: N>C small Rust: done 2.364 s, on the disk 2.397 s | Adaptive · 16 streams
+846.2s N: → C: · 250 small files · Choppy (Rust), run 3 of 5
+run: N>C small Rust: done 2.419 s, on the disk 2.454 s | Adaptive · 16 streams
+850.2s N: → C: · 250 small files · Windows, run 3 of 5
+run: N>C small Windows: done 26.431 s, on the disk 26.477 s
+878.7s N: → C: · 250 small files · Choppy (C#), run 3 of 5
+run: N>C small C#: done 2.416 s, on the disk 2.448 s | Adaptive · 16 streams
+882.8s N: → C: · 250 small files · Choppy (C#), run 4 of 5
+run: N>C small C#: done 2.316 s, on the disk 2.344 s | Adaptive · 16 streams
+886.8s N: → C: · 250 small files · Windows, run 4 of 5
+run: N>C small Windows: done 26.865 s, on the disk 26.891 s
+915.7s N: → C: · 250 small files · Choppy (Rust), run 4 of 5
+run: N>C small Rust: done 2.454 s, on the disk 2.483 s | Adaptive · 16 streams
+919.7s N: → C: · 250 small files · Choppy (Rust), run 5 of 5
+run: N>C small Rust: done 2.429 s, on the disk 2.463 s | Adaptive · 16 streams
+923.7s N: → C: · 250 small files · Windows, run 5 of 5
+run: N>C small Windows: done 27.038 s, on the disk 27.088 s
+952.7s N: → C: · 250 small files · Choppy (C#), run 5 of 5
+run: N>C small C#: done 2.454 s, on the disk 2.489 s | Adaptive · 16 streams
+result: N>C small: C# 2.449 s, Rust 2.408 s, Windows 27.130 s; Rust vs C# +1.7% (C# vs Windows +91.0%, Rust vs Windows +91.1%); Rust's hand-back 0.1 ms
+964.0s N: → C: · Mixed folder · writing the test files
+1077.2s N: → C: · Mixed folder · Windows, run 1 of 5
+run: N>C mixed Windows: done 54.645 s, on the disk 54.684 s
+1133.2s N: → C: · Mixed folder · Choppy (C#), run 1 of 5
+run: N>C mixed C#: done 16.721 s, on the disk 16.793 s | Adaptive · 16 streams
+1151.8s N: → C: · Mixed folder · Choppy (Rust), run 1 of 5
+run: N>C mixed Rust: done 16.981 s, on the disk 17.060 s | Adaptive · 16 streams
+1171.0s N: → C: · Mixed folder · Choppy (Rust), run 2 of 5
+run: N>C mixed Rust: done 17.221 s, on the disk 17.294 s | Adaptive · 16 streams
+1190.1s N: → C: · Mixed folder · Choppy (C#), run 2 of 5
+run: N>C mixed C#: done 16.940 s, on the disk 17.021 s | Adaptive · 16 streams
+1209.2s N: → C: · Mixed folder · Windows, run 2 of 5
+run: N>C mixed Windows: done 54.347 s, on the disk 54.423 s
+1265.7s N: → C: · Mixed folder · Windows, run 3 of 5
+run: N>C mixed Windows: done 53.815 s, on the disk 53.901 s
+1322.1s N: → C: · Mixed folder · Choppy (C#), run 3 of 5
+run: N>C mixed C#: done 16.247 s, on the disk 16.330 s | Adaptive · 16 streams
+1340.5s N: → C: · Mixed folder · Choppy (Rust), run 3 of 5
+run: N>C mixed Rust: done 18.347 s, on the disk 18.419 s | Adaptive · 16 streams
+1361.0s N: → C: · Mixed folder · Choppy (Rust), run 4 of 5
+run: N>C mixed Rust: done 16.795 s, on the disk 16.873 s | Adaptive · 16 streams
+1379.8s N: → C: · Mixed folder · Choppy (C#), run 4 of 5
+run: N>C mixed C#: done 17.724 s, on the disk 17.808 s | Adaptive · 16 streams
+1399.6s N: → C: · Mixed folder · Windows, run 4 of 5
+run: N>C mixed Windows: done 53.766 s, on the disk 53.822 s
+1455.8s N: → C: · Mixed folder · Windows, run 5 of 5
+run: N>C mixed Windows: done 55.209 s, on the disk 55.238 s
+1513.3s N: → C: · Mixed folder · Choppy (C#), run 5 of 5
+run: N>C mixed C#: done 16.879 s, on the disk 16.964 s | Adaptive · 16 streams
+1532.3s N: → C: · Mixed folder · Choppy (Rust), run 5 of 5
+run: N>C mixed Rust: done 17.580 s, on the disk 17.647 s | Adaptive · 16 streams
+result: N>C mixed: C# 16.983 s, Rust 17.459 s, Windows 54.414 s; Rust vs C# -2.8% (C# vs Windows +68.8%, Rust vs Windows +67.9%); Rust's hand-back 0.1 ms
+1563.5s Removing the test files
+Choppy is Faster 6 of 9 · Marginal Tie 3 of 9 · Never Slower
++27% faster on average · Choppy 82.9 MB/s · Windows 37.8 MB/s · Time saved 1 min 5 s
+C:/Users/<user>/AppData/Local/Temp/choppy-step3/r5.html
