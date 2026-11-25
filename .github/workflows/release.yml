@@ -1,6 +1,6 @@
 # Publishes a release for every push to main that brings a new VERSION (1.25 -> 1.26 = release v1.26 with
-# Choppy-v1.26.zip): builds on GitHub's servers with the self-test, packages the zip with SHA256SUMS.txt, records
-# build provenance (gh attestation verify) and creates the release and its tag.
+# Choppy-v1.26.zip): builds on GitHub's servers (Rust, MSVC) with the self-test, packages the zip with
+# SHA256SUMS.txt, records build provenance (gh attestation verify) and creates the release and its tag.
 # A push that keeps the version only builds and runs the self-test.
 name: Release
 
@@ -17,6 +17,9 @@ permissions:
 concurrency:
   group: release
   cancel-in-progress: false
+
+env:
+  RUST_TOOLCHAIN: 1.100.0   # the Rust the release was tested with on the user's PC; raise it on purpose
 
 jobs:
   release:
@@ -35,6 +38,14 @@ jobs:
           if (git tag --list "v$v") { "v$v is released already: build and self-test only."; "new=false" >> $env:GITHUB_OUTPUT }
           else { "Releasing v$v."; "new=true" >> $env:GITHUB_OUTPUT }
 
+      - name: Rust (MSVC)
+        shell: pwsh
+        run: |
+          rustup toolchain install $env:RUST_TOOLCHAIN --profile minimal --target x86_64-pc-windows-msvc --no-self-update
+          rustup default $env:RUST_TOOLCHAIN
+          rustc --version
+          cargo --version
+
       - name: Build + self-test
         shell: powershell
         run: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\build.ps1 -Shell Cancel
@@ -46,6 +57,18 @@ jobs:
           $want = "$($v.Major).$($v.Minor).$([Math]::Max(0, $v.Build)).0"
           $got = (Get-Item bin\Choppy.exe).VersionInfo.FileVersion
           if ($got -ne $want) { throw "bin\Choppy.exe has version $got, VERSION says $want" }
+
+      - name: Check the exe needs only Windows' own DLLs
+        shell: pwsh
+        run: |
+          # +crt-static (rust\.cargo\config.toml): the C runtime is inside the exe, no VC++ redistributable needed
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $dumpbin = & $vswhere -latest -products * -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' | Select-Object -First 1
+          $dlls = @(& $dumpbin /nologo /dependents bin\Choppy.exe | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '\.dll$' })
+          if (-not $dlls) { throw "dumpbin listed no DLLs for bin\Choppy.exe" }
+          $dlls
+          $crt = $dlls | Where-Object { $_ -match '^(vcruntime|msvcp|ucrtbase|api-ms-win-crt-)' }
+          if ($crt) { throw "bin\Choppy.exe needs the VC++ runtime: $($crt -join ', ')" }
 
       - name: Package
         if: steps.ver.outputs.new == 'true'

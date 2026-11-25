@@ -1,5 +1,6 @@
-//! Embeds what the C# build puts in Choppy.exe: src/app.manifest (PerMonitorV2, longPathAware, supportedOS),
-//! src/Choppy.ico and the version info. FileVersion = VERSION ("1.48" -> 1.48.0.0): release.yml checks it.
+//! Embeds what the C# build puts in Choppy.exe: res/app.manifest (PerMonitorV2, longPathAware, supportedOS),
+//! res/Choppy.ico (byte for byte the C# project's src/app.manifest and src/Choppy.ico, so the build doesn't need
+//! src/ once the C# is gone) and the version info. FileVersion = VERSION ("1.48" -> 1.48.0.0): release.yml checks it.
 //! The resources are compiled with the Windows SDK's rc.exe (installed with the VS Build Tools) - no crate needed.
 
 use std::env;
@@ -11,8 +12,8 @@ fn main() {
     let here = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let repo = here.join("..").join("..");
     let version_file = repo.join("VERSION");
-    let manifest = repo.join("src").join("app.manifest");
-    let icon = repo.join("src").join("Choppy.ico");
+    let manifest = here.join("res").join("app.manifest");
+    let icon = here.join("res").join("Choppy.ico");
     for p in [&version_file, &manifest, &icon] {
         println!("cargo:rerun-if-changed={}", p.display());
     }

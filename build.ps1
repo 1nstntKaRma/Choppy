@@ -1,8 +1,9 @@
 # Builds Choppy -> bin\Choppy.exe, then installs it for the signed-in user.
 #
-# Choppy targets .NET Framework 4.8, which is part of every Windows 10 / 11 installation: one small exe (under 1 MB),
-# nothing extra to install. Building from source needs the .NET SDK (WPF); without it build.ps1 downloads the
-# ready-made exe of the latest release and checks it against the release's SHA-256.
+# Choppy is one exe with everything it needs inside (Rust, the C runtime built in): nothing extra to install.
+# Building from source needs Rust (rustup, the MSVC toolchain) and Visual Studio's C++ Build Tools with the Windows
+# SDK; without Rust build.ps1 downloads the ready-made exe of the latest release and checks it against the release's
+# SHA-256.
 #
 #   .\build.ps1                       build, then ask what to do
 #   .\build.ps1 -Shell Apply          install / update + "Default file manager" on (Ctrl+V of files in Explorer uses Choppy)
@@ -26,7 +27,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $Repo = '1nstntKaRma/Choppy'
 $root = $PSScriptRoot
-$proj = Join-Path $root 'src\Choppy.csproj'
+$proj = Join-Path $root 'rust\Cargo.toml'
 $bin = Join-Path $root 'bin'
 $exe = Join-Path $bin 'Choppy.exe'
 $version = if (Test-Path (Join-Path $root 'VERSION')) { (Get-Content (Join-Path $root 'VERSION') -TotalCount 1).Trim() } else { '0.0' }
@@ -51,7 +52,7 @@ Get-ChildItem Env: | Where-Object Name -like 'CHOPPY*' | ForEach-Object { Remove
 function Get-Stamp { $p = [version]$version; "$($p.Major).$($p.Minor).$([Math]::Max(0, $p.Build))" }
 
 function Get-Prebuilt {
-    Say "> No .NET SDK here - downloading the ready-made Choppy.exe from the latest release" Magenta
+    Say "> No Rust here - downloading the ready-made Choppy.exe from the latest release" Magenta
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     New-Item -ItemType Directory -Force $bin | Out-Null
     $base = "https://github.com/$Repo/releases/latest/download"
@@ -70,18 +71,31 @@ function Invoke-Build {
         if (Test-Path $exe) { return }
         Get-Prebuilt; return
     }
-    $sdk = $null
-    if (Get-Command dotnet -ErrorAction SilentlyContinue) { $sdk = & dotnet --list-sdks 2>$null }
-    if (-not $sdk) {
-        if (Test-Path $exe) { Say "  No .NET SDK here - using the existing bin\Choppy.exe" DarkYellow; return }
+    $cargo = $null
+    if (Get-Command cargo -ErrorAction SilentlyContinue) { $cargo = try { & cargo --version 2>$null } catch { $null } }
+    if (-not $cargo) {
+        if (Test-Path $exe) { Say "  No Rust here - using the existing bin\Choppy.exe" DarkYellow; return }
         Get-Prebuilt; return
     }
     $stamp = Get-Stamp
     Say "> Building Choppy $version" Magenta
-    & dotnet build $proj -c Release -nologo -v q "-p:Version=$stamp" | Out-Host
+    # Run from rust\, whose .cargo\config.toml builds the C runtime into the exe (+crt-static: no VC++ runtime needed);
+    # RUSTFLAGS from the environment would replace that, so this build goes without them. build.rs stamps VERSION.
+    $ws = Split-Path $proj
+    $target = Join-Path $ws 'target'
+    Remove-Item Env:RUSTFLAGS, Env:CARGO_ENCODED_RUSTFLAGS -ErrorAction SilentlyContinue
+    # no local folder names inside the exe: the crates' sources show as cargo\registry\... (added to config.toml's flags)
+    $cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE '.cargo' }
+    $remap = "target.x86_64-pc-windows-msvc.rustflags=['''--remap-path-prefix=$($cargoHome.TrimEnd('\'))=cargo''']"
+    $cargoArgs = 'build', '--release', '--locked', '-p', 'choppy', '--target', 'x86_64-pc-windows-msvc', '--target-dir', $target, '--config', $remap
+    Push-Location $ws
+    try { & cargo @cargoArgs | Out-Host } finally { Pop-Location }
     if ($LASTEXITCODE -ne 0) { throw "The build failed." }
+    $built = Join-Path $target 'x86_64-pc-windows-msvc\release\choppy.exe'
+    $got = (Get-Item $built).VersionInfo.FileVersion
+    if ($got -ne "$stamp.0") { throw "The built exe has version $got, VERSION says $stamp.0" }
     New-Item -ItemType Directory -Force $bin | Out-Null
-    Copy-Item (Join-Path $root 'src\bin\Release\net48\Choppy.exe') $exe -Force
+    Copy-Item $built $exe -Force
     $t = Join-Path $env:TEMP 'choppy-selftest.txt'
     $p = Start-Process $exe -ArgumentList '--selftest', "`"$t`"" -Wait -PassThru
     if ($p.ExitCode -ne 0) { Get-Content $t | Out-Host; throw "The self-test failed." }

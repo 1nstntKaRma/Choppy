@@ -12,11 +12,22 @@ on:
 permissions:
   contents: read
 
+env:
+  RUST_TOOLCHAIN: 1.100.0   # as release.yml
+
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+
+      - name: Rust (MSVC)
+        shell: pwsh
+        run: |
+          rustup toolchain install $env:RUST_TOOLCHAIN --profile minimal --target x86_64-pc-windows-msvc --no-self-update
+          rustup default $env:RUST_TOOLCHAIN
+          rustc --version
+          cargo --version
 
       - name: Build + self-test (no system changes)
         shell: powershell
@@ -30,6 +41,18 @@ jobs:
           $got = (Get-Item bin\Choppy.exe).VersionInfo.FileVersion
           if ($got -ne $want) { throw "bin\Choppy.exe has version $got, VERSION says $want" }
           "bin\Choppy.exe  $got  $((Get-FileHash bin\Choppy.exe).Hash)"
+
+      - name: Check the exe needs only Windows' own DLLs
+        shell: pwsh
+        run: |
+          # +crt-static (rust\.cargo\config.toml): the C runtime is inside the exe, no VC++ redistributable needed
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $dumpbin = & $vswhere -latest -products * -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' | Select-Object -First 1
+          $dlls = @(& $dumpbin /nologo /dependents bin\Choppy.exe | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '\.dll$' })
+          if (-not $dlls) { throw "dumpbin listed no DLLs for bin\Choppy.exe" }
+          $dlls
+          $crt = $dlls | Where-Object { $_ -match '^(vcruntime|msvcp|ucrtbase|api-ms-win-crt-)' }
+          if ($crt) { throw "bin\Choppy.exe needs the VC++ runtime: $($crt -join ', ')" }
 
       - uses: actions/upload-artifact@v7
         with:

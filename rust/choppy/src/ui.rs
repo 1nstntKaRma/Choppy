@@ -17,7 +17,7 @@ pub mod theme;
 pub mod tray_menu;
 
 /// Choppy.ico (the C# exe carries it as a resource too).
-pub const ICO: &[u8] = include_bytes!("../../../src/Choppy.ico");
+pub const ICO: &[u8] = include_bytes!("../res/Choppy.ico");
 
 /// ChoppyIcon.Frame's scale: the system DPI (the primary screen's), which picks the icon's frame.
 pub fn icon_scale() -> f64 {
