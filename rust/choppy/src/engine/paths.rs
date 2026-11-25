@@ -321,6 +321,15 @@ fn expand_short_names(full: &WString) -> WString {
     WString::from_units(chosen[root_difference..].to_vec())
 }
 
+/// Ipc.MakeAbs: a relative path made absolute in the folder Choppy was started in (before it goes through the pipe to
+/// the running Choppy); a rooted one, or one .NET can't take, as it is.
+pub fn make_abs(p: &WString) -> WString {
+    if has_illegal_chars(p) || is_path_rooted(p) {
+        return p.clone();
+    }
+    net_full_path(p).unwrap_or_else(|| p.clone())
+}
+
 /// Path.IsPathRooted + Path.Combine(StartDir, ..) + Path.GetFullPath; None where .NET throws.
 fn net_full_path(path: &WString) -> Option<WString> {
     if has_illegal_chars(path) {

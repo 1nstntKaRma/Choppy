@@ -11,6 +11,7 @@ mod job;
 mod plan_dump;
 pub mod selftest;
 mod usb;
+mod where_;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -27,6 +28,7 @@ pub fn run(args: &[WString]) -> i32 {
             "--benchcopy" => bench_copy::child(args.get(1)), // step 3: the C# Benchmark's child (Bench/EngineChild.cs)
             "--benchmark" => bench_cli::bench_cli(args),
             "--shellcopy" if args.len() >= 2 => crate::bench::shell_copy::child(&args[1].to_string_lossy()),
+            "--where" => where_::where_(args.get(1)),
             _ => {
                 eprintln!("not ported yet: {first}");
                 1

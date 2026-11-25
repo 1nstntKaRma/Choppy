@@ -234,6 +234,28 @@ namespace Choppy.Explorer
         const string VerbName = "ChoppyPaste";
         static readonly string[] VerbParents = { @"Software\Classes\Directory\Background\shell", @"Software\Classes\Directory\shell", @"Software\Classes\Drive\shell" };
 
+        /// <summary>
+        /// Test switch (rust branch only, in both programs, for comparing what they write): with test mode (CHOPPY_DATA),
+        /// CHOPPY_REGTEST=&lt;scratch key&gt; runs the registry steps as an installed Choppy does, but every key lands under
+        /// HKCU\&lt;scratch key&gt;\... (never the real Run key, right-click entries or settings), "installed" means the exe
+        /// sits in &lt;data folder&gt;\Programs\Choppy, and Explorer's icon cache is left alone.
+        /// </summary>
+        internal static string TestRoot
+        {
+            get
+            {
+                if (!AppPaths.TestMode) return null;
+                string r = Environment.GetEnvironmentVariable("CHOPPY_REGTEST");
+                return string.IsNullOrEmpty(r) ? null : r;
+            }
+        }
+
+        /// <summary>An HKCU key path, under the test root when there is one.</summary>
+        internal static string K(string path) { return TestRoot == null ? path : TestRoot + "\\" + path; }
+
+        /// <summary>Tests never touch the real Explorer, startup or Ultracopier (unless CHOPPY_REGTEST points them at a scratch key).</summary>
+        internal static bool RegistryOff { get { return AppPaths.TestMode && TestRoot == null; } }
+
         static string exePath;
         public static string ExePath { get { return exePath ?? (exePath = Process.GetCurrentProcess().MainModule.FileName); } }
 
@@ -242,7 +264,7 @@ namespace Choppy.Explorer
             try
             {
                 if (Process.GetProcessesByName("ultracopier").Length > 0) return true;
-                using (var k = Registry.CurrentUser.OpenSubKey(RunKey))
+                using (var k = Registry.CurrentUser.OpenSubKey(K(RunKey)))
                     if (k != null && k.GetValue("ultracopier") != null) return true;
                 string pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
                 return File.Exists(Path.Combine(pf, "Ultracopier", "ultracopier.exe"));
@@ -256,7 +278,7 @@ namespace Choppy.Explorer
             var s = Settings.Current;
             try
             {
-                if (AppPaths.TestMode)
+                if (RegistryOff)
                 {
                     // tests never touch the real Explorer, startup or Ultracopier
                     s.ExplorerTakeover = on;
@@ -268,11 +290,11 @@ namespace Choppy.Explorer
                 {
                     StopUltracopier(s);
                     EnsureMenu();
-                    using (var k = Registry.CurrentUser.CreateSubKey(RunKey)) k.SetValue("Choppy", "\"" + ExePath + "\" --tray");
+                    using (var k = Registry.CurrentUser.CreateSubKey(K(RunKey))) k.SetValue("Choppy", "\"" + ExePath + "\" --tray");
                 }
                 else
                 {
-                    using (var k = Registry.CurrentUser.CreateSubKey(RunKey)) if (k.GetValue("Choppy") != null) k.DeleteValue("Choppy");
+                    using (var k = Registry.CurrentUser.CreateSubKey(K(RunKey))) if (k.GetValue("Choppy") != null) k.DeleteValue("Choppy");
                     RestoreUltracopier(s);
                 }
                 s.ExplorerTakeover = on;
@@ -290,7 +312,7 @@ namespace Choppy.Explorer
             {
                 try
                 {
-                    string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Choppy");
+                    string dir = Path.Combine(TestRoot != null ? AppPaths.DataDir : Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Choppy");
                     return ExePath.StartsWith(dir + "\\", StringComparison.OrdinalIgnoreCase);
                 }
                 catch { return false; }
@@ -300,7 +322,7 @@ namespace Choppy.Explorer
         /// <summary>Right-click "Paste with Choppy" (installed copy only).</summary>
         public static void EnsureMenu()
         {
-            if (AppPaths.TestMode || !IsInstalledCopy) return;
+            if (RegistryOff || !IsInstalledCopy) return;
             try { WriteVerbs(); } catch { }
         }
 
@@ -308,10 +330,10 @@ namespace Choppy.Explorer
         public static void Refresh()
         {
             EnsureMenu();
-            if (AppPaths.TestMode || !Settings.Current.ExplorerTakeover) return;
+            if (RegistryOff || !Settings.Current.ExplorerTakeover) return;
             try
             {
-                using (var k = Registry.CurrentUser.CreateSubKey(RunKey)) k.SetValue("Choppy", "\"" + ExePath + "\" --tray");
+                using (var k = Registry.CurrentUser.CreateSubKey(K(RunKey))) k.SetValue("Choppy", "\"" + ExePath + "\" --tray");
             }
             catch { }
         }
@@ -320,7 +342,7 @@ namespace Choppy.Explorer
         public static string RemoveAll()
         {
             string err = Set(false);
-            if (!AppPaths.TestMode) RemoveVerbs();
+            if (!RegistryOff) RemoveVerbs();
             return err;
         }
 
@@ -329,7 +351,7 @@ namespace Choppy.Explorer
             string exe = ExePath;
             foreach (var parent in VerbParents)
             {
-                using (var k = Registry.CurrentUser.CreateSubKey(parent + "\\" + VerbName))
+                using (var k = Registry.CurrentUser.CreateSubKey(K(parent + "\\" + VerbName)))
                 {
                     k.SetValue("MUIVerb", "Paste with Choppy");
                     k.SetValue("Icon", "\"" + exe + "\",0");
@@ -343,7 +365,7 @@ namespace Choppy.Explorer
         static void RemoveVerbs()
         {
             foreach (var parent in VerbParents)
-                try { Registry.CurrentUser.DeleteSubKeyTree(parent + "\\" + VerbName, false); } catch { }
+                try { Registry.CurrentUser.DeleteSubKeyTree(K(parent + "\\" + VerbName), false); } catch { }
         }
 
         static void StopUltracopier(Settings s)
@@ -364,7 +386,7 @@ namespace Choppy.Explorer
                 }
                 for (int i = 0; i < 20 && Process.GetProcessesByName("ultracopier").Length > 0; i++) System.Threading.Thread.Sleep(250);
                 // then park its startup entry
-                using (var k = Registry.CurrentUser.CreateSubKey(RunKey))
+                using (var k = Registry.CurrentUser.CreateSubKey(K(RunKey)))
                 {
                     var v = k.GetValue("ultracopier") as string;
                     if (v != null) { s.UltracopierRunBackup = v; k.DeleteValue("ultracopier"); }
@@ -378,7 +400,7 @@ namespace Choppy.Explorer
             if (string.IsNullOrEmpty(s.UltracopierRunBackup)) return;
             try
             {
-                using (var k = Registry.CurrentUser.CreateSubKey(RunKey)) k.SetValue("ultracopier", s.UltracopierRunBackup);
+                using (var k = Registry.CurrentUser.CreateSubKey(K(RunKey))) k.SetValue("ultracopier", s.UltracopierRunBackup);
                 s.UltracopierRunBackup = null;
             }
             catch { }

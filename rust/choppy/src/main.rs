@@ -11,19 +11,31 @@ mod bench;
 mod cli;
 mod engine;
 mod explorer;
+mod instance;
 mod job_manager;
 mod sys; // the one module with unsafe code (it allows it itself)
 mod testhook;
 mod ui;
 mod wstr;
 
+use std::sync::OnceLock;
+use std::time::Instant;
+
 use engine::paths;
 use engine::settings::app_paths;
 use wstr::WString;
 
-/// Program.Main (step 5 ports the rest: the app, the single instance, the hand-over).
+static STARTED: OnceLock<Instant> = OnceLock::new();
+
+/// When this process started (Process.StartTime: a crash right at the start doesn't revive).
+pub fn started() -> Instant {
+    *STARTED.get_or_init(Instant::now)
+}
+
+/// Program.Main
 fn main() {
-    let args: Vec<WString> = std::env::args_os().skip(1).map(|a| WString::from_os(&a)).collect();
+    started();
+    let mut args: Vec<WString> = std::env::args_os().skip(1).map(|a| WString::from_os(&a)).collect();
     if let Ok(cwd) = std::env::current_dir() {
         paths::set_start_dir(WString::from_os(cwd.as_os_str()));
     }
@@ -40,6 +52,21 @@ fn main() {
     ) {
         std::process::exit(cli::run(&args));
     }
-    // App.Start (step 5 adds --revive, Instance.Claim and the hand-over to a running Choppy first)
-    std::process::exit(app::run(&args));
+    // a Choppy that ended on an error started this one: wait until it is gone, then watch Ctrl+V from the tray
+    if args.len() == 2
+        && args[0].eq_str("--revive")
+        && let Some(dead) = engine::netfmt::parse_int(&args[1].to_string_lossy())
+    {
+        if dead > 0 {
+            sys::wait_process(dead as u32, 20000);
+        }
+        args = vec![WString::from("--tray")];
+    }
+    // a Choppy is already running: hand it the job and exit, before any window is made
+    let elevated = args.len() >= 2 && args[0].eq_str(engine::handoff::ARG);
+    let name = instance::name(elevated);
+    match instance::claim(&args, &name) {
+        instance::Claimed::Exit(code) => std::process::exit(code),
+        instance::Claimed::Run(mutex) => std::process::exit(app::run(&args, mutex, &name, elevated)),
+    }
 }

@@ -262,3 +262,102 @@ pub fn process_running(exe: &str) -> bool {
         found
     }
 }
+
+// ================= step 5: the other copier, the revive, a crash =================
+
+/// The ids of the running processes with this exe name (Process.GetProcessesByName, which matches without ".exe").
+pub fn process_ids(exe: &str) -> Vec<u32> {
+    use windows::Win32::System::Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS};
+    let mut out = Vec::new();
+    unsafe {
+        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else { return out };
+        let mut e = PROCESSENTRY32W { dwSize: size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
+        let mut ok = Process32FirstW(snap, &mut e).is_ok();
+        while ok {
+            let n = e.szExeFile.iter().position(|&c| c == 0).unwrap_or(e.szExeFile.len());
+            if String::from_utf16_lossy(&e.szExeFile[..n]).eq_ignore_ascii_case(exe) {
+                out.push(e.th32ProcessID);
+            }
+            ok = Process32NextW(snap, &mut e).is_ok();
+        }
+        let _ = CloseHandle(snap);
+    }
+    out
+}
+
+/// Process.MainModule.FileName: None where .NET threw (a process this user can't read, e.g. one running as
+/// administrator: it is opened for PROCESS_QUERY_INFORMATION | PROCESS_VM_READ as .NET does).
+pub fn process_exe(pid: u32) -> Option<WString> {
+    use windows::Win32::System::Threading::{PROCESS_NAME_WIN32, PROCESS_VM_READ, QueryFullProcessImageNameW};
+    unsafe {
+        let h = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid).ok()?;
+        let p = Process(h);
+        let mut buf = vec![0u16; 32768];
+        let mut n = buf.len() as u32;
+        QueryFullProcessImageNameW(p.0, PROCESS_NAME_WIN32, windows::core::PWSTR(buf.as_mut_ptr()), &mut n).ok()?;
+        Some(WString::from_units(buf[..n as usize].to_vec()))
+    }
+}
+
+/// Process.WaitForExit(ms) on a process by id: true once it has ended (or is gone, or can't be waited on).
+pub fn wait_process(pid: u32, ms: u32) -> bool {
+    unsafe {
+        let Ok(h) = OpenProcess(PROCESS_SYNCHRONIZE, false, pid) else { return true };
+        let p = Process(h);
+        WaitForSingleObject(p.0, ms) != windows::Win32::Foundation::WAIT_TIMEOUT
+    }
+}
+
+/// Process.CloseMainWindow: WM_CLOSE to the process's main window (its first visible top-level window without an
+/// owner). False = it has none.
+pub fn close_main_window(pid: u32) -> bool {
+    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GW_OWNER, GetWindow, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, WM_CLOSE};
+    struct Find {
+        pid: u32,
+        found: isize,
+    }
+    unsafe extern "system" fn cb(h: HWND, l: LPARAM) -> BOOL {
+        unsafe {
+            let f = &mut *(l.0 as *mut Find);
+            let mut p = 0u32;
+            GetWindowThreadProcessId(h, Some(&mut p));
+            if p == f.pid && IsWindowVisible(h).as_bool() && GetWindow(h, GW_OWNER).is_err() {
+                f.found = h.0 as isize;
+                return BOOL(0);
+            }
+            BOOL(1)
+        }
+    }
+    let mut f = Find { pid, found: 0 };
+    unsafe {
+        let _ = EnumWindows(Some(cb), LPARAM(&mut f as *mut Find as isize));
+        if f.found == 0 {
+            return false;
+        }
+        PostMessageW(Some(HWND(f.found as *mut _)), WM_CLOSE, WPARAM(0), LPARAM(0)).is_ok()
+    }
+}
+
+/// The path of this exe (Process.GetCurrentProcess().MainModule.FileName).
+pub fn current_exe() -> WString {
+    std::env::current_exe().map(|p| WString::from_os(p.as_os_str())).unwrap_or_default()
+}
+
+static CRASH: std::sync::OnceLock<fn()> = std::sync::OnceLock::new();
+
+/// AppDomain.UnhandledException for what Rust can't catch (an access violation...): `f` runs once, then Windows ends
+/// the process as it would have.
+pub fn on_crash(f: fn()) {
+    use windows::Win32::System::Diagnostics::Debug::{EXCEPTION_POINTERS, SetUnhandledExceptionFilter};
+    unsafe extern "system" fn filter(_e: *const EXCEPTION_POINTERS) -> i32 {
+        if let Some(f) = CRASH.get() {
+            let _ = std::panic::catch_unwind(f);
+        }
+        0 // EXCEPTION_CONTINUE_SEARCH
+    }
+    let _ = CRASH.set(f);
+    unsafe {
+        SetUnhandledExceptionFilter(Some(filter));
+    }
+}

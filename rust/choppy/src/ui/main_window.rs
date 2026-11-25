@@ -160,6 +160,8 @@ pub struct MainContent {
     pub mouse_over: bool,
     /// The last time the window's height changed (KeepOnScreen after the view switch).
     keep_on_screen: bool,
+    /// drawn once off-screen and closed (App's warm-up): not the app's copy window
+    warm_up: bool,
 }
 
 fn key(j: &Arc<CopyJob>) -> usize {
@@ -194,6 +196,7 @@ impl MainContent {
             queue_popup: None,
             mouse_over: false,
             keep_on_screen: false,
+            warm_up: false,
         };
         if crate::app::elevated() {
             m.v.title_extra = "· Administrator".into();
@@ -1668,7 +1671,9 @@ impl Content for MainContent {
         {
             p.host.win.destroy();
         }
-        crate::app::main_closed();
+        if !self.warm_up {
+            crate::app::main_closed();
+        }
     }
 }
 
@@ -1804,4 +1809,20 @@ pub fn create(manager: Arc<JobManager>) -> Option<Rc<RefCell<MainWindow>>> {
         host.place(c, at);
     }
     Some(w)
+}
+
+/// A copy window that is only drawn once, off-screen and never focused, then closed (App.WarmUp): the first real one
+/// finds Direct2D, DirectWrite and the window's fonts ready.
+pub fn warm_up(manager: Arc<JobManager>) {
+    let g = crate::app::gfx();
+    let spec = Spec { title: "Choppy".into(), framed: true, minimize: true, taskbar: false, ..Default::default() };
+    let Some(w) = Window::create(&g, &spec, Sizing::ContentHeight(WIDTH), 46.0, MainContent::new(manager)) else { return };
+    let Ok(mut m) = w.try_borrow_mut() else { return };
+    let Window { host, c } = &mut *m;
+    c.warm_up = true;
+    c.set_icon(&host.g.clone(), crate::ui::icon_scale());
+    host.place(c, Place::At(-32000, -32000));
+    host.paint(c);
+    host.win.show(false);
+    host.close();
 }

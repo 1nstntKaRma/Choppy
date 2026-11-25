@@ -21,15 +21,16 @@ namespace Choppy.Explorer
         /// <summary>Refreshes the icons when Choppy's icon differs from the one last shown (cheap when it doesn't).</summary>
         public static void IfChanged()
         {
-            if (AppPaths.TestMode) return;
+            if (Takeover.RegistryOff) return;
             try
             {
                 string stamp = Stamp();
                 if (stamp == null) return;
-                using (var k = Registry.CurrentUser.OpenSubKey(Key))
+                using (var k = Registry.CurrentUser.OpenSubKey(Takeover.K(Key)))
                     if (k != null && stamp.Equals(k.GetValue(Value) as string, StringComparison.Ordinal)) return;
-                Refresh();
-                using (var k = Registry.CurrentUser.CreateSubKey(Key)) k.SetValue(Value, stamp);
+                // rust branch: the test switch only compares what is written - Explorer's own cache stays as it is
+                if (Takeover.TestRoot == null) Refresh();
+                using (var k = Registry.CurrentUser.CreateSubKey(Takeover.K(Key))) k.SetValue(Value, stamp);
             }
             catch { }
         }

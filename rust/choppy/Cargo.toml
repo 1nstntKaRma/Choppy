@@ -47,6 +47,11 @@ windows = { version = "0.62", features = [
     "Win32_UI_Shell_Common",                   # the tray icon, thumbnails, the taskbar button's progress
     "Win32_System_Diagnostics_ToolHelp",       # is another copier running (Takeover.UltracopierInstalled)
     "Win32_NetworkManagement_WNet",            # the Benchmark: the share a network drive letter is mapped to
+    # step 5: Explorer and the system
+    "Win32_System_Pipes",                      # the pipe a second start hands its command line through
+    "Win32_Security_Authorization",            # the pipe's access list (SDDL), the user's SID for the instance names
+    "Win32_System_Variant",                    # asking Explorer's windows which folder they show (ShellWindows, IDispatch)
+    "Win32_System_Kernel",                     # the crash filter's EXCEPTION_POINTERS (a crash revives the tray Choppy)
 ] }
 # Vector2 / Matrix3x2 in the Direct2D calls (part of the `windows` family, already in the lock file for look test A)
 windows-numerics = "0.3"

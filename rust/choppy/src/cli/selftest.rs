@@ -91,7 +91,12 @@ pub fn self_test(out_file: Option<&WString>) -> i32 {
     let mut sb = String::new();
     let mut fails = 0;
     let mut skipped: Vec<String> = Vec::new();
+    // a name that starts with "SKIP " is written as it is (C# appended those lines itself)
     let mut check = |name: &str, ok: bool| {
+        if name.starts_with("SKIP ") {
+            append_line(&mut sb, name);
+            return;
+        }
         append_line(&mut sb, &format!("{}{}", if ok { "PASS " } else { "FAIL " }, name));
         if !ok {
             fails += 1;
@@ -215,8 +220,18 @@ pub fn self_test(out_file: Option<&WString>) -> i32 {
             && ntfs.max_file_size() == 0
             && fs(None).max_file_size() == 0,
     );
-    // (step 5: the Ctrl+V hook check here - PasteHook.Start also says whether there is a desktop)
-    let desktop = true;
+    // the Ctrl+V hook: its own thread, put in again on time (observe only: it never takes a key here)
+    use crate::explorer::paste_hook;
+    use std::sync::atomic::Ordering::SeqCst;
+    let desktop = paste_hook::start(None, true);
+    if desktop {
+        crate::sys::sleep_ms(3500);
+        let ok = paste_hook::running() && paste_hook::REFRESHES.load(SeqCst) >= 1 && paste_hook::DROPPED.load(SeqCst) == 0;
+        paste_hook::stop();
+        check(&format!("Ctrl+V hook on its own thread, refreshed ({})", paste_hook::REFRESHES.load(SeqCst)), ok && !paste_hook::running());
+    } else {
+        check("SKIP Ctrl+V hook (no desktop to hook here)", true);
+    }
     for (ok, name) in super::bench_checks::bench_checks(desktop) {
         match ok {
             Some(ok) => check(&name, ok),

@@ -109,6 +109,11 @@ impl Settings {
         CURRENT.get_or_init(|| Mutex::new(Settings::load())).lock().unwrap()
     }
 
+    /// Settings.Current when no other thread holds it right now (a crash handler can't wait).
+    pub fn try_current() -> Option<MutexGuard<'static, Settings>> {
+        CURRENT.get()?.try_lock().ok()
+    }
+
     pub fn load() -> Settings {
         Self::load_from(KEY)
     }

@@ -201,7 +201,7 @@ fn run(line: &str) -> String {
             }
         }
         "enqueue" => {
-            let args: Vec<String> = arg.split('|').map(|s| s.trim().to_string()).collect();
+            let args: Vec<crate::wstr::WString> = arg.split('|').map(|s| crate::wstr::WString::from(s.trim())).collect();
             crate::app::handle_args(&args);
             "ok".into()
         }

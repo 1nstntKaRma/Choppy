@@ -867,12 +867,12 @@ fn deliver(slot: &Slot, win: Win, ev: Ev) -> bool {
         schedule_drain(slot, win);
         return false;
     };
-    let handled = hd.event(win, ev);
+    let handled = guard(|| hd.event(win, ev)).unwrap_or(false);
     loop {
         let next = slot.queue.borrow_mut().pop_front();
         match next {
             Some(e) => {
-                hd.event(win, e);
+                guard(|| hd.event(win, e));
             }
             None => break,
         }
@@ -882,6 +882,32 @@ fn deliver(slot: &Slot, win: Win, ev: Ev) -> bool {
         win.invalidate();
     }
     handled
+}
+
+static ON_PANIC: std::sync::OnceLock<fn(String)> = std::sync::OnceLock::new();
+
+/// Where the UI thread's errors are noted (App: DispatcherUnhandledException, errors.txt).
+pub fn on_ui_error(f: fn(String)) {
+    let _ = ON_PANIC.set(f);
+}
+
+/// Runs UI-thread work; an error in it is noted and the UI goes on (WPF's DispatcherUnhandledException with Handled:
+/// nothing may unwind into Windows' window procedures).
+fn guard<R>(f: impl FnOnce() -> R) -> Option<R> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(r) => Some(r),
+        Err(e) => {
+            let text = e
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_else(|| "panic".into());
+            if let Some(n) = ON_PANIC.get() {
+                let _ = std::panic::catch_unwind(|| n(text));
+            }
+            None
+        }
+    }
 }
 
 fn hit_test(slot: &Slot, h: HWND, l: LPARAM) -> u32 {
@@ -992,6 +1018,22 @@ pub fn post_local(f: LocalJob) {
     }
 }
 
+/// the timer that runs the idle work (far from the ids `timer` hands out)
+const IDLE_TIMER: usize = 0x7FFF_0001;
+
+thread_local! {
+    static IDLE: RefCell<VecDeque<LocalJob>> = const { RefCell::new(VecDeque::new()) };
+}
+
+/// Runs `f` on the UI thread once it has nothing more urgent to do (WPF's Background / ApplicationIdle priorities): a
+/// timer's message comes only after the posted work, input and painting. Several run in the order given.
+pub fn idle(f: LocalJob) {
+    IDLE.with(|q| q.borrow_mut().push_back(f));
+    unsafe {
+        SetTimer(Some(dispatch_hwnd()), IDLE_TIMER, 0, None);
+    }
+}
+
 /// A timer on the UI thread: `f` every `ms` (once = after `ms`, once). Returns its id.
 pub fn timer(ms: u32, once: bool, f: Rc<dyn Fn()>) -> usize {
     let id = NEXT_TIMER.with(|n| {
@@ -1024,12 +1066,21 @@ extern "system" fn dispatch_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRE
                 loop {
                     let job = QUEUE.lock().unwrap_or_else(|e| e.into_inner()).pop_front();
                     let Some(job) = job else { break };
-                    job();
+                    guard(job);
                 }
                 loop {
                     let job = LOCAL.with(|q| q.borrow_mut().pop_front());
                     let Some(job) = job else { break };
-                    job();
+                    guard(job);
+                }
+                LRESULT(0)
+            }
+            WM_TIMER if w.0 == IDLE_TIMER => {
+                let _ = KillTimer(Some(h), IDLE_TIMER);
+                loop {
+                    let job = IDLE.with(|q| q.borrow_mut().pop_front());
+                    let Some(job) = job else { break };
+                    guard(job);
                 }
                 LRESULT(0)
             }
@@ -1039,21 +1090,21 @@ extern "system" fn dispatch_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRE
                     if once {
                         kill(w.0);
                     }
-                    f();
+                    guard(|| f());
                 }
                 LRESULT(0)
             }
             WM_TRAY => {
                 let f = TRAY_HANDLER.with(|t| t.borrow().clone());
                 if let Some(f) = f {
-                    f((l.0 & 0xFFFF) as u32);
+                    guard(|| f((l.0 & 0xFFFF) as u32));
                 }
                 LRESULT(0)
             }
             WM_DEVICECHANGE => {
                 let f = DEVICE_HANDLER.with(|t| t.borrow().clone());
                 if let Some(f) = f {
-                    f(w.0);
+                    guard(|| f(w.0));
                 }
                 LRESULT(1)
             }

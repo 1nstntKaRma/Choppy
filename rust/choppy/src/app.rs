@@ -1,8 +1,10 @@
-//! App.cs, the parts the windows need (step 4): the UI thread, the job manager's questions from the copy threads
-//! (conflicts, low space, administrator rights) as windows, showing the copy / settings / Benchmark windows, the
-//! dialogs list, exiting when nothing is left, and the tray (EnsureTray, TrayOpen, UpdateTrayMenu, SetTrayText,
-//! TrayBalloon, QuitFromTray). Step 5 adds the rest of App.cs: the single instance and its pipe, the Explorer
-//! takeover, warm-up, resume, the administrator copy.
+//! App.cs: one Choppy per user. A second start (Explorer paste, right-click, command line) hands its job to the first
+//! through a pipe and exits at once, so the window opens instantly in the running copy (instance.rs).
+//!   Choppy.exe copy|move <src...> <destDir>   Choppy.exe paste <destDir>   Choppy.exe --tray   Choppy.exe (settings)
+//! The UI thread, the job manager's questions from the copy threads (conflicts, low space, administrator rights) as
+//! windows, the copy / settings / Benchmark windows, the dialogs list, exiting when nothing is left, the tray (step 4);
+//! the commands, the Explorer paste, the takeover, the quick first window, the resume offer, the administrator copy
+//! and a crash's revive (step 5).
 #![deny(unsafe_code)]
 
 use std::cell::RefCell;
@@ -11,9 +13,11 @@ use std::sync::mpsc;
 use std::sync::{Arc, OnceLock};
 
 use crate::engine::copy_job::CopyJob;
+use crate::engine::handoff;
 use crate::engine::model::{ConflictAnswer, ConflictInfo, ConflictPolicy, JobSpec, OpKind};
 use crate::engine::paths;
-use crate::engine::settings::Settings;
+use crate::engine::settings::{Settings, app_paths};
+use crate::explorer::{clipboard_files, icon_refresh, paste_hook, paste_log, shell_location, takeover};
 use crate::job_manager::JobManager;
 use crate::sys::gfx::Gfx;
 use crate::sys::win::{self, Win};
@@ -40,6 +44,9 @@ pub struct App {
     pub elevated: bool,
     pub hook: Option<crate::testhook::TestHook>,
     pub quit_requested: bool,
+    /// a copy window was built in this process: the next ones come up at once (see schedule_warm_up)
+    pub window_built: bool,
+    pub resume_offered: bool,
 }
 
 thread_local! {
@@ -84,11 +91,20 @@ pub fn with_main(f: impl Fn(&mut MainWindow) + 'static) {
     }
 }
 
-/// App.Start: the UI thread, the job manager wired to the windows, the test hook; then `args`; the message loop.
-pub fn run(args: &[WString]) -> i32 {
+/// App.Start: runs this Choppy (instance::claim got the mutex first): the UI thread, the job manager wired to the
+/// windows, the pipe, the test hook; then `args`; the message loop. `elevated` = this is the short-lived administrator
+/// copy (started by the user's own Choppy for a folder that needs administrator rights): its own mutex and pipe, no
+/// keyboard hook, no tray, never touches the Run key, the right-click entries or Ultracopier. It runs its copy in its
+/// own window and exits.
+pub fn run(args: &[WString], mutex: crate::sys::NamedMutex, pipe_name: &str, elevated: bool) -> i32 {
     crate::testhook::dpi96_if_asked();
     crate::sys::com_init_sta();
     win::init_ui_thread();
+    // an error on the UI thread is noted and Choppy goes on; one that ends the process: noted, and a Choppy that
+    // watches Ctrl+V starts again in the tray
+    win::on_ui_error(|e| note_error(&e, false));
+    ELEVATED.store(elevated, std::sync::atomic::Ordering::SeqCst);
+    crate::sys::on_crash(on_crash);
     let Some(gfx) = Gfx::new() else { return 1 };
     let manager = make_manager();
     let _ = MANAGER.set(manager.clone());
@@ -103,26 +119,102 @@ pub fn run(args: &[WString]) -> i32 {
             dialogs: Vec::new(),
             tray: false,
             resident: false,
-            elevated: false,
+            elevated,
             hook: None,
             quit_requested: false,
+            window_built: false,
+            resume_offered: false,
         })
     });
+    crate::instance::listen(pipe_name, |a| win::post(Box::new(move || handle_args(&a))));
     if let Ok(dir) = std::env::var("CHOPPY_TESTHOOK")
         && !dir.is_empty()
     {
         let h = crate::testhook::TestHook::start(&dir);
         with(|a| a.hook = Some(h));
     }
-    let a: Vec<String> = args.iter().map(|a| a.to_string_lossy()).collect();
-    handle_args(&a);
+
+    // the installer's own steps (--menu, --uninstall...) find the registry entries checked before they run
+    let step = args.first().is_some_and(|a| a.starts_with("--"));
+    if !elevated && step {
+        takeover::refresh();
+    }
+    // "Default file manager" on: any start of Choppy for a copy, a paste or the settings stays in the tray watching
+    // Ctrl+V - a right-click paste brings the takeover back even if the tray copy was closed (not for the installer's
+    // own steps like --menu, which wait for it to exit). The copy's window comes first: the tray, the hook and the
+    // registry check follow right after it
+    let takeover = !elevated && !app_paths::test_mode() && !step && Settings::current().explorer_takeover;
+    if takeover {
+        with(|a| a.resident = true);
+    }
+    handle_args(args);
+    if !elevated && !step {
+        win::idle(Box::new(move || {
+            takeover::refresh();
+            if takeover {
+                apply_takeover();
+            }
+        }));
+    }
+    if !elevated {
+        win::idle(Box::new(offer_resume));
+    }
+    // a new icon in this exe: Explorer's icon cache still has the old one (taskbar pins, Start menu)
+    if !elevated && !step {
+        win::idle(Box::new(|| {
+            let _ = std::thread::Builder::new().name("icon refresh".into()).spawn(|| {
+                let _ = std::panic::catch_unwind(icon_refresh::if_changed);
+            });
+        }));
+    }
     // test files a benchmark left behind (Choppy closed or the PC went off while it ran)
-    std::thread::spawn(|| {
-        let _ = std::panic::catch_unwind(crate::bench::files::clean_leftovers);
-    });
+    if !elevated {
+        win::idle(Box::new(|| {
+            let _ = std::thread::Builder::new().name("bench leftovers".into()).spawn(|| {
+                let _ = std::panic::catch_unwind(crate::bench::files::clean_leftovers);
+            });
+        }));
+    }
     let code = win::run_loop();
+    // OnExit
+    paste_hook::stop();
     win::tray_remove();
+    mutex.release(); // one Choppy per user until here
+    drop(mutex);
     code
+}
+
+static ELEVATED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// errors.txt in the data folder: DateTime.Now + " " + the error ("(closed) " first when it ended Choppy).
+fn note_error(text: &str, closed: bool) {
+    let now = crate::sys::file_time_to_local(crate::sys::now_file_time()).map(|t| crate::sys::general_date_time(&t)).unwrap_or_default();
+    let line = format!("{now} {}{text}\r\n", if closed { "(closed) " } else { "" });
+    let path = app_paths::data_dir().join("errors.txt");
+    if let Ok(mut f) = std::fs::OpenOptions::new().append(true).create(true).open(path) {
+        use std::io::Write;
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+/// OnCrash: an error ended the process. Noted; a Choppy that watched Ctrl+V starts again in the tray (not when it
+/// fails right at the start: it would only fail again).
+fn on_crash() {
+    note_error("the process ended on an error Windows reported", true);
+    let elevated = ELEVATED.load(std::sync::atomic::Ordering::SeqCst);
+    if elevated || app_paths::test_mode() || crate::started().elapsed().as_secs() < 30 {
+        return;
+    }
+    // the settings may be held by the thread that failed: not waited for
+    let on = match Settings::try_current() {
+        Some(s) => s.explorer_takeover,
+        None => return,
+    };
+    if !on {
+        return;
+    }
+    paste_log::write("Choppy closed on an error; started again in the tray.");
+    let _ = std::process::Command::new(takeover::exe_path().to_os()).arg("--revive").arg(crate::sys::current_pid().to_string()).spawn();
 }
 
 fn make_manager() -> Arc<JobManager> {
@@ -152,13 +244,27 @@ fn make_manager() -> Arc<JobManager> {
 
 // ================= commands =================
 
-/// HandleArgs (step 4: copy / move, the settings, --tray; step 5 adds paste, --resume, --takeover, --menu...).
-pub fn handle_args(args: &[String]) {
-    let cmd = args.first().map(|a| a.to_lowercase()).unwrap_or_default();
+pub fn handle_args(args: &[WString]) {
+    let cmd = args.first().map(|a| a.to_lower_invariant().to_string_lossy()).unwrap_or_default();
+    if elevated() {
+        // the administrator copy does its one job and nothing else
+        if cmd == handoff::ARG && args.len() > 1 {
+            let record = std::path::PathBuf::from(args[1].to_os());
+            let fp = args.get(2).map(|a| a.to_string_lossy());
+            if let Some(hs) = handoff::load(&record, fp.as_deref()) {
+                manager().enqueue(hs);
+            }
+        } else if cmd == "--quit" {
+            quit_from_tray();
+            return;
+        }
+        maybe_exit();
+        return;
+    }
     match cmd.as_str() {
         "--tray" => {
             with(|a| a.resident = true);
-            ensure_tray();
+            apply_takeover();
         }
         "copy" | "move" => {
             if args.len() < 3 {
@@ -170,16 +276,37 @@ pub fn handle_args(args: &[String]) {
                 show_main(true);
             }
         }
+        "paste" => paste_into(args.get(1), "Right-click"),
+        "--resume" => offer_resume(),
+        "--takeover" => {
+            let on = args.get(1).is_some_and(|a| a.eq_ignore_case_str("on"));
+            if let Some(err) = takeover::set(on) {
+                dialogs::show(None, "Couldn't change the Explorer setting", &err, "OK", None, |_| {});
+            }
+        }
+        "--menu" => {
+            takeover::ensure_menu();
+            icon_refresh::if_changed(); // the installer runs this right after it replaced the exe
+        }
+        "--uninstall" => {
+            takeover::remove_all();
+            quit_from_tray();
+            return;
+        }
+        "--quit" => {
+            quit_from_tray();
+            return;
+        }
         _ => show_settings(None),
     }
     maybe_exit();
 }
 
-fn new_spec(op: OpKind, sources: &[String], dest: &str, origin: &str) -> Option<JobSpec> {
+fn new_spec(op: OpKind, sources: &[WString], dest: &WString, origin: &str) -> Option<JobSpec> {
     let s = Settings::current();
     let mut spec = JobSpec {
         op,
-        dest: paths::to_long(&WString::from(dest)),
+        dest: paths::to_long(dest),
         verify: s.verify_copies,
         policy: s.policy,
         origin: origin.into(),
@@ -187,11 +314,79 @@ fn new_spec(op: OpKind, sources: &[String], dest: &str, origin: &str) -> Option<
     };
     drop(s);
     for src in sources {
-        if !src.trim().is_empty() {
-            spec.sources.push(paths::to_long(&WString::from(src.as_str())));
+        if !src.is_white_space() {
+            spec.sources.push(paths::to_long(src));
         }
     }
     (!spec.sources.is_empty() && !spec.dest.is_empty()).then_some(spec)
+}
+
+/// Pastes the files on the clipboard into a folder (right-click "Paste with Choppy").
+fn paste_into(dest: Option<&WString>, origin: &str) {
+    let dest = dest.filter(|d| !d.is_empty());
+    let files = if dest.is_some() { clipboard_files::read() } else { None };
+    let (Some(dest), Some(f)) = (dest, files) else {
+        dialogs::show(main_win(), "Nothing to paste", "Copy or cut some files first, then paste them here.", "OK", None, |_| {});
+        return;
+    };
+    let Some(spec) = new_spec(if f.moved { OpKind::Move } else { OpKind::Copy }, &f.files, dest, origin) else { return };
+    manager().enqueue(spec);
+    show_main(true); // a new copy (running or queued): the window comes up on top
+    // like Explorer: files that were cut are pasted once
+    if f.moved && !app_paths::test_mode() {
+        crate::sys::clipboard_clear();
+    }
+}
+
+/// The Ctrl+V hook took a paste in this Explorer window (on the UI thread).
+fn on_explorer_paste(explorer_window: isize) {
+    // the folder the window shows (asked of Explorer itself; it can be slow or busy for a moment: asked again)
+    let mut dest = None;
+    let mut is_virtual = false;
+    for i in 0..3 {
+        if dest.is_some() {
+            break;
+        }
+        if i > 0 {
+            crate::sys::sleep_ms(120);
+        }
+        (dest, is_virtual) = shell_location::folder_of(explorer_window);
+        if is_virtual {
+            break;
+        }
+    }
+    let Some(dest) = dest else {
+        // This PC, Libraries, a zip folder...: Explorer's own paste
+        paste_log::write(if is_virtual {
+            "Pasted by Windows: the window shows a place that isn't a folder (This PC, a library, a zip...)"
+        } else {
+            "Pasted by Windows: Explorer didn't say which folder the window shows"
+        });
+        paste_hook::replay_paste();
+        return;
+    };
+    let (files, busy) = clipboard_files::read_busy();
+    let Some(f) = files else {
+        paste_log::write(if busy {
+            "Pasted by Windows: another program kept the clipboard open"
+        } else {
+            "Pasted by Windows: no files on the clipboard any more"
+        });
+        paste_hook::replay_paste();
+        return;
+    };
+    let n = f.files.len();
+    let what = format!("Choppy: {}{n}{} to {dest}", if f.moved { "move " } else { "copy " }, if n == 1 { " item" } else { " items" });
+    let Some(spec) = new_spec(if f.moved { OpKind::Move } else { OpKind::Copy }, &f.files, &dest, "Explorer") else {
+        paste_log::write(&what);
+        return;
+    };
+    manager().enqueue(spec);
+    show_main(true);
+    paste_log::write(&format!("{what} (window up {} ms after the key)", paste_hook::ms_since_press()));
+    if f.moved && !app_paths::test_mode() {
+        crate::sys::clipboard_clear();
+    }
 }
 
 // ================= windows =================
@@ -203,6 +398,7 @@ pub fn show_main(lift: bool) {
     let w = match main_window() {
         Some(w) => w,
         None => {
+            with(|a| a.window_built = true);
             let Some(w) = main_window::create(manager()) else { return };
             with(|a| a.main = Some(w.clone()));
             if let Ok(mut m) = w.try_borrow_mut() {
@@ -231,6 +427,29 @@ pub fn show_main(lift: bool) {
     let active = host.win.activate();
     if lift || !active {
         c.lift(host);
+    }
+}
+
+// ---------- a quick first window ----------
+
+/// The first window of a process is slower to build: Direct2D and DirectWrite set up the window's target, its fonts
+/// and text layouts then. A Choppy that waits in the tray builds one off-screen a few seconds after it starts and
+/// closes it again, so the first copy's window is as quick as the rest. The Explorer folder lookup is run once too.
+fn schedule_warm_up() {
+    if with(|a| a.window_built || a.elevated).unwrap_or(true) {
+        return;
+    }
+    win::timer(3000, true, Rc::new(|| win::idle(Box::new(warm_up))));
+}
+
+fn warm_up() {
+    if with(|a| a.window_built || a.main.is_some()).unwrap_or(true) {
+        return;
+    }
+    with(|a| a.window_built = true);
+    main_window::warm_up(manager());
+    if !app_paths::test_mode() {
+        let _ = shell_location::folder_of(0);
     }
 }
 
@@ -419,6 +638,43 @@ fn main_win() -> Option<Win> {
     main_window().and_then(|m| m.try_borrow().ok().map(|m| m.host.win))
 }
 
+// ================= resume after a crash =================
+
+/// The unfinished copies (the PC restarted or Choppy was closed) are offered one after another.
+fn offer_resume() {
+    if with(|a| std::mem::replace(&mut a.resume_offered, true)).unwrap_or(true) {
+        return;
+    }
+    let m = manager();
+    let mut known: std::collections::HashSet<String> = m.waiting_snapshot().iter().map(|s| s.id.clone()).collect();
+    if let Some(c) = m.current() {
+        known.insert(c.spec.id.clone());
+    }
+    let list: Vec<JobSpec> =
+        crate::engine::settings::journal::load_unfinished().into_iter().filter(|s| !known.contains(&s.id)).collect();
+    offer_next(list.into_iter());
+}
+
+fn offer_next(mut rest: std::vec::IntoIter<JobSpec>) {
+    let Some(mut spec) = rest.next() else {
+        maybe_exit();
+        return;
+    };
+    let what = format!("{} to {}", spec.title(), paths::to_short(&spec.dest));
+    let text = format!(
+        "{what} stopped before it finished (the PC restarted or Choppy was closed). Resuming keeps every file already copied and copies only the rest."
+    );
+    dialogs::show(main_win(), "Resume the unfinished copy?", &text, "Resume", Some("Forget it"), move |r| {
+        if r == 1 {
+            spec.resume_mode = true;
+            manager().enqueue(spec);
+        } else {
+            crate::engine::settings::journal::remove(&spec);
+        }
+        offer_next(rest);
+    });
+}
+
 // ================= tray =================
 
 pub fn ensure_tray() {
@@ -467,6 +723,7 @@ pub fn quit_from_tray() {
         for s in m.waiting_snapshot() {
             m.remove(&s);
         }
+        paste_hook::stop();
         win::tray_remove();
         with(|a| a.tray = false);
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
@@ -493,16 +750,22 @@ pub fn quit_for_test() {
     win::quit(0);
 }
 
-/// ApplyTakeover (step 4: in the tray while it is on; step 5 adds the Ctrl+V hook and the warm-up).
+/// The takeover as the settings say now: on = in the tray watching Ctrl+V (the hook, a quick first window); off = the
+/// hook stops, and an idle tray Choppy goes.
 pub fn apply_takeover() {
-    if elevated() {
+    if elevated() || with(|_| ()).is_none() {
         return;
     }
     let on = Settings::current().explorer_takeover;
     if on {
         with(|a| a.resident = true);
         ensure_tray();
+        if !app_paths::test_mode() {
+            paste_hook::start(Some(on_explorer_paste), false);
+        }
+        schedule_warm_up();
     } else {
+        paste_hook::stop();
         let busy = manager().busy();
         let resident = with(|a| a.resident).unwrap_or(false);
         if resident && !busy && with(|a| a.tray).unwrap_or(false) {
