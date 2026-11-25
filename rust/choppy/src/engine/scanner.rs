@@ -4,7 +4,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use super::copy_job::TEMP_SUFFIX;
 use super::model::{DirItem, FileItem, JobSpec, OpKind, ScanResult};
@@ -204,7 +203,7 @@ impl Scanner {
                                 done.store(true, Ordering::SeqCst);
                             } else if spin >= 10 {
                                 // SpinWait: after 10 spins it yields; here a 1 ms sleep as the C# does then
-                                std::thread::sleep(Duration::from_millis(1));
+                                sys::sleep_ms(1);
                             } else {
                                 for _ in 0..(4u32 << spin) {
                                     std::hint::spin_loop();

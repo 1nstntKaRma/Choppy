@@ -46,6 +46,16 @@ fn engine_copy(src: &WString, dest: &WString, opts: &[WString]) -> Result<(f64, 
     job.ask_low_space = Some(Box::new(|_, _, _| false));
     job.ask_elevate = Some(Box::new(|_| false));
     let job = Arc::new(job);
+    // CHOPPY_BENCH_TRACE=file: each phase's start (ms after the clock started) and the files done then, one line each
+    if let Some(trace) = std::env::var_os("CHOPPY_BENCH_TRACE") {
+        let t0 = Instant::now();
+        job.on_phase_changed(Arc::new(move |j| {
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&trace) {
+                let _ = writeln!(f, "{:.1} ms {} {} files", t0.elapsed().as_secs_f64() * 1000.0, j.phase().name(), j.done_files.load(SEQ));
+            }
+        }));
+    }
     let (tx, rx) = mpsc::channel::<(Instant, i64)>();
     job.on_finished(Arc::new(move |_| {
         let _ = tx.send((Instant::now(), sys::now_precise_file_time()));
@@ -95,10 +105,34 @@ fn run(job_file: &std::path::Path) -> Result<String, String> {
     Ok(format!("seconds={secs}\r\nended={ended}\r\nmethod={}", method.unwrap_or_default()))
 }
 
+/// `--benchcopy job.txt`: one copy, its result in job.txt.result. `--benchcopy -`: a job file's path per line on stdin,
+/// each answered on stdout with the result in one line, its fields apart by tabs (nothing written to a file, so the
+/// answer is back as soon as the copy is done); the process stays for the next one (warm, as the C# engine is in the
+/// Benchmark's own process) until stdin ends.
 pub fn child(job_file: Option<&WString>) -> i32 {
     let Some(job_file) = job_file else { return 1 };
-    let job_file = std::path::PathBuf::from(job_file.to_os());
-    let result = match catch_unwind(AssertUnwindSafe(|| run(&job_file))) {
+    if job_file.eq_str("-") {
+        use std::io::{BufRead, Write};
+        for line in std::io::stdin().lock().lines() {
+            let Ok(line) = line else { break };
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let result = result_of(std::path::Path::new(line)).replace("\r\n", "\t");
+            let mut out = std::io::stdout().lock();
+            if writeln!(out, "{result}").and_then(|_| out.flush()).is_err() {
+                return 1;
+            }
+        }
+        return 0;
+    }
+    one(std::path::PathBuf::from(job_file.to_os()))
+}
+
+/// The result's lines: "seconds=...", "ended=...", "method=..." or "error=...".
+fn result_of(job_file: &std::path::Path) -> String {
+    match catch_unwind(AssertUnwindSafe(|| run(job_file))) {
         Ok(Ok(r)) => r,
         Ok(Err(e)) => format!("error={}", e.replace(['\r', '\n'], " ")),
         Err(p) => {
@@ -109,7 +143,11 @@ pub fn child(job_file: Option<&WString>) -> i32 {
                 .unwrap_or_else(|| "panic".into());
             format!("error={}", text.replace(['\r', '\n'], " "))
         }
-    };
+    }
+}
+
+fn one(job_file: std::path::PathBuf) -> i32 {
+    let result = result_of(&job_file);
     let mut out = job_file.into_os_string();
     out.push(".result");
     // File.WriteAllText(path, text, Encoding.UTF8): a byte order mark first

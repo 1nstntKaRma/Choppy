@@ -13,6 +13,7 @@ use crate::engine::copy_job::CopyJob;
 use crate::engine::model::{ConflictAnswer, ConflictPolicy, JobPhase, JobSpec, OpKind};
 use crate::engine::settings::journal;
 use crate::engine::{lock, netfmt, paths};
+use crate::sys;
 use crate::wstr::WString;
 
 const SEQ: Ordering = Ordering::SeqCst;
@@ -206,7 +207,7 @@ pub fn run(args: &[WString]) -> i32 {
     });
     let (mut paused_once, mut skipped) = (false, false);
     while !job.is_finished() {
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        sys::sleep_ms(50);
         let t = sw.elapsed().as_secs_f64();
         if cancel_after > 0.0 && t >= cancel_after && !job.is_canceled() {
             job.cancel();

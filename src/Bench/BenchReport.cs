@@ -106,7 +106,7 @@ namespace Choppy.Bench
         public bool Choppy;
         public double Done;      // seconds until it said it was done
         public double OnDisk;    // ... and until its copies were on the disk
-        public double After;     // step 3: of that, the Rust child's process ending (counted against it)
+        public double After;     // step 3: of that, the Rust child handing its answer back (counted against it)
     }
 
     internal sealed class BenchResult

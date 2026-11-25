@@ -39,6 +39,9 @@ namespace Choppy.Bench
         // Windows; the C# results go to Report.Results, the Rust ones (sharing Windows' runs) to Report.RustResults.
         // (This Choppy.exe as RustExe = the C# engine in a child: a check of the method itself.)
         public string RustExe;
+        public bool RustFresh;                    // step 3: a new Rust process per copy (else one warm child for the whole run)
+        public int SizeDown = -1;                 // step 3: the size step down as given (0, 1) instead of by the time budget: a rerun
+                                                  // of some routes copies the same files as a run over all of them
 
         public readonly BenchReport Report = new BenchReport();
         volatile bool cancel;
@@ -208,7 +211,7 @@ namespace Choppy.Bench
         /// </summary>
         internal void SizeRoutes(List<Route> routes)
         {
-            for (int down = 0; down <= 1; down++)
+            for (int down = Math.Max(0, SizeDown); down <= 1; down++)
             {
                 foreach (var r in routes)
                 {
@@ -216,7 +219,7 @@ namespace Choppy.Bench
                     r.Big = BigFor(step);
                     r.Small = SmallFor(step);
                 }
-                if (Tiny || routes.Sum(x => Estimate(x, DefaultRounds(Thorough))) <= BudgetSeconds) break;
+                if (Tiny || SizeDown >= 0 || routes.Sum(x => Estimate(x, DefaultRounds(Thorough))) <= BudgetSeconds) break;
             }
             foreach (var r in routes)
             {
@@ -426,6 +429,7 @@ namespace Choppy.Bench
                     foreach (var d in Report.Drives)
                         if (d.TestDir != null && !BenchFiles.Remove(d.TestDir))
                             Report.Notes.Add("Some test files on " + d.Letter + " couldn't be removed yet (" + d.TestDir + "); Choppy removes them at its next start.");
+                EngineChild.StopAll();
                 if (held != null) held.Dispose();
                 Native.SetThreadExecutionState(Native.ES_CONTINUOUS);
                 clock.Stop();
@@ -527,7 +531,7 @@ namespace Choppy.Bench
                     if (three)
                     {
                         resR.Score();
-                        if (Log != null) Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "result: {0} {1}: C# {2:0.000} s, Rust {3:0.000} s, Windows {4:0.000} s; Rust vs C# {5:+0.0;-0.0;0.0}% (C# vs Windows {6:+0.0;-0.0;0.0}%, Rust vs Windows {7:+0.0;-0.0;0.0}%); Rust's process end {8:0} ms",
+                        if (Log != null) Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "result: {0} {1}: C# {2:0.000} s, Rust {3:0.000} s, Windows {4:0.000} s; Rust vs C# {5:+0.0;-0.0;0.0}% (C# vs Windows {6:+0.0;-0.0;0.0}%, Rust vs Windows {7:+0.0;-0.0;0.0}%); Rust's hand-back {8:0.0} ms",
                             r.From.Letter.Substring(0, 1) + ">" + r.To.Letter.Substring(0, 1), c.Key, res.ChoppySecs, resR.ChoppySecs, res.WindowsSecs,
                             res.ChoppySecs > 0 ? (res.ChoppySecs - resR.ChoppySecs) / res.ChoppySecs * 100 : 0, res.Saved * 100, resR.Saved * 100,
                             Mean(resR.Runs.Where(x => x.Choppy).Select(x => x.After * 1000).ToList())));
@@ -606,12 +610,10 @@ namespace Choppy.Bench
                 if (side == 'R')
                 {
                     // step 3: the Rust engine in a child, timed as ChoppyCopy times this one (EngineChild); from the moment
-                    // it said done until here (its process ending) counts against it, as part of the time to the disk
+                    // it said done until its answer is here (with --rust-fresh its process ending too) counts against it
                     string m;
-                    long ended;
-                    try { done = EngineChild.Run(RustExe, warm, warmDest, src, dest, TweakArgs, Canceled, out m, out ended); }
+                    try { done = EngineChild.Run(RustExe, !RustFresh, warm, warmDest, src, dest, TweakArgs, Canceled, out m, out after); }
                     catch (IOException ex) { throw new IOException("Choppy (Rust): " + ex.Message); }
-                    if (ended > 0) after = Math.Max(0, (EngineChild.PreciseNow() - ended) / 1e7);
                     if (m != null) res.Method = m;
                 }
                 else if (choppy)
@@ -629,6 +631,10 @@ namespace Choppy.Bench
                 long bytes = copies.Sum(x => x.Value);
                 if (copies.Count != c.Files || bytes != c.Bytes)
                     throw new IOException((choppy ? "Choppy's" : "Windows'") + " copy has " + copies.Count + " of " + c.Files + " files, " + bytes + " of " + c.Bytes + " bytes");
+                if (RustExe != null && Log != null)   // step 3: every run, with the way each Choppy picked
+                    Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "run: {0} {1} {2}: done {3:0.000} s, on the disk {4:0.000} s{5}",
+                        r.From.Letter.Substring(0, 1) + ">" + r.To.Letter.Substring(0, 1), c.Key, side == 'C' ? "C#" : side == 'R' ? "Rust" : "Windows", done, done + after + flush,
+                        choppy ? " | " + res.Method : ""));
                 return new BenchRun { Choppy = choppy, Done = done, OnDisk = done + after + flush, After = after };
             }
             finally
@@ -667,6 +673,10 @@ namespace Choppy.Bench
             using (var finished = new ManualResetEventSlim())
             {
                 job.Finished += j => { secs = sw.Elapsed.TotalSeconds; end = EngineChild.PreciseNow(); finished.Set(); };
+                // step 3: CHOPPY_BENCH_TRACE=file - each phase's start (ms after the clock started) and the files done then
+                string trace = Environment.GetEnvironmentVariable("CHOPPY_BENCH_TRACE");
+                if (!string.IsNullOrEmpty(trace))
+                    job.PhaseChanged += j => { try { File.AppendAllText(trace, (sw.Elapsed.TotalMilliseconds).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " ms " + j.Phase + " " + j.DoneFiles + " files" + Environment.NewLine); } catch { } };
                 sw.Start();
                 job.Start();
                 while (!finished.Wait(50)) if (canceled()) job.Cancel();

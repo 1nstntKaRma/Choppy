@@ -15,7 +15,7 @@ use windows::Win32::System::SystemInformation::{
 };
 use windows::Win32::System::Threading::{
     GetCurrentProcessId, GetCurrentThread, GetExitCodeProcess, OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_SYNCHRONIZE,
-    SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL, WaitForSingleObject,
+    SetThreadPriority, Sleep, THREAD_PRIORITY_ABOVE_NORMAL, WaitForSingleObject,
 };
 use windows::Win32::UI::Shell::{SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW};
 use windows::core::{BOOL, PCWSTR};
@@ -140,6 +140,14 @@ pub fn set_thread_priority_above_normal() {
     unsafe {
         let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
     }
+}
+
+/// Thread.Sleep(ms) as .NET Framework does it: Win32 Sleep, which wakes on the system timer's tick (15.6 ms unless this
+/// process asked for finer), so 100 ms is about 109 here. Rust's std::thread::sleep waits on a high-resolution timer
+/// (exactly 100 ms): the engine's naps then end at other moments than the C#'s - the idle workers' naps decide when a
+/// copy ends, so its "done" moved by up to a nap (found by step 3's speed proof). Every sleep the C# makes goes here.
+pub fn sleep_ms(ms: u32) {
+    unsafe { Sleep(ms) }
 }
 
 /// SetThreadExecutionState for the calling thread (ES_CONTINUOUS | ES_SYSTEM_REQUIRED: the PC doesn't sleep).

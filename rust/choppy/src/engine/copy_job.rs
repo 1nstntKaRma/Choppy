@@ -1025,7 +1025,7 @@ impl CopyJob {
                 if self.next_index.load(SEQ) as usize >= files.len() {
                     return;
                 }
-                std::thread::sleep(Duration::from_millis(100));
+                sys::sleep_ms(100);
                 continue;
             }
             self.wait_to_run();
@@ -1075,7 +1075,7 @@ impl CopyJob {
         while !self.canceled() && (self.paused() || self.waiting_net.load(SEQ)) {
             self.run_gate.wait(Duration::from_millis(250));
             if self.waiting_net.load(SEQ) {
-                std::thread::sleep(Duration::from_millis(250));
+                sys::sleep_ms(250);
             }
         }
     }
@@ -2147,7 +2147,7 @@ impl CopyJob {
                 res = handoff::read_result(&record);
                 break;
             }
-            std::thread::sleep(Duration::from_millis(200));
+            sys::sleep_ms(200);
         }));
         // C#'s finally: the mirror and "as administrator" go however the loop ended
         lock(&self.active).retain(|x| !Arc::ptr_eq(x, &mirror));
@@ -2428,7 +2428,7 @@ impl CopyJob {
                 let left = ms.saturating_sub(sw.elapsed().as_millis() as u64);
                 *lock(&self.retry_why) = Some(format!("{why} - trying again in {} s", 1.max(left.div_ceil(1000))));
             }
-            std::thread::sleep(Duration::from_millis(100));
+            sys::sleep_ms(100);
         }
         if let Some(f) = f {
             let mut rf = lock(&self.retry_file);
@@ -2470,7 +2470,7 @@ impl CopyJob {
                 ok = true;
                 break;
             }
-            std::thread::sleep(Duration::from_millis(2000));
+            sys::sleep_ms(2000);
         }
         if owner {
             self.waiting_net.store(false, SEQ);
@@ -2513,7 +2513,7 @@ impl CopyJob {
             let ms = (2000.0f64.min(wait * 1000.0)) as u64;
             let sw = Instant::now();
             while (sw.elapsed().as_millis() as u64) < ms && !self.canceled() {
-                std::thread::sleep(Duration::from_millis(50.min(ms)));
+                sys::sleep_ms(50.min(ms) as u32);
             }
         }
     }
@@ -2533,7 +2533,7 @@ impl CopyJob {
                 awake = !self.paused();
                 sys::set_thread_execution_state(if awake { sys::ES_CONTINUOUS | sys::ES_SYSTEM_REQUIRED } else { sys::ES_CONTINUOUS });
             }
-            std::thread::sleep(Duration::from_millis(250));
+            sys::sleep_ms(250);
             let t = sw.elapsed().as_secs_f64();
             let b = self.done_bytes.load(SEQ);
             let dt = t - last_t;
@@ -2932,7 +2932,7 @@ fn rename_into_place(temp: &WString, final_: &mut WString, replace: bool) -> u32
             continue;
         }
         if is_busy(e) {
-            std::thread::sleep(Duration::from_millis(500 * (i + 1)));
+            sys::sleep_ms((500 * (i + 1)) as u32);
             continue;
         }
         return e;
@@ -2960,7 +2960,7 @@ fn flush_path(path: &WString) -> u32 {
         let a = sys::get_file_attributes(path);
         if e != sys::ERROR_ACCESS_DENIED || a == sys::INVALID_FILE_ATTRIBUTES || (a & sys::FILE_ATTRIBUTE_READONLY) == 0 {
             if is_busy(e) && tries == 0 {
-                std::thread::sleep(Duration::from_millis(200)); // a scanner has it open for a moment
+                sys::sleep_ms(200); // a scanner has it open for a moment
                 continue;
             }
             return e;
@@ -2979,7 +2979,7 @@ fn flush_path(path: &WString) -> u32 {
         if !is_busy(r) {
             return r;
         }
-        std::thread::sleep(Duration::from_millis(200));
+        sys::sleep_ms(200);
     }
     sys::ERROR_ACCESS_DENIED
 }
