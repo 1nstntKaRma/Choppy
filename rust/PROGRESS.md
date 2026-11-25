@@ -10,7 +10,7 @@ Read [PLAN.md](PLAN.md) first (steps, gates, rules, file map). One step per sess
 | 1 | Basics | **done** (2026-11-24): gate met, plan dump identical to C# 1.48, fix list 1.1-1.79 checked |
 | 2 | Copy engine | **done** (2026-11-25): gate met (33 copy / move scenarios identical to C# 1.48), self-test lines identical, review pass done, fix list 2.1-2.64 checked |
 | 3 | Speed proof | **benchmark runs finished** (2026-11-25): gate met (48 cases, level with 1.48, nothing newly Slower), one porting fix (3.1); **waits for the user's sign-off** |
-| 4 | All windows | not started |
+| 4 | All windows | **done** (2026-11-25): every window the same size as 1.48's at 125 % and 100 % on both monitors (but the Queue pop-up at 125 % and a finished Benchmark: 1 px), pictures side by side and overlaid, self-test lines identical (but step 5's hook line), fix list 4.1-4.31 checked; **the look waits for the user's approval** |
 | 5 | Explorer / system | not started |
 | 6 | Switch-over | not started |
 
@@ -313,6 +313,99 @@ seconds to the disk; "Rust vs C#" = how much less time Rust took (below 0 = more
   Benchmark can compare any later engine change.
 - Any C# `Thread.Sleep` that later steps port goes through `sys::sleep_ms` (fix list 3.1), never `std::thread::sleep`.
 
+## Step 4 (2026-11-25)
+
+**Ported** (about 14,000 lines of Rust): Theme, Controls, Format, Helpers, the copy window (compact and extended, the
+Queue pop-up), Settings (with the Mbps / MB/s card), Conflict, the dialogs and About, the Benchmark window and the
+Benchmark itself as 1.48 has it (`bench/`: Benchmark, BenchFiles, BenchReport HTML / JSON, the ShellCopy child,
+`--benchmark`, `--shellcopy`), the test hook and the tray. The self-test has the 27 bench checks.
+
+**How it's built.** Look test A's layers grew into the app:
+- `sys/gfx.rs`: Direct2D + DirectWrite + WIC (text as WPF draws it here: GDI-compatible "Display" widths, grayscale,
+  WPF's line heights), pictures, icons, the canvas. `sys/win.rs`: frameless windows (DWM dark / round / border), hit
+  testing, the UI thread's dispatcher and timers, layered pop-ups, the tray, taskbar progress.
+- `ui/layout.rs`: WPF's measure / arrange with UseLayoutRounding, Grid / StackPanel / WrapPanel / Border / text /
+  scroll, so elements land on WPF's own pixels. `ui/host.rs`: a window = a `Content` (state + `build`) rebuilt each
+  paint (immediate mode), focus, keyboard, tooltips, SizeToContent, the test hook's pictures. `ui/kit.rs`: the
+  styles of Theme.xaml.
+- Modal windows don't run nested message loops: the other windows are disabled and the answer comes by callback;
+  the engine's questions (conflict, low space, administrator) come from copy threads through a channel.
+- `app.rs` is the WPF App's window part (windows, tray, the manager's hooks); single instance, the pipe, the takeover,
+  the Ctrl+V hook, warm-up and the resume offer are step 5's (see below).
+
+**Gate: the pictures** (`rust/tools/step4/results/`, made by `screen.py` + `states.py` + `pairs.py`). Each window of
+the C# 1.48 (built from this branch) and of the Rust one, in test mode, shown on screen, moved onto monitor 1 and
+monitor 2 (both 125 % here) and captured with PrintWindow (the window's own pixels); for 100 % both run with
+`CHOPPY_DPI96=1` (a test switch in both test hooks: the UI thread is DPI-unaware, so the windows lay out and draw at
+96 DPI) - this PC's displays stay at 125 %, and every process started from the session is forced per-monitor aware,
+so a manifest change can't do it. `<scene>-125.png` / `-100.png` = WPF | Rust side by side, `-overlay.png` = WPF in
+red, Rust in cyan (gray where they agree). The Benchmark's drive details are blurred in the pictures (labels, disk
+models, the NAS); the numbers were taken before.
+
+| Window | 125 %: WPF / Rust size | differ / visibly | 100 %: size | differ / visibly | monitor 2 = monitor 1 (WPF / Rust) |
+|---|---|---|---|---|---|
+| Copy window, report | 720 x 869 both | 2.5 % / 0.6 % | 576 x 693 both | 3.5 % / 0.3 % | yes / yes (but the live numbers) |
+| Copy window, compact | 720 x 365 both | 3.3 % / 1.1 % | 576 x 293 both | 4.1 % / 0.3 % | yes / yes |
+| Queue pop-up | 500 x 47 / 500 x 48 | - | 400 x 38 both | 3.2 % / 0.0 % | yes / yes |
+| Settings | 675 x 631 both | 2.5 % / 0.3 % | 540 x 505 both | 3.7 % / 0.3 % | yes / yes |
+| The Mbps / MB/s card | 515 x 322 both | 3.0 % / 0.0 % | 412 x 264 both | 3.9 % / 0.0 % | yes / yes |
+| About | 650 x 556 both | 8.0 % / 0.6 % | 520 x 445 both | 10.0 % / 0.6 % | WPF's anti-aliasing shifts / yes |
+| Benchmark | 1075 x 753 both | 3.1 % / 0.2 % | 860 x 601 both | 4.5 % / 0.1 % | yes / yes |
+| Conflict | 825 x 608 both | 1.6 % / 0.1 % | 660 x 488 both | 1.8 % / 0.2 % | yes / yes |
+
+"Differ" counts any pixel not exactly the same (mostly anti-aliasing at text edges); "visibly" = more than 48 of 255
+apart. States through the test hook (`state-*.png`, drawn at 144 DPI like WPF's RenderTargetBitmap): a running copy
+(extended, compact), the conflict window after Compare, a finished Benchmark (tiny run on C:), and the Rust "Cancel
+copy?" question (C#'s hook waits while a modal dialog is up, so it has no picture of it).
+
+**Layout on WPF's pixels** (`CHOPPY_DUMP=1`: both test hooks write each named element's and text's rectangle beside
+the picture; `cmp.py` compares them): Settings 69 of 69 and About 9 of 9 exactly; Conflict 38/39, the report 73/76,
+the idle Benchmark 81/83, the finished one 82/92, a running copy 78/83, compact 32/36. What's left is 1-2 px:
+- From / To paths 1 px to the right (WPF's centering adds a float error that tips a 234.5 px tie the other way);
+- a few text widths: button captions, icon glyph boxes (12 vs 13 px), live numbers (they differ anyway);
+- the finished Benchmark window 1 px shorter, the Queue pop-up 1 px taller at 125 % (100 %: equal).
+Found and fixed by the comparison: three of WPF's rounding rules (fix list 4.3: whole-pixel sizes for ArrangeOverride,
+a pixel row growing to its child, Border's order) and right-aligned one-line text (4.4: the dumps showed the box in
+place, only the pixel overlay showed the text inside it was not).
+
+**Self-test:** 96 lines, identical to C# 1.48's but for "PASS Ctrl+V hook on its own thread, refreshed (1)", which is
+step 5's (the bench block's `desktop` flag waits for that hook too). `--benchmark --list` gives the same text as C#;
+a tiny Benchmark run on C: works end to end in both (report saved, the drives folded for room, the same buttons).
+cargo tests 15/15, clippy clean.
+
+**Rerun** (scratch copies, test mode; never the installed Choppy): build the C# from this branch (`dotnet build
+src/Choppy.csproj -c Release`) and the Rust (`cargo build --release`), then
+`python rust/tools/step4/screen.py --cs <C# exe> --rs <rust exe> --out <dir> --dpi 120` (and `--dpi 96`),
+`python rust/tools/step4/states.py --cs ... --rs ... --out <dir2>`, `python rust/tools/step4/pairs.py <dir> <results>
+<dir2>`, and for element rectangles `python rust/tools/step4/cmp.py <cs png>.layout.txt <rs png>.layout.txt`.
+screen.py shows the windows on screen for a few seconds each (moved with SetWindowPos without activation; the mouse
+and keyboard are never used); test files go in `C:\choppy-step4-screen` / `C:\choppy-step4-states`, removed after.
+
+**On purpose different from WPF:**
+- Dialogs and the conflict window are modal without nested message loops (callbacks; the windows behind are disabled).
+- The tray menu is drawn by Choppy (C#'s is a WinForms ContextMenuStrip with a dark renderer).
+- About's license box can be scrolled but its text can't be selected.
+- Tooltips appear about where WPF puts them (below the mouse), not on its exact pixel.
+
+**Only the user can do:**
+- Look at the pictures and approve the look (`rust/tools/step4/results/`), or say what to change.
+- Look at the tray menu (right-click the tray icon of a test-mode Rust Choppy: `CHOPPY_DATA=<folder>
+  choppy.exe --tray`), and a tooltip or two; these have no C# picture to compare with.
+- Step 3's table still waits for the sign-off (doesn't hold anything).
+
+**For the next steps (step 5 starts here):**
+- `app::run` is the entry for every non-CLI start (`main.rs`); `app::handle_args` takes copy / move / --tray.
+  Step 5 adds before it: single instance (mutex + pipe, Handoff to the running one), `--quit`, `paste`, the elevated
+  copy's own mutex and pipe, the start-up warm-up and the resume offer.
+- `explorer::takeover_set` only saves and applies in test mode; the Run key, the right-click verbs and the other
+  copier's check are step 5's (App.cs Takeover, PasteHook). The self-test's bench block passes `desktop = true` where
+  C# uses the PasteHook result.
+- The Settings switch, the tray's "Default file manager" and Quit already call `app::apply_takeover` /
+  `app::quit_from_tray`: step 5 fills them in.
+- C# `Thread.Sleep` -> `sys::sleep_ms` (3.1); a C# `WaitForExit(n)` -> `sys::wait_child` (4.28).
+- Step 5's speed gate (opens faster than 1.48): the windows draw on first show without any warm-up (look test A
+  opened in 0.035 s); measure from a paste to the visible window.
+
 ## Decisions
 
 - 2026-11-24: Build Tools 2026 (current winget package) rather than 2022.
@@ -336,9 +429,13 @@ seconds to the disk; "Rust vs C#" = how much less time Rust took (below 0 = more
   JIT inside the timed copy (measured: a C# child is slower than C# in-process), so a warm child is the fair match.
 - 2026-11-25 (step 3): reruns keep the full run's file sizes (`--size-down 1`): fewer routes would otherwise get bigger
   files from the time budget.
+- 2026-11-25 (step 4): the windows are immediate mode (each paint builds the tree from the window's state) on a layout
+  that copies WPF's arithmetic, so parity is checked by numbers (element rectangles) as well as by pictures.
+- 2026-11-25 (step 4): 100 % is shown with a test switch (`CHOPPY_DPI96`, both test hooks) rather than by changing the
+  user's display settings.
 
 ## Next session
 
-**Step 4 (all windows), on Extra without Ultracode.** Read PLAN.md (step 4's gate, file map, the UI layer from look test
-A) and "For the next steps" of steps 2 and 3. The Benchmark window and `src/Bench` are ported as 1.48 has them - not
-step 3's three-way harness. Sleeps: `sys::sleep_ms`. The user still signs off step 3's table; that doesn't hold step 4.
+**Step 5 (Explorer / system), on Extra without Ultracode.** Read PLAN.md (step 5's gate: opens faster than 1.48) and
+"For the next steps" of steps 2, 3 and 4. The user still approves step 4's look and signs off step 3's table; neither
+holds step 5.
