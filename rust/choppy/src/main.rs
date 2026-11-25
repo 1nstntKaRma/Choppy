@@ -18,6 +18,9 @@ mod testhook;
 mod ui;
 mod wstr;
 
+#[cfg(test)]
+mod step5_tests;
+
 use std::sync::OnceLock;
 use std::time::Instant;
 

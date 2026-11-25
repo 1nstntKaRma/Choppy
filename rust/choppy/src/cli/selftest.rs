@@ -1,6 +1,6 @@
 //! `--selftest out.txt` (Cli.SelfTest): the same check names in the same order as the C# self-test: xxHash64, the
-//! paths, the temp names and the pipeline block (PipelineChecks), the plan per drive. Step 5 adds the Ctrl+V hook and
-//! step 4 the bench checks (after the plan checks).
+//! paths, the temp names and the pipeline block (PipelineChecks), the plan per drive, the Ctrl+V hook (step 5) and the
+//! bench checks (step 4).
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};

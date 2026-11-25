@@ -178,6 +178,10 @@ pub fn run(args: &[WString], mutex: crate::sys::NamedMutex, pipe_name: &str, ele
     let code = win::run_loop();
     // OnExit
     paste_hook::stop();
+    // the app (its windows, the test hook's timer) goes now, while the UI thread's other thread-locals are still there:
+    // left to the thread's end, it would reach for ones already gone (Rust aborts then: exit code 0xC0000409)
+    let app = APP.with(|a| a.borrow_mut().take());
+    drop(app);
     win::tray_remove();
     mutex.release(); // one Choppy per user until here
     drop(mutex);

@@ -225,3 +225,18 @@ pub fn notify_item_updated(path: &WString) {
 pub fn notify_assoc_changed() {
     unsafe { SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_FLAGS(SHCNF_IDLIST | SHCNF_FLUSHNOWAIT), None, None) }
 }
+
+/// Tests: how many windows Explorer lists, asked both ways (the shell's interfaces; Shell.Application by name).
+pub fn shell_window_counts() -> (Option<i32>, Option<i32>) {
+    unsafe {
+        let a = CoCreateInstance::<_, IShellWindows>(&ShellWindows, None, CLSCTX_SERVER).ok().and_then(|w| w.Count().ok());
+        let b = CLSIDFromProgID(&HSTRING::from("Shell.Application"))
+            .ok()
+            .and_then(|c| CoCreateInstance::<_, IDispatch>(&c, None, CLSCTX_SERVER).ok())
+            .and_then(|s| call(&s, "Windows", DISPATCH_METHOD | DISPATCH_PROPERTYGET, vec![]))
+            .and_then(|v| IDispatch::try_from(&v).ok())
+            .and_then(|l| call(&l, "Count", DISPATCH_PROPERTYGET, vec![]))
+            .and_then(|v| i32::try_from(&v).ok());
+        (a, b)
+    }
+}

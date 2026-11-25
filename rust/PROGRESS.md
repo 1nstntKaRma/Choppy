@@ -11,7 +11,7 @@ Read [PLAN.md](PLAN.md) first (steps, gates, rules, file map). One step per sess
 | 2 | Copy engine | **done** (2026-11-25): gate met (33 copy / move scenarios identical to C# 1.48), self-test lines identical, review pass done, fix list 2.1-2.64 checked |
 | 3 | Speed proof | **benchmark runs finished** (2026-11-25): gate met (48 cases, level with 1.48, nothing newly Slower), one porting fix (3.1); **waits for the user's sign-off** |
 | 4 | All windows | **done** (2026-11-25): every window the same size as 1.48's at 125 % and 100 % on both monitors (but the Queue pop-up at 125 % and a finished Benchmark: 1 px), pictures side by side and overlaid, self-test lines identical (but step 5's hook line), fix list 4.1-4.31 checked; **the look waits for the user's approval** |
-| 5 | Explorer / system | not started |
+| 5 | Explorer / system | **done** (2026-11-25): gate met - self-test identical (97 lines), registry writes identical on a scratch key (10 steps), `--where` identical, C# and Rust hand jobs to each other through the pipe, opens in 0.020 s when running (1.48: 0.115 s) and 0.185 s when not (1.48: 1.141 s); fix list 5.1-5.31 checked; the live Explorer checks wait for an installed Rust Choppy (step 6) |
 | 6 | Switch-over | not started |
 
 ## Step 0 (2026-11-24)
@@ -406,6 +406,99 @@ and keyboard are never used); test files go in `C:\choppy-step4-screen` / `C:\ch
 - Step 5's speed gate (opens faster than 1.48): the windows draw on first show without any warm-up (look test A
   opened in 0.035 s); measure from a paste to the visible window.
 
+## Step 5 (2026-11-25)
+
+**Ported:** the rest of App.cs (the start-up order, every command, the Explorer and right-click paste, the quick first
+window, the resume offer, the administrator copy's side, errors and the crash revive), Program.cs, the single instance
+(`instance.rs`: the mutex and the pipe hand-off), PasteHook (`explorer/paste_hook.rs`, `paste_log.rs`,
+`clipboard_files.rs`), ShellLocation (`explorer/shell_location.rs`), Takeover (`explorer/takeover.rs`: the Run key, the
+right-click verbs, "Default file manager", parking the other copier's startup entry), IconRefresh
+(`explorer/icon_refresh.rs`), `--where` (`cli/where_.rs`) and the self-test's Ctrl+V hook line. New `sys` modules:
+`ipc.rs` (the user's SID, the named mutex, the pipe as .NET's pipe streams do it), `hook.rs` (the keyboard hook and its
+thread's message loop, the window questions, SendInput, the clipboard), `shell.rs` (ShellWindows / IDispatch, shell
+folders, the icon cache calls); `proc.rs` got the other copier's processes, waiting on a process, CloseMainWindow and
+the crash filter; `win.rs` got `idle` (WPF's Background / ApplicationIdle) and a guard that notes a UI-thread error in
+errors.txt and goes on (DispatcherUnhandledException; nothing may unwind into a window procedure). Four `windows`
+features (Pipes, Security_Authorization, Variant, Kernel); no new crate.
+
+**How a test instance stays apart from the installed one** (kept exactly as C# does it): test mode (`CHOPPY_DATA`)
+adds `-test` to the mutex and pipe names, keeps the settings in `settings.ini`, never starts the Ctrl+V hook, never
+writes the Run key, the verbs or the icon stamp, never empties the clipboard and never revives. The administrator copy
+adds `-admin`. For comparing registry writes, both programs (C# on this branch only) take `CHOPPY_REGTEST=<scratch key>`
+with test mode: the registry steps run as an installed Choppy's, every key under `HKCU\<scratch key>\...`, "installed"
+means `<data folder>\Programs\Choppy`, Explorer's icon cache left alone.
+
+**Gate: met.**
+- Self-test: 97 lines, identical to C# 1.48's (now with "PASS Ctrl+V hook on its own thread, refreshed (1)").
+- Registry writes (`python rust/tools/step5/regcheck.py <C# exe> <Rust exe>`): 10 steps on a scratch key with the
+  exe in the same place in turn, identical - a seeded startup entry of the other copier; `--menu` from a loose copy
+  (only the icon stamp) and from the installed place (+ the three right-click verbs); `--takeover on` (stays in the
+  tray; Run entry, the other copier's entry parked in settings.ini), then `--quit` through the pipe; `--resume` with
+  a stale Run entry (corrected first); `--takeover off` (entry gone, the other copier's back); on again; `--uninstall`
+  (verbs gone); a changed icon stamp + `--menu` (rewritten); `--quit` with nothing running. The real keys were
+  unchanged afterwards. The icon stamp is the one the installed 1.48 wrote here (`22d2b958e52870c7`), so the first
+  Rust start won't refresh Explorer's icons again.
+- `--where`: identical (the byte order mark, the desktop line, the count). No Explorer window was open and none was
+  opened, so the per-window lines are on the user's list (`rust/tools/step5/wherecheck.py`).
+- The single instance live (`python rust/tools/step5/ipccheck.py <C# exe> <Rust exe>`, test mode): a tray Choppy takes
+  a second start's copy through the pipe (relative paths resolved in the second start's folder) and `--quit` reaches
+  it, for Rust to Rust, a Rust start to a running C# 1.48 and a C# start to a running Rust (one protocol); the
+  administrator copy (`--elevated-job` on a genuine record, run here without the prompt) has its own `-test-admin`
+  instance, copies, and its result file is identical to C#'s; every process exits with 0; the installed Choppy's
+  pipe untouched.
+- Opens faster than 1.48 (`python rust/tools/step5/latency.py <exe>...`, the testing notes' method: test mode, windows
+  parked, start to a visible "Choppy" window, median of 7; a scratch copy of the installed 1.48):
+
+  | | 1.48 | Rust |
+  |---|---|---|
+  | Already running (in the tray) | 0.115 s | **0.020 s** |
+  | Not running | 1.141 s | **0.185 s** |
+
+  A second Rust start hands its job over and ends in 0.011 s (C#: 0.031-0.037 s).
+- Fix list 5.1-5.31 checked (24 by tests and comparisons, 7 by review: the live Ctrl+V, the right-click paste, the
+  hook's window checks, Explorer's paste handed back, ctrl-v.txt, the clipboard, the crash revive). cargo test 22/22
+  (step 5: the mutex, the pipe round trip, relative paths, the icon stamp, registry text, Explorer asked both ways);
+  clippy clean for the step-5 code.
+
+**Found and fixed:** at exit the app (its windows, the test hook's timer) was dropped with the UI thread's other
+thread-locals, after the timer table it reaches for: Rust aborted the process (exit code 0xC0000409, also in step 4's
+exit path). The app is now dropped at the end of `app::run`.
+
+**On purpose different** (only reachable in a race or a failure):
+- 1.48 shows no window for a copy that ends before its first window is built (a cold start with close at completion
+  at 0 s: ShowMain hits a window already closed, NullReferenceException in errors.txt); Rust shows it and it closes.
+- A crash Rust can't catch (an access violation...) is noted and revives through Windows' unhandled-exception filter;
+  a Rust panic on the UI thread is noted and Choppy goes on (C#'s DispatcherUnhandledException); panics elsewhere are
+  caught where the threads start (C# ended the process on those).
+
+**Only the user can do** (nothing holds step 6):
+1. Real Ctrl+V in Explorer with a Rust Choppy in the tray as the Default file manager (files, a cut = a move, This PC
+   or a zip = Windows' own paste, a rename box = Windows'); `Logs\ctrl-v.txt` says what happened and how quick it was
+   (1.48 here: "window up 131-144 ms after the key"). This needs the Rust exe installed in place of 1.48: after step 6.
+2. The right-click "Paste with Choppy" and start with Windows (the Run entry) of an installed Rust Choppy: after step 6.
+3. The administrator prompt: copy into a folder only administrators may write to (e.g. `C:\Program Files\x`), answer
+   Yes (the copy lands, the copy window mirrors it), then No (the files are reported as failed). Steps 2 and 5 tested
+   everything around the prompt.
+4. `python rust/tools/step5/wherecheck.py <installed Choppy.exe> <Rust choppy.exe>` with a few Explorer windows open
+   (Windows 11 tabs, This PC, a zip folder): it only reads them.
+5. Remove `C:\choppy-step5-adm` (a few small test files of the administrator copy check; the safety check didn't let
+   this session delete the folder).
+
+**For after the switch-over** (1.48 behaviour kept on purpose):
+- `Choppy.exe --takeover on` sent to a Choppy that is already running arrives as `--takeover <start folder>\on`
+  (MakeAbs takes every argument after the command for a path) and turns the takeover off. The installer quits Choppy
+  first, so it doesn't happen there.
+- Connect(1500) asks again without a pause while the pipe isn't there yet (a running Choppy starting up or ending): up
+  to 1.5 s of one busy core for the second start.
+
+**For the next step:**
+- `main.rs` is Program.Main: CLI commands, `--revive`, the instance claim, then `app::run(args, mutex, name, elevated)`.
+- Rerun after changes: `regcheck.py` and `ipccheck.py` (both ~1 min), `latency.py` (~3 min), the self-test against
+  C#'s. C# exes for them: `dotnet build src/Choppy.csproj -c Release -o <scratch>` on this branch (CHOPPY_REGTEST is
+  only there); `latency.py` takes a scratch copy of the installed exe.
+- Switch-over notes: the installed 1.48 and a Rust Choppy share every outside name (mutex, pipe, HKCU keys, verbs, Run
+  entry), so build.ps1's `--quit` before replacing the exe reaches either.
+
 ## Decisions
 
 - 2026-11-24: Build Tools 2026 (current winget package) rather than 2022.
@@ -433,9 +526,17 @@ and keyboard are never used); test files go in `C:\choppy-step4-screen` / `C:\ch
   that copies WPF's arithmetic, so parity is checked by numbers (element rectangles) as well as by pictures.
 - 2026-11-25 (step 4): 100 % is shown with a test switch (`CHOPPY_DPI96`, both test hooks) rather than by changing the
   user's display settings.
+- 2026-11-25 (step 5): registry writes are compared through a test switch in both programs (`CHOPPY_REGTEST`, C# on
+  this branch only) that moves every key under a scratch key, rather than touching the installed Choppy's entries.
+- 2026-11-25 (step 5): no Explorer window was opened (the installed Choppy would react, a zip opens WinRAR): the
+  per-window `--where` lines and the live Ctrl+V go to the user.
+- 2026-11-25 (step 5): UI-thread errors are caught at the window procedures and the dispatcher (noted in errors.txt,
+  Choppy goes on) - C#'s DispatcherUnhandledException; a panic must never unwind into Windows.
 
 ## Next session
 
-**Step 5 (Explorer / system), on Extra without Ultracode.** Read PLAN.md (step 5's gate: opens faster than 1.48) and
-"For the next steps" of steps 2, 3 and 4. The user still approves step 4's look and signs off step 3's table; neither
-holds step 5.
+**Step 6 (switch-over), on Extra without Ultracode.** Read PLAN.md (step 6's gate) and "For the next step(s)" of steps
+2-5. Only build.ps1's BUILD step changes (cargo); the zip layout `Choppy-vX.zip` with `bin\Choppy.exe`, the ChocoPlus
+contract, release.yml's version-stamp check and the self-test stay. Never install or update the installed Choppy (the
+user does that). The user still approves step 4's look, signs off step 3's table and has step 5's live checks (they
+need an installed Rust Choppy).
