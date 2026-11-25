@@ -84,6 +84,9 @@ pub fn set_basic_info(h: &Handle, ctime: i64, mtime: i64, attributes: u32) -> bo
     set_info(h.0, FILE_BASIC_INFO_CLASS, &bi as *const BasicInfo as *const c_void, size_of::<BasicInfo>() as u32).is_ok()
 }
 
+// FILE_RENAME_INFO's offsets below are those of a 64-bit process (the only target: rust/.cargo/config.toml)
+const _: () = assert!(size_of::<usize>() == 8);
+
 /// Renames an open file through its handle (Native.RenameByHandle). The new name MUST be the full `\\?\` path:
 /// Windows resolves a plain name against the process's current folder, not the file's folder. Never replaces an
 /// existing file.

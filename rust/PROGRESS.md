@@ -8,7 +8,7 @@ Read [PLAN.md](PLAN.md) first (steps, gates, rules, file map). One step per sess
 |---|------|--------|
 | 0 | Tools + UI look test | **done** (2026-11-24): tools installed, both prototypes compared, **the user picked A** |
 | 1 | Basics | **done** (2026-11-24): gate met, plan dump identical to C# 1.48, fix list 1.1-1.79 checked |
-| 2 | Copy engine | not started |
+| 2 | Copy engine | **done** (2026-11-25): gate met (33 copy / move scenarios identical to C# 1.48), self-test lines identical, review pass done, fix list 2.1-2.64 checked |
 | 3 | Speed proof | not started |
 | 4 | All windows | not started |
 | 5 | Explorer / system | not started |
@@ -121,6 +121,92 @@ release.yml checks FileVersion only).
 - The exe is a GUI-subsystem program like the C# one: console output only shows when redirected.
 - No rustfmt config: the code follows the look test's style (lines up to ~120).
 
+## Step 2 (2026-11-25)
+
+**Ported** into `choppy/src`: BigCopy (`engine/big_copy.rs`: RingReader, PipeTuning, PipeTuner, `copy`, the small-file
+batch's `open_small` / `read_small` / `write_small`), HashFile (`engine/xxhash64.rs` `hash_file`), CopyJob
+(`engine/copy_job.rs`), Handoff (`engine/handoff.rs`, SHA-256 in plain Rust), JobManager (`job_manager.rs`),
+`--cli copy|move` (`cli/job.rs`: EngineOption, ParsePolicy, Esc, Report) and the self-test's `temp` + pipeline block.
+New `sys` modules: `io.rs` (reads / writes, file information through a handle incl. the rename, CopyFileExW and its
+callback, moves, deletes, folders, streams, free space, retrieval pointers), `ring.rs` (the read-ahead memory as owned
+`Slot`s; a read the disk is filling is a `PendingRead` that waits for the disk when dropped; the batch memory),
+`proc.rs` (processes, runas, the administrator check, thread priority, keep-awake, free memory, the clock, the user's
+date format). Model: FileItem's copy-time fields are atomics / locks; ScanResult.files are `Arc<FileItem>`;
+ConflictInfo carries the file. Four more `windows` features (Threading, Memory, SystemInformation, Power); no new crate.
+
+**Gate: met.**
+- Destination trees: `python rust/tools/enginecheck/check.py <C# Choppy.exe> <Rust choppy.exe> [scenario...]` builds
+  the same fixture for each program - odd sizes up to 96 MB (one scenario: 3 GB), attributes, Zone.Identifier on small
+  and big files, unicode / emoji names, a path past 260 characters, an NTFS-compressed file, a junction, 200 small
+  files, empty / hidden / system folders - and a destination with every kind of conflict and leftover; runs both with
+  `--cli`; compares the trees (names, sizes, contents, created / modified dates, attributes, streams), what a move
+  leaves at the source, the JSON reports and the logs (times, speeds and run folders masked). **33 scenarios + the
+  usage error, all identical:** copy-new, -skip, -replace, -keepboth, -newer, -ask, -resume, -verify, -own-folder
+  ("name - Copy (2)"), -fat32, move-same, move-same-new, copy-net, copy-net-verify, copy-from-net, copy-copyfile,
+  -limit, -small-batch, -no-fast, -pause, -skip-big, -tuner, -log, cancel (by rule: exit 3, every file there whole, no
+  `.chpart`), copy-ssd-hdd, -hdd-ssd, -one-hdd, move-cross, move-resume, move-verify, copy-hdd-hdd, copy-ssd-usb,
+  copy-one-usb. Routes: C: NVMe, D: / X: hard disks, F: USB SSD (10 Gbps), `\\localhost\C$`. A full run takes ~20 min.
+- FAT32's 4 GB limit: through `--max-file` (no FAT32 drive here). ReFS on one drive: no ReFS volume on this PC (Windows
+  10 Home can't make one); the plan's self-tests cover the choice, copy-copyfile the CopyFileEx path such a copy takes,
+  move-same the rename.
+- Self-test: the 70 lines up to the plan checks are identical to C# 1.48's (C# then adds the Ctrl+V hook and the bench
+  checks: steps 5 and 4).
+- `cargo test`: 13 (step 2: the administrator side through its files incl. pause / run / cancel and the result, the
+  queue, stale administrator records, conflict answers, Retry failed, the tuner's choices, SHA-256). `cargo clippy`:
+  clean.
+- Fix list 2.1-2.64 checked: 46 by tests, 17 by review, the administrator prompt up to the prompt.
+- Copy times stay level with 1.48 in every scenario (both print theirs; step 3 measures properly).
+
+**Review pass** (5 reviewer agents in parallel on Extra: threads and buffers, failures, every Win32 call, the fix
+list + self-test, moves and data safety; Ultracode couldn't be switched on while the user was away). No data loss, no
+incomplete rename, no memory-unsafety found. Fixed:
+- A move's flusher that died (a thread it couldn't make) could leave copies unflushed and workers waiting forever; now
+  the work is done where it is and FinishDurable flushes what was left. Thread-making failures elsewhere (workers,
+  folders) no longer leave threads running after the job ended.
+- The administrator copy's mirror ("as administrator", the current file) is cleared however its loop ends (C#'s
+  `finally`); its result is written even if the progress write beside it fails (C# lost the result then).
+- The OVERLAPPED of each buffer is reached only through raw pointers (Windows writes it while a read is out).
+- Errors read right after the call; RenameIntoPlace's error after four rounds as C#'s; ShellExecuteEx's hInstApp as
+  .NET reads it; the SID buffer DWORD-aligned; a small-file batch reads a file only into its own room; the self-test's
+  failures end the way C#'s did; the fix list completed (16 rows added, test claims corrected).
+
+**Only the user can do** (nothing blocks step 3):
+1. The administrator hand-off end to end: it needs the Windows administrator prompt, and the Rust side that runs as
+   administrator (`--elevated-job`) comes with step 5's App. Everything up to the prompt is tested (the record, its
+   SHA-256, the command line, the administrator side's progress / control / result files with a real copy). Once step 5
+   is in: copy a file into a folder only administrators may write to (e.g. `C:\Program Files\x`), answer Yes, check it
+   lands and the copy window mirrors it; then the same with No (the files are reported as failed).
+2. Optional: while a Rust copy runs, `powercfg /requests` in an administrator prompt should list choppy.exe under
+   SYSTEM (keep-awake; it can't be read without administrator rights, and another program already holds it here).
+3. Optional: a FAT32 USB stick for the real 4 GB limit (the gate fakes it with `--max-file`).
+
+**For after the switch-over** (C# 1.48 behaviour the port keeps on purpose; found by the review):
+- A move's big file is flushed before its rename, not after; then its original goes. A power cut right then can leave
+  the complete copy only as `<name>.chpart` with the original gone (the flusher's path flushes after the rename).
+- When the network doesn't come back in 15 minutes, the file stays "active": not failed, its `.chpart` left, the job
+  "Done" with 0 failed.
+- A try retried after a network or busy error leaves its `.chpart`; the next try takes another temp name.
+- A source that shrinks during a pipeline copy fails with "Reached the end of the file" instead of going to CopyFileEx.
+- Verify has no retry for a file briefly in use (antivirus): a good copy is deleted and the file fails.
+- `--cli` pauses forever on a full destination (no one to press Resume).
+- Resume mode deletes any `<name>.chpart` that isn't one of the job's own names, even one an administrator copy from
+  the crashed run is still writing; the administrator copy of a resumed job doesn't get resume mode.
+- FinishFolders ignores a folder it couldn't make: a move still removes the (empty) source folder.
+- Retrying a failed same-drive move puts an item from inside a merged folder into the destination's top folder.
+- The job record's final rename isn't flushed (a crash in its first seconds = no resume offered; nothing is lost).
+- Copying both `x` and `x.chpart` from one folder at once: `x.chpart` is also `x`'s temp name; with several workers
+  Windows' name tunneling can give one copy the other's creation date (found by the gate's fixture, both programs).
+
+**For the next steps:**
+- The Rust engine runs headless as `choppy.exe --cli copy|move <src...> <dest> [--json out.json] [--log f]` plus the
+  engine's test switches, with the same JSON as 1.48 - step 3's Benchmark can run it as the Choppy side.
+- `CopyJob` is used as `Arc<CopyJob>`: the UI reads its atomics and `phase()`, `plan()`, `scan()`, `scanner()`,
+  `current_transfer()`, `speed`, `status()`, `retry_file()` / `retry_why()`; callbacks get the `&Arc<CopyJob>`;
+  events through `on_finished` / `on_phase_changed`. JobManager's `dispatch` and `on_ui_thread` are for step 4/5's UI
+  thread. The administrator side (`--elevated-job`): step 5's App calls `handoff::load`, enqueues it and calls
+  `handoff::report` (as App.cs does); `main.rs` already calls `handoff::prepare`.
+- Rerun the gate after any engine change: `check.py` (all scenarios, ~20 min; or by name).
+
 ## Decisions
 
 - 2026-11-24: Build Tools 2026 (current winget package) rather than 2022.
@@ -132,15 +218,20 @@ release.yml checks FileVersion only).
   overlapped reads), which step 2 writes on Max effort, and its self-test checks are step 2's anyway.
 - 2026-11-24 (step 1): paths and names are UTF-16 (`WString`), as in C#: nothing is lost on odd names, and lengths
   count as NTFS and the C# code count them.
+- 2026-11-25 (step 2): RingReader's buffers are owned `Slot`s handed between the reader thread and the writer through
+  two queues (C#'s two semaphores); the unsafe part stays in `sys/ring.rs`.
+- 2026-11-25 (step 2): in paths that only run when something fails, the port is safer than the C# on purpose (fix list
+  2.63, 2.64); nothing changes when all goes well. C#'s doubtful behaviours are kept and listed under "For after the
+  switch-over" (step 2).
+- 2026-11-25 (step 2): the review pass ran as 5 reviewer agents on Extra in parallel (Ultracode can't be switched on
+  while the user is away).
 
 ## Next session
 
-**Step 2 (copy engine), on Max effort without Ultracode; then a review pass on Extra + Ultracode.** Read PLAN.md
-(step 2's gate, file map, self-test names) and "For the next steps" above. Start with BigCopy.cs: RingReader,
-PipeTuner, BigCopy, and `HashFile` from XxHash64.cs (fix list 2.2); then CopyJob.cs (`TempName` first), Handoff.cs
-(2.3: `clean_stale`), JobManager.cs, and Cli's `--cli copy|move` (EngineOption, ParsePolicy, Report, Esc) with the
-self-test's `temp` + pipeline checks (they go between the paths checks and the Plan checks; `NetRandom` in
-cli/selftest.rs gives System.Random's bytes). The `sys` calls step 2 adds: CopyFileExW, MoveFileExW, overlapped
-ReadFile/WriteFile, SetFileInformationByHandle (RenameByHandle 2.1), streams, VirtualAlloc, retrieval pointers (2.4),
-SetThreadExecutionState (2.5). The gate compares destination trees made by C# and Rust on a fixture set
-(`rust/tools/plandump/fixture.py` is a start).
+**Step 3 (speed proof), on Extra without Ultracode.** Read PLAN.md (step 3's gate) and step 2's "For the next steps".
+The proven C# Benchmark (src/Bench, on the `rust` branch only) runs Choppy's side as an in-process CopyJob
+(Benchmark.cs:609); teach it to run the Rust engine instead - `choppy.exe --cli copy <sources> <dest> --json <file>`
+as a child, the way it already runs Windows' side (`--shellcopy`) - and take the badge / tune from its JSON, measuring
+the time to the disk as today. Then a Thorough + Network run on the user's PC against 1.48's: no new Slower on any
+route; disputed hard-disk routes get 5 rounds (placement noise reaches ~20 %). **The user signs off.** After any engine
+change, rerun `rust/tools/enginecheck/check.py` (the step 2 gate).

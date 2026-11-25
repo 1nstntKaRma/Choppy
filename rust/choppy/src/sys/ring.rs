@@ -9,6 +9,7 @@
 //! the read is collected; dropping a PendingRead waits for the disk first (C#'s Drain), so a buffer is never freed or
 //! handed on while Windows still writes into it.
 
+use core::cell::UnsafeCell;
 use core::ffi::c_void;
 use std::sync::Arc;
 
@@ -71,8 +72,10 @@ pub struct Slot {
     index: usize,
     off: usize,
     len: usize,
-    /// one OVERLAPPED per buffer, with its own manual-reset event; boxed: it must not move while a read is out
-    ov: Option<Box<OVERLAPPED>>,
+    /// one OVERLAPPED per buffer, with its own manual-reset event; boxed: it must not move while a read is out. In an
+    /// UnsafeCell and only ever reached through raw pointers: Windows writes its status fields while a read is out, so
+    /// no Rust reference to it may live then
+    ov: Option<Box<UnsafeCell<OVERLAPPED>>>,
 }
 
 // A Slot owns its bytes and its OVERLAPPED; it moves between the reader thread and the writer, never shared.
@@ -94,11 +97,19 @@ impl Slot {
     }
 }
 
+impl Slot {
+    /// The slot's OVERLAPPED (a ring made for overlapped reads has one).
+    fn ov(&self) -> *mut OVERLAPPED {
+        self.ov.as_ref().expect("a ring without OVERLAPPED").get()
+    }
+}
+
 impl Drop for Slot {
     fn drop(&mut self) {
+        // a slot is dropped only when no read is out (a PendingRead waits for its read first)
         if let Some(ov) = &self.ov {
             unsafe {
-                let _ = CloseHandle(ov.hEvent);
+                let _ = CloseHandle((*ov.get()).hEvent);
             }
         }
     }
@@ -112,7 +123,7 @@ pub fn ring(chunk: usize, slots: usize, overlapped: bool) -> Option<Vec<Slot>> {
     for i in 0..slots {
         let ov = if overlapped {
             let ev = unsafe { CreateEventW(None, true, false, PCWSTR::null()) }.ok()?;
-            Some(Box::new(OVERLAPPED { hEvent: ev, ..Default::default() }))
+            Some(Box::new(UnsafeCell::new(OVERLAPPED { hEvent: ev, ..Default::default() })))
         } else {
             None
         };
@@ -157,18 +168,18 @@ pub struct PendingRead {
 
 /// ReadFile at `offset` of the file into the slot's bytes from `at` on (`bytes` of them), with the slot's OVERLAPPED
 /// (its event reset, its status cleared). Err = it failed at once (nothing is out); the slot comes back.
-pub fn read_at(h: &Arc<Handle>, mut slot: Slot, at: usize, bytes: usize, offset: i64) -> Result<PendingRead, (Slot, u32)> {
+pub fn read_at(h: &Arc<Handle>, slot: Slot, at: usize, bytes: usize, offset: i64) -> Result<PendingRead, (Slot, u32)> {
     assert!(at + bytes <= slot.len, "read past the buffer");
     let ptr = unsafe { slot.block.ptr.add(slot.off + at) };
-    let Some(ov) = slot.ov.as_deref_mut() else { panic!("a ring without OVERLAPPED") };
-    ov.Internal = 0;
-    ov.InternalHigh = 0;
-    ov.Anonymous.Anonymous.Offset = offset as u32;
-    ov.Anonymous.Anonymous.OffsetHigh = (offset as u64 >> 32) as u32;
+    let ovp = slot.ov();
+    // no read is out on this slot now (its holder has it): its OVERLAPPED is ours to set up
     unsafe {
-        let _ = ResetEvent(ov.hEvent);
+        (*ovp).Internal = 0;
+        (*ovp).InternalHigh = 0;
+        (*ovp).Anonymous.Anonymous.Offset = offset as u32;
+        (*ovp).Anonymous.Anonymous.OffsetHigh = (offset as u64 >> 32) as u32;
+        let _ = ResetEvent((*ovp).hEvent);
     }
-    let ovp: *mut OVERLAPPED = ov;
     // The slot (its bytes and OVERLAPPED) moves into the PendingRead below and stays there until the read is done.
     let r = unsafe { ReadFile(h.0, Some(std::slice::from_raw_parts_mut(ptr, bytes)), None, Some(ovp)) };
     match r {
@@ -180,7 +191,7 @@ pub fn read_at(h: &Arc<Handle>, mut slot: Slot, at: usize, bytes: usize, offset:
     }
 }
 
-fn overlapped_result(h: HANDLE, ov: &OVERLAPPED) -> Result<u32, u32> {
+fn overlapped_result(h: HANDLE, ov: *const OVERLAPPED) -> Result<u32, u32> {
     let mut n = 0u32;
     unsafe { GetOverlappedResult(h, ov, &mut n, true) }.map(|_| n).map_err(|e| win32_code(&e))
 }
@@ -189,10 +200,7 @@ impl PendingRead {
     /// GetOverlappedResult(wait = TRUE): the slot back, with Ok(bytes read) or Err(the Win32 error).
     pub fn wait(mut self) -> (Slot, Result<u32, u32>) {
         // the slot leaves the PendingRead only once Windows is done with it
-        let r = {
-            let slot = self.slot.as_ref().expect("a pending read without its slot");
-            overlapped_result(self.h.0, slot.ov.as_deref().expect("a ring without OVERLAPPED"))
-        };
+        let r = overlapped_result(self.h.0, self.slot.as_ref().expect("a pending read without its slot").ov());
         (self.slot.take().expect("a pending read without its slot"), r)
     }
 }
@@ -201,7 +209,7 @@ impl Drop for PendingRead {
     fn drop(&mut self) {
         // the read is still out: its buffer can go only once the disk is done with it
         if let Some(slot) = self.slot.take() {
-            let _ = overlapped_result(self.h.0, slot.ov.as_deref().expect("a ring without OVERLAPPED"));
+            let _ = overlapped_result(self.h.0, slot.ov());
         }
     }
 }

@@ -261,7 +261,8 @@ fn pipe(a: &Path, b: &Path, ctime: i64, mtime: i64, attrs: u32, t: &PipeTuning, 
 /// The pipeline against real files in %TEMP%: odd sizes, an extra stream, dates, and both ways of hashing.
 fn pipeline_checks(check: Check) {
     let dir: PathBuf = std::env::temp_dir().join(format!("choppy-selftest-{:08x}", sys::new_guid().data1));
-    let _ = std::fs::create_dir_all(&dir);
+    // outside the catch-all, as in C#: no folder = the self-test itself fails (the CLI's error file, exit 1)
+    std::fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("{e}"));
     let r = catch_unwind(AssertUnwindSafe(|| pipeline_body(&dir, &mut *check)));
     if let Err(e) = r {
         check(&format!("pipeline: {}", crate::engine::panic_message(&*e)), false);
@@ -366,10 +367,14 @@ fn pipeline_body(dir: &Path, check: Check) {
     check("pipeline stop", rc.error == sys::ERROR_REQUEST_ABORTED);
 }
 
-/// An extra data stream written as ASCII (CREATE_ALWAYS).
+/// An extra data stream written as ASCII (CREATE_ALWAYS). A stream that can't be made throws as C#'s
+/// `new FileStream(<invalid handle>)` did (the catch-all then ends the block).
 fn write_stream(path: &WString, text: &str) {
-    if let Ok(h) = sys::create_file(path, sys::GENERIC_WRITE, 0, sys::CREATE_ALWAYS, 0) {
-        let _ = sys::write(&h, text.as_bytes());
+    match sys::create_file(path, sys::GENERIC_WRITE, 0, sys::CREATE_ALWAYS, 0) {
+        Ok(h) => {
+            let _ = sys::write(&h, text.as_bytes());
+        }
+        Err(_) => panic!("Invalid handle.\r\nParameter name: handle"),
     }
 }
 

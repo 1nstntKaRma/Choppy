@@ -112,7 +112,7 @@ ZONE = b'[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://example.com/x\r\n'
 LONG = os.path.join('long', *(['d' * 60] * 5))
 
 
-def build_source(root):
+def build_source(root, pair=False):
     """The source tree: odd sizes, attributes, unicode and emoji names, a path past 260 characters, extra streams, big
     files for the pipeline, many small files, an empty folder, hidden and system folders, a junction."""
     w = lambda rel, *a, **k: write(os.path.join(root, rel.replace('/', os.sep)), *a, **k)
@@ -124,6 +124,12 @@ def build_source(root):
     w('zone.txt', rnd(1500, 1), t=6, zone=ZONE)
     w('empty.txt', b'', t=7)
     w('x.bin', b'x', t=8)
+    if pair:
+        # a real file of the job that only looks like a leftover: "keep.bin.chpart" is also keep.bin's temp name. Only
+        # where the destination has it already (copied by an interrupted run): two workers making both at once race
+        # for the name, and Windows' name tunneling then hands one the other's creation date - in both programs
+        w('keep.bin', rnd(100, 12), t=23)
+        w('keep.bin.chpart', rnd(50, 13), t=24)
     w('mid.bin', rnd((5 << 20) + 77, 2), t=9)
     w('big1.bin', rnd(40 << 20, 3), t=10, zone=ZONE)
     w('big2.bin', rnd((96 << 20) + 12345, 4), 0x1 | 0x20, t=11)
@@ -163,6 +169,7 @@ def build_dest(root, src_root):
     goes, a folder where a file goes, copies an interrupted run finished (same size and date)."""
     w = lambda rel, *a, **k: write(os.path.join(root, rel.replace('/', os.sep)), *a, **k)
     w('a.txt', b'old' * 18 + b'x', t=0)  # older, another size
+    w('keep.bin.chpart', rnd(50, 13), t=24)  # the job's own file, already copied: a resume never deletes it
     w('hidden.txt', b'older hidden', 0x1, t=0)  # read-only: a replace clears it first
     w('same.txt', b'newer-same', t=500)  # the same name in another case, newer
     w('big1.bin.chpart', b'\0' * 1000, t=0)  # a leftover of a stopped copy
@@ -248,6 +255,10 @@ def masked_json(path, roots):
     for r in roots:
         raw = raw.replace(json.dumps(r)[1:-1], '<ROOT>').replace(json.dumps(r.replace('\\\\?\\', ''))[1:-1], '<ROOT>')
     j = json.loads(raw)
+    if j.get('tune'):
+        # the tuner measured: which way won is timing (each program measures its own runs)
+        j['badge'] = j['badge'].replace(' · tuned', '')
+        j['engine'] = '*'
     for k in ('seconds', 'runSeconds', 'avgMbps', 'peakMbps', 'rttMs', 'tune', 'log'):
         j[k] = '*'
     j['notes'] = sorted(j['notes'])
@@ -302,6 +313,11 @@ def scenarios(drives):
         ('copy-no-fast', c, c, 'copy', ['--no-fast'], None),
         ('copy-pause', c, c, 'copy', ['--limit', '800', '--pause', '0.4,1.2'], None),
         ('copy-skip-big', c, c, 'copy', ['--limit', '400', '--skip-at', 'big2.bin'], None),
+        # one 3 GB file: the warm-up, all four trial ways and the cached end fit in it (the pipeline switches ways
+        # between stretches, so each switch must keep the bytes in order)
+        ('copy-tuner', c, c, 'copy', [], 'tuner'),
+        # the progress log's lines (--log): the same format
+        ('copy-log', c, c, 'copy', ['--limit', '1600', '--log', '{LOG}'], None),
         # canceled midway: compared by rule (every file there is whole, no .chpart left), not side by side
         ('cancel', c, c, 'copy', ['--limit', '400', '--cancel-after', '1.5'], 'cancel'),
     ]
@@ -337,7 +353,7 @@ def one(name, sd, dd, op, extra, kind, who, exe, work):
     rm(src_base)
     if dst_base != src_base:
         rm(dst_base)
-    build_source(src)
+    build_source(src, pair=(kind == 'conflicts'))
     if kind == 'conflicts':
         build_dest(dst, src)
     if kind == 'own':
@@ -351,11 +367,22 @@ def one(name, sd, dd, op, extra, kind, who, exe, work):
         cancel = True
     else:
         cancel = False
+    if kind == 'tuner':
+        rm(src)
+        os.makedirs(L(src))
+        with open(L(os.path.join(src, 'huge.bin')), 'wb') as f:
+            for i in range(48):
+                f.write(rnd(64 << 20, 1000 + i))
+        set_times(os.path.join(src, 'huge.bin'), T0 + 77, T0 + 78)
+        sources = [os.path.join(src, 'huge.bin')]
+        kind = None
     existed = names(dst) if os.path.isdir(L(dst)) else set()
     src_existed = names(src)
     data = os.path.join(work, 'data', name + '-' + who)
     rm(data)
     js = os.path.join(work, 'out', '%s.%s.json' % (name, who))
+    log = os.path.join(work, 'out', '%s.%s.log' % (name, who))
+    extra = [log if a == '{LOG}' else a for a in extra]
     code, secs = run(exe, data, [op] + sources + [dst, '--json', js] + extra)
     roots = [src_base, dst_base, L(src_base), L(dst_base)]
     if cancel:
@@ -379,7 +406,27 @@ def one(name, sd, dd, op, extra, kind, who, exe, work):
         # the source's folders existed before: Windows dates them when entries leave
         out += ['== source'] + (dump(src, src_existed) if os.path.isdir(L(src)) else ['(gone)'])
     out += ['== json'] + masked_json(js, roots) + ['== log'] + masked_log(data, roots)
+    if os.path.isfile(log):
+        # one line per 50 ms: the numbers and the current file come from timing, the format must not
+        shape = re.compile(r"^\d+\.\ds (Queued|Analyzing|Copying|Waiting|Finishing|Done|Canceled|Failed) \d+/\d+ files "
+                           r"-?\d+/\d+ bytes \d+\.\d Mbps workers=\d+ badge='[^']*' cur=.* status=.*$")
+        raw = open(log, 'rb').read()
+        lines = raw[3:].decode('utf-8').split('\r\n')
+        bad = [l for l in lines[:-1] if not shape.match(l)]
+        out += ['== progress log', 'bom %s, lines end CR LF %s, all lines in the format: %s' % (
+            raw[:3] == b'\xef\xbb\xbf', lines[-1] == '', 'yes' if lines[:-1] and not bad else bad[:3] or 'no lines')]
     return out, secs, (src_base, dst_base, data)
+
+
+def usage(cs, rs, work):
+    # too few arguments: the usage line on stderr, exit 1 (the same in both)
+    r = []
+    for exe in (cs, rs):
+        p = subprocess.run([exe, '--cli', 'copy', 'only-one'], env=dict(os.environ, CHOPPY_DATA=os.path.join(work, 'data', 'usage')),
+                           capture_output=True, timeout=60)
+        r.append((p.returncode, p.stderr))
+    print(('SAME' if r[0] == r[1] else 'DIFF') + ' usage            exit %d, stderr %r' % r[1])
+    return r[0] == r[1]
 
 
 def main():
@@ -389,6 +436,8 @@ def main():
     drives = [d for d in os.environ.get('DRIVES', 'D X F').split() if os.path.isdir(d + ':\\')]
     os.makedirs(os.path.join(work, 'out'), exist_ok=True)
     bad = 0
+    if not only or 'usage' in only:
+        bad += 0 if usage(cs, rs, work) else 1
     cleanup = set()
     try:
         for sc in scenarios(drives):

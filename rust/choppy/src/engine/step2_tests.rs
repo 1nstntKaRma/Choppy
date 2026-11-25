@@ -224,3 +224,87 @@ fn tuner_warms_up_tries_each_way_and_keeps_a_clear_winner() {
     let t = PipeTuner::new(start.clone(), vec![other], 0.75, 1.03);
     assert_eq!(t.next(0, 100 * mb, 10 * mb), (start, 100 * mb, false));
 }
+
+#[test]
+fn conflict_answers_and_retry_failed() {
+    use super::model::{ConflictAnswer, ConflictPolicy};
+    let _g = ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let data = scratch("data2");
+    sys::set_env_var("CHOPPY_DATA", &data.to_string_lossy());
+    let work = scratch("conflicts");
+    let src = source(&work, 3, 100);
+    // the same names already there, older and other bytes
+    let fresh_dest = |name: &str| -> PathBuf {
+        let d = work.join(name);
+        std::fs::create_dir_all(d.join("src")).unwrap();
+        for i in 0..3 {
+            std::fs::write(d.join("src").join(format!("f{i}.bin")), vec![9u8; 10]).unwrap();
+        }
+        d
+    };
+    let spec = |dest: &Path| JobSpec { op: OpKind::Copy, sources: vec![long(&src)], dest: long(dest), ..Default::default() };
+    let untouched = |d: &Path| (0..3).all(|i| std::fs::read(d.join("src").join(format!("f{i}.bin"))).unwrap() == vec![9u8; 10]);
+
+    // Keep both with "apply to all": asked once (3 conflicts left then), every file kept both
+    let d1 = fresh_dest("d1");
+    let asked = Arc::new(AtomicI32::new(0));
+    let mut job = CopyJob::new(Arc::new(spec(&d1)));
+    let a = asked.clone();
+    job.ask_conflict = Some(Box::new(move |_, info| {
+        a.fetch_add(1, Ordering::SeqCst);
+        assert_eq!((info.remaining, info.incoming_size, info.existing_size), (3, 100, 10));
+        Some(ConflictAnswer { choice: ConflictPolicy::KeepBoth, apply_to_all: true, cancel_job: false })
+    }));
+    let job = Arc::new(job);
+    job.start();
+    wait_done(&job);
+    assert_eq!(asked.load(Ordering::SeqCst), 1);
+    assert_eq!(job.policy(), ConflictPolicy::KeepBoth);
+    assert!(untouched(&d1));
+    for i in 0..3 {
+        assert_eq!(std::fs::read(d1.join("src").join(format!("f{i} (2).bin"))).unwrap(), vec![i as u8; 100]);
+    }
+
+    // the dialog closed (no answer): the job is canceled, nothing replaced
+    let d2 = fresh_dest("d2");
+    let mut job = CopyJob::new(Arc::new(JobSpec { policy: ConflictPolicy::Ask, ..spec(&d2) }));
+    job.ask_conflict = Some(Box::new(|_, _| None));
+    let job = Arc::new(job);
+    job.start();
+    wait_done(&job);
+    assert_eq!(job.phase(), JobPhase::Canceled);
+    assert!(untouched(&d2));
+
+    // no one to ask: skipped
+    let d3 = fresh_dest("d3");
+    let job = Arc::new(CopyJob::new(Arc::new(spec(&d3))));
+    job.start();
+    wait_done(&job);
+    assert_eq!((job.phase(), job.skipped_files.load(Ordering::SeqCst)), (JobPhase::Done, 3));
+    assert!(untouched(&d3));
+
+    // Retry failed: a job whose files failed (too big for "the drive") is queued again with just those files
+    let d4 = work.join("d4");
+    let mgr = Arc::new(JobManager::default());
+    let failing = Arc::new(CopyJob::new(Arc::new(JobSpec { max_file_test: 50, ..spec(&d4) })));
+    failing.start();
+    wait_done(&failing);
+    assert_eq!(failing.failed_files.load(Ordering::SeqCst), 3);
+    assert!(super::lock(&failing.failed_items)[0].error().unwrap().starts_with("Too big for this drive: its NTFS file system"));
+    mgr.retry_failed(&failing);
+    let t = Instant::now();
+    while mgr.busy() || mgr.finished_snapshot().is_empty() {
+        assert!(t.elapsed() < Duration::from_secs(60), "the retry didn't end");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let retry = mgr.finished_snapshot()[0].clone();
+    assert_eq!(retry.spec.origin, "Retry");
+    assert_eq!((retry.phase(), retry.done_files.load(Ordering::SeqCst)), (JobPhase::Done, 3));
+    for i in 0..3 {
+        assert_eq!(std::fs::read(d4.join("src").join(format!("f{i}.bin"))).unwrap(), vec![i as u8; 100]);
+    }
+
+    sys::remove_env_var("CHOPPY_DATA");
+    let _ = std::fs::remove_dir_all(&work);
+    let _ = std::fs::remove_dir_all(&data);
+}

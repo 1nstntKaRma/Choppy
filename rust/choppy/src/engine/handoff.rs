@@ -304,9 +304,16 @@ fn write_progress(j: &CopyJob) -> std::io::Result<()> {
     write_atomic(&with_ext(&record, ".progress"), &sb)
 }
 
+/// The job ended (its Finished event): the last progress, then the result. Errors are swallowed, as C#'s catch did.
 fn write_result(j: &Arc<CopyJob>) {
-    let _ = (|| -> std::io::Result<()> {
-        write_progress(j)?;
+    // the report thread may be writing the progress at this very moment: its failure never costs the result (C# lost
+    // the result with it, and the user's Choppy then reported the copied files as failed)
+    let _ = write_progress(j);
+    let _ = write_result_file(j);
+}
+
+fn write_result_file(j: &CopyJob) -> std::io::Result<()> {
+    {
         let n = |a: &std::sync::atomic::AtomicI32| a.load(Ordering::SeqCst);
         let b = |a: &std::sync::atomic::AtomicI64| a.load(Ordering::SeqCst);
         let mut sb = String::new();
@@ -342,7 +349,7 @@ fn write_result(j: &Arc<CopyJob>) {
         line(&mut sb, "end");
         let record = PathBuf::from(j.spec.handoff_path.as_ref().map(|p| p.to_os()).unwrap_or_default());
         write_atomic(&with_ext(&record, ".result"), &sb)
-    })();
+    }
 }
 
 // ================= files =================

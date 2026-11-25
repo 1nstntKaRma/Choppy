@@ -167,11 +167,6 @@ pub fn error_text(code: u32) -> String {
     }
 }
 
-/// GetLastError: right after a call that reports its error that way (GetFileAttributesW).
-pub fn last_error() -> u32 {
-    unsafe { windows::Win32::Foundation::GetLastError() }.0
-}
-
 /// Sets an environment variable of this process. Only at the start, before any other thread runs (the
 /// administrator copy takes test mode from its record: Handoff.Prepare).
 pub fn set_env_var(key: &str, value: &str) {

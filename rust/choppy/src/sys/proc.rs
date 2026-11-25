@@ -7,8 +7,9 @@ use core::ffi::c_void;
 use windows::Win32::Foundation::{CloseHandle, HANDLE, SYSTEMTIME, WAIT_OBJECT_0};
 use windows::Win32::Globalization::{DATE_SHORTDATE, GetDateFormatEx, GetTimeFormatEx, TIME_FORMAT_FLAGS};
 use windows::Win32::Security::{CheckTokenMembership, CreateWellKnownSid, PSID, WinBuiltinAdministratorsSid};
-use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, CoInitializeEx, CoUninitialize};
+use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::Power::{EXECUTION_STATE, SetThreadExecutionState};
+use windows::Win32::Storage::FileSystem::FileTimeToLocalFileTime;
 use windows::Win32::System::SystemInformation::{GetSystemTimeAsFileTime, GlobalMemoryStatusEx, MEMORYSTATUSEX};
 use windows::Win32::System::Threading::{
     GetCurrentProcessId, GetCurrentThread, GetExitCodeProcess, OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_SYNCHRONIZE,
@@ -68,6 +69,21 @@ impl Drop for Process {
     }
 }
 
+/// .NET's GetShellError: what ShellExecuteEx's hInstApp says when it set no error of its own.
+fn shell_error(h_inst_app: isize) -> u32 {
+    match h_inst_app {
+        2 => 2,            // SE_ERR_FNF -> ERROR_FILE_NOT_FOUND
+        3 => 3,            // SE_ERR_PNF -> ERROR_PATH_NOT_FOUND
+        5 => 5,            // SE_ERR_ACCESSDENIED -> ERROR_ACCESS_DENIED
+        8 => 8,            // SE_ERR_OOM -> ERROR_NOT_ENOUGH_MEMORY
+        28..=30 => 1156,   // SE_ERR_DDETIMEOUT / DDEFAIL / DDEBUSY -> ERROR_DDE_FAIL
+        26 => 32,          // SE_ERR_SHARE -> ERROR_SHARING_VIOLATION
+        31 => 1155,        // SE_ERR_NOASSOC -> ERROR_NO_ASSOCIATION
+        32 => 1157,        // SE_ERR_DLLNOTFOUND -> ERROR_DLL_NOT_FOUND
+        other => other as u32,
+    }
+}
+
 /// Starts `exe args` as administrator (ShellExecuteEx, verb "runas", in `dir`), as Process.Start with UseShellExecute
 /// and Verb = "runas" does: on its own thread in a single-threaded COM apartment. Err = the Win32 error
 /// (ERROR_CANCELLED = 1223 when the user says no).
@@ -76,7 +92,7 @@ pub fn shell_execute_runas(exe: &WString, args: &WString, dir: &WString) -> Resu
     let verb: Vec<u16> = "runas\0".encode_utf16().collect();
     let r = std::thread::spawn(move || -> Result<usize, u32> {
         unsafe {
-            let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+            let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
             let mut info = SHELLEXECUTEINFOW {
                 cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
                 fMask: SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI | SEE_MASK_NOASYNC,
@@ -87,7 +103,10 @@ pub fn shell_execute_runas(exe: &WString, args: &WString, dir: &WString) -> Resu
                 nShow: 1, // SW_SHOWNORMAL
                 ..Default::default()
             };
-            let r = ShellExecuteExW(&mut info).map(|_| info.hProcess.0 as usize).map_err(|e| win32_code(&e));
+            let r = ShellExecuteExW(&mut info).map(|_| info.hProcess.0 as usize).map_err(|e| match win32_code(&e) {
+                0 => shell_error(info.hInstApp.0 as isize),
+                code => code,
+            });
             if hr.is_ok() {
                 CoUninitialize();
             }
@@ -103,8 +122,8 @@ pub fn shell_execute_runas(exe: &WString, args: &WString, dir: &WString) -> Resu
 /// administrator's own Choppy without "Run as administrator" doesn't).
 pub fn is_admin() -> bool {
     unsafe {
-        let mut sid = [0u8; 68]; // SECURITY_MAX_SID_SIZE
-        let mut size = sid.len() as u32;
+        let mut sid = [0u32; 17]; // SECURITY_MAX_SID_SIZE (68 bytes), DWORD-aligned
+        let mut size = size_of_val(&sid) as u32;
         let psid = PSID(sid.as_mut_ptr() as *mut c_void);
         if CreateWellKnownSid(WinBuiltinAdministratorsSid, None, Some(psid), &mut size).is_err() {
             return false;
@@ -139,6 +158,16 @@ pub fn memory_status() -> Option<(u64, u64)> {
 pub fn now_file_time() -> i64 {
     let f = unsafe { GetSystemTimeAsFileTime() };
     (((f.dwHighDateTime as u64) << 32) | f.dwLowDateTime as u64) as i64
+}
+
+/// The local time now as a FILETIME (DateTime.Now's ticks less 1600 years' worth).
+pub fn now_local_file_time() -> i64 {
+    let f = unsafe { GetSystemTimeAsFileTime() };
+    let mut l = f;
+    if unsafe { FileTimeToLocalFileTime(&f, &mut l) }.is_err() {
+        l = f;
+    }
+    (((l.dwHighDateTime as u64) << 32) | l.dwLowDateTime as u64) as i64
 }
 
 /// DateTime.ToString() in the user's own format: the short date, a space, the long time ("11/25/2026 5:08:09 PM"),

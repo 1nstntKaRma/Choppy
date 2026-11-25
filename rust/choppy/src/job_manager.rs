@@ -37,6 +37,8 @@ pub struct JobManager {
     pub all_done: Option<AllDoneFn>,
     /// The UI thread (step 4/5 sets it); None = everything runs right where it is (C#: no Application).
     pub dispatch: Option<DispatchFn>,
+    /// True on the UI thread itself (C#'s Dispatcher.CheckAccess): Changed then runs at once instead of later.
+    pub on_ui_thread: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
 }
 
 impl JobManager {
@@ -216,13 +218,14 @@ impl JobManager {
         if hs.is_empty() {
             return;
         }
+        let here = self.on_ui_thread.as_ref().is_some_and(|f| f()); // unknown = posted, as from any other thread
         match &self.dispatch {
-            Some(d) => d(Box::new(move || {
+            Some(d) if !here => d(Box::new(move || {
                 for h in &hs {
                     h();
                 }
             })),
-            None => {
+            _ => {
                 for h in &hs {
                     h();
                 }

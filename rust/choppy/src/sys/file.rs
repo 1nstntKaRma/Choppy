@@ -52,6 +52,13 @@ pub fn get_file_attributes(path: &WString) -> u32 {
     unsafe { GetFileAttributesW(PCWSTR(p.as_ptr())) }
 }
 
+/// GetFileAttributesW with its error read right after the call (C#: Marshal.GetLastWin32Error). Err = the Win32 error.
+pub fn get_file_attributes_err(path: &WString) -> Result<u32, u32> {
+    let p = path.to_wide_z();
+    let a = unsafe { GetFileAttributesW(PCWSTR(p.as_ptr())) };
+    if a == super::INVALID_FILE_ATTRIBUTES { Err(unsafe { windows::Win32::Foundation::GetLastError() }.0) } else { Ok(a) }
+}
+
 fn file_time(f: FILETIME) -> i64 {
     (((f.dwHighDateTime as u64) << 32) | f.dwLowDateTime as u64) as i64
 }

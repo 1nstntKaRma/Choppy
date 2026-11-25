@@ -130,6 +130,7 @@ struct FlushState {
     to_flush: Vec<Arc<FileItem>>,
     flusher: Option<JoinHandle<()>>,
     end: bool,
+    dead: bool, // the flusher ended on a panic: the copies are flushed (then their originals go) where they finish
     bytes: i64,
     oldest: Option<Instant>,
 }
@@ -661,11 +662,13 @@ impl CopyJob {
             }
             let name = paths::file_name(src);
             let target = paths::combine(&self.spec.dest, &name);
-            let a = sys::get_file_attributes(src);
-            if a == sys::INVALID_FILE_ATTRIBUTES {
-                self.fail_note(src, sys::error_text(sys::last_error()));
-                continue;
-            }
+            let a = match sys::get_file_attributes_err(src) {
+                Ok(a) => a,
+                Err(e) => {
+                    self.fail_note(src, sys::error_text(e));
+                    continue;
+                }
+            };
             let is_dir = (a & sys::FILE_ATTRIBUTE_DIRECTORY) != 0;
             if paths::same_path(src, &target) {
                 self.note(format!("Already in this folder: {}", paths::to_short(src)));
@@ -962,7 +965,7 @@ impl CopyJob {
         let mut ws = Vec::new();
         for i in 0..threads.max(1) {
             let me = self.clone();
-            ws.push(spawn(format!("copy {i}"), None, move || {
+            let made = std::thread::Builder::new().name(format!("copy {i}")).spawn(move || {
                 if let Err(e) = catch_unwind(AssertUnwindSafe(|| me.worker_loop(i))) {
                     // outside a file's own copy (C# crashed here): the job fails once the rest is wrapped up
                     let mut wp = lock(&me.worker_panic);
@@ -970,7 +973,14 @@ impl CopyJob {
                         *wp = Some(e);
                     }
                 }
-            }));
+            });
+            match made {
+                Ok(t) => ws.push(t),
+                // no more threads (memory): the workers there do the rest (they take files by index), none at all =
+                // the job fails as C#'s Thread.Start did - and no worker keeps running after the job ended
+                Err(_) if !ws.is_empty() => break,
+                Err(_) => panic!("{}", big_copy::OUT_OF_MEMORY),
+            }
         }
         for t in ws {
             let _ = t.join();
@@ -1390,7 +1400,7 @@ impl CopyJob {
         let align = 4096.max(pipe_align);
         let files = self.files();
         let mut open: Vec<(usize, sys::Handle, i64)> = Vec::new(); // (file index, handle, lcn)
-        let mut place: HashMap<usize, usize> = HashMap::new();
+        let mut place: HashMap<usize, (usize, usize)> = HashMap::new(); // file index -> (where, room)
         let mut used: i64 = 0;
         let mut j = i;
         while j < files.len() && open.len() < 1024 && !self.canceled() {
@@ -1411,7 +1421,7 @@ impl CopyJob {
                 drop(h);
                 break;
             }
-            place.insert(j, used as usize);
+            place.insert(j, (used as usize, room as usize));
             used += room;
             open.push((j, h, lcn));
             j += 1;
@@ -1425,12 +1435,17 @@ impl CopyJob {
             }
             self.wait_to_run();
             let f = &files[*k];
-            let size = sys::file_size(h).unwrap_or(0);
-            let start = place[k];
-            let room = ((size + align as i64 - 1) / align as i64 * align as i64) as usize;
+            // the size again (C# ignored a failure here and copied an empty file: it can't fail on an open handle, but
+            // if it does the file goes the usual way)
+            let Ok(size) = sys::file_size(h) else { continue };
+            let (start, room) = place[k];
+            // never past the room this file was given (C# read the new size in whole: it can't grow while it is open
+            // without sharing writes, but a neighbour's bytes must never be at stake)
+            if ((size + align as i64 - 1) / align as i64 * align as i64) as usize > room {
+                continue;
+            }
             let mem = batch.mem.bytes_mut();
-            let end = (start + room).min(mem.len());
-            if big_copy::read_small(h, &mut mem[start..end], size, align) {
+            if big_copy::read_small(h, &mut mem[start..start + room], size, align) {
                 if size != f.size() {
                     add(&self.total_bytes, size - f.size());
                     f.set_size(size);
@@ -1844,6 +1859,11 @@ impl CopyJob {
             return;
         }
         let mut st = lock(&self.flush);
+        if st.dead {
+            drop(st);
+            self.flush_then_delete(vec![f.clone()]);
+            return;
+        }
         if st.to_flush.is_empty() {
             st.oldest = Some(Instant::now());
         }
@@ -1852,14 +1872,23 @@ impl CopyJob {
         if st.flusher.is_none() {
             let me = self.clone();
             st.flusher = Some(spawn("move flush".into(), None, move || {
-                let _ = catch_unwind(AssertUnwindSafe(|| me.flush_loop()));
+                if let Err(e) = catch_unwind(AssertUnwindSafe(|| me.flush_loop())) {
+                    // the job fails once the rest is wrapped up; what was waiting is flushed by FinishDurable
+                    let mut wp = lock(&me.worker_panic);
+                    if wp.is_none() {
+                        *wp = Some(e);
+                    }
+                    drop(wp);
+                    lock(&me.flush).dead = true;
+                    me.flush_cv.notify_all();
+                }
             }));
         }
         if st.to_flush.len() >= self.flush_batch_files() || st.bytes >= self.flush_batch_bytes() {
             self.flush_cv.notify_all();
         }
         // never far ahead of the disk: at most two batches wait
-        while (st.to_flush.len() >= 2 * self.flush_batch_files() || st.bytes >= 2 * self.flush_batch_bytes()) && !st.end {
+        while (st.to_flush.len() >= 2 * self.flush_batch_files() || st.bytes >= 2 * self.flush_batch_bytes()) && !st.end && !st.dead {
             st = wait_timeout(&self.flush_cv, st, Duration::from_millis(500));
         }
     }
@@ -1929,18 +1958,26 @@ impl CopyJob {
         let mut ts = Vec::new();
         for _ in 1..threads {
             let o = one.clone();
-            ts.push(spawn("flush".into(), Some(256 * 1024), move || {
+            let made = std::thread::Builder::new().name("flush".into()).stack_size(256 * 1024).spawn(move || {
                 let _ = catch_unwind(AssertUnwindSafe(o));
-            }));
+            });
+            match made {
+                Ok(t) => ts.push(t),
+                Err(_) => break, // no more threads (memory): the ones there and this one do the rest
+            }
         }
-        let _ = catch_unwind(AssertUnwindSafe(one));
+        let r = catch_unwind(AssertUnwindSafe(one));
+        // every flush that started ends before this returns (FinishDurable waits for all of them)
         for t in ts {
             let _ = t.join();
+        }
+        if let Err(e) = r {
+            resume_unwind(e);
         }
     }
 
     /// Waits until every copy of this move is on the disk and its original handled.
-    fn finish_durable(&self) {
+    fn finish_durable(self: &Arc<Self>) {
         let t = {
             let mut st = lock(&self.flush);
             st.end = true;
@@ -1949,6 +1986,11 @@ impl CopyJob {
         };
         if let Some(t) = t {
             let _ = t.join();
+        }
+        // a flusher that died left copies waiting: flushed here, then their originals go
+        let rest = std::mem::take(&mut lock(&self.flush).to_flush);
+        if !rest.is_empty() {
+            self.flush_then_delete(rest);
         }
     }
 
@@ -2037,9 +2079,9 @@ impl CopyJob {
         let mut mirrored = false;
         let (mut seq, mut owner_pid) = (0, 0);
         let (mut sent_pause, mut sent_cancel) = (false, false);
-        let mut res: Option<handoff::HandoffResult>;
+        let mut res: Option<handoff::HandoffResult> = None;
         let quiet = Stopwatch::start_new();
-        loop {
+        let looped = catch_unwind(AssertUnwindSafe(|| loop {
             res = handoff::read_result(&record);
             if res.is_some() {
                 break;
@@ -2106,12 +2148,14 @@ impl CopyJob {
                 break;
             }
             std::thread::sleep(Duration::from_millis(200));
-        }
-        if mirrored {
-            lock(&self.active).retain(|x| !Arc::ptr_eq(x, &mirror));
-        }
+        }));
+        // C#'s finally: the mirror and "as administrator" go however the loop ended
+        lock(&self.active).retain(|x| !Arc::ptr_eq(x, &mirror));
         self.as_admin.store(false, SEQ);
         drop(p);
+        if let Err(e) = looped {
+            resume_unwind(e);
+        }
 
         let Some(res) = res else {
             handoff::clean(&record, true);
@@ -2325,27 +2369,34 @@ impl CopyJob {
         let threads = if self.dst_vol().is_some_and(|v| v.is_network()) { 8 } else { 1 };
         let work = Arc::new(work);
         let next = Arc::new(AtomicI64::new(-1));
-        let mut ts = Vec::new();
-        for _ in 0..threads.min(work.len().max(1)) {
+        let run = {
             let (me, work, next) = (self.clone(), work.clone(), next.clone());
-            ts.push(spawn("folders".into(), None, move || {
+            move || loop {
+                let k = next.fetch_add(1, SEQ) + 1;
+                if k as usize >= work.len() || me.canceled() {
+                    break;
+                }
+                let d = &work[k as usize];
                 let _ = catch_unwind(AssertUnwindSafe(|| {
-                    loop {
-                        let k = next.fetch_add(1, SEQ) + 1;
-                        if k as usize >= work.len() || me.canceled() {
-                            break;
-                        }
-                        let d = &work[k as usize];
-                        let target = paths::combine(&me.spec.dest, &d.rel);
-                        set_times(&target, d.ctime, d.mtime, true);
-                        let keep = d.attr & (0x2 /*hidden*/ | 0x4 /*system*/ | 0x20/*archive*/);
-                        if (keep & 0x6) != 0 {
-                            sys::set_file_attributes(&target, keep | sys::FILE_ATTRIBUTE_DIRECTORY);
-                        }
+                    let target = paths::combine(&me.spec.dest, &d.rel);
+                    set_times(&target, d.ctime, d.mtime, true);
+                    let keep = d.attr & (0x2 /*hidden*/ | 0x4 /*system*/ | 0x20/*archive*/);
+                    if (keep & 0x6) != 0 {
+                        sys::set_file_attributes(&target, keep | sys::FILE_ATTRIBUTE_DIRECTORY);
                     }
                 }));
-            }));
+            }
+        };
+        // C# made `threads` of them and waited; here this thread is one of them
+        let mut ts = Vec::new();
+        for _ in 1..threads.min(work.len().max(1)) {
+            let r = run.clone();
+            match std::thread::Builder::new().name("folders".into()).spawn(r) {
+                Ok(t) => ts.push(t),
+                Err(_) => break,
+            }
         }
+        run();
         for t in ts {
             let _ = t.join();
         }
@@ -2830,7 +2881,7 @@ fn free_name(path: &WString, is_dir: bool) -> WString {
 /// DateTime.Now.Ticks (100 ns since year 1, local time).
 fn net_ticks() -> i64 {
     // FILETIME counts from 1601; DateTime from year 1: 504,911,232,000,000,000 ticks apart
-    sys::now_file_time() + 504_911_232_000_000_000
+    sys::now_local_file_time() + 504_911_232_000_000_000
 }
 
 /// The copy's name while it is written: "<name>.chpart".
@@ -2874,6 +2925,7 @@ fn rename_into_place(temp: &WString, final_: &mut WString, replace: bool) -> u32
         if !replace && (e == sys::ERROR_ALREADY_EXISTS || e == sys::ERROR_FILE_EXISTS) {
             // something new appeared under that name while we copied: keep both, never overwrite silently
             *final_ = free_name(final_, false);
+            last = sys::ERROR_FILE_NOT_FOUND; // C#: the last call was FreeName's look for the free name
             continue;
         }
         if replace && e == sys::ERROR_ACCESS_DENIED && clear_read_only(final_) {
