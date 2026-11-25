@@ -922,12 +922,13 @@ pub fn test_drive(letter: &str, system: bool, kind: DeviceKind, disk: i32, rd: f
     d.read_mbps = rd;
     d.write_mbps = wr;
     d.file_system = Some("NTFS".into());
-    let mut v = crate::engine::volume_probe::VolumeInfo::default();
-    v.id = WString::from(format!("vol:{letter}"));
-    v.kind = kind;
-    v.disk = disk;
-    v.file_system = Some("NTFS".into());
-    d.vol = Some(v);
+    d.vol = Some(crate::engine::volume_probe::VolumeInfo {
+        id: WString::from(format!("vol:{letter}")),
+        kind,
+        disk,
+        file_system: Some("NTFS".into()),
+        ..Default::default()
+    });
     d.bus = Some(if kind == DeviceKind::Ssd { "NVMe".into() } else { "SATA".into() });
     d
 }

@@ -6,7 +6,7 @@ use std::os::windows::fs::OpenOptionsExt;
 use std::os::windows::process::CommandExt;
 use std::path::Path;
 
-use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_ABANDONED, WAIT_OBJECT_0};
+use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_ABANDONED, WAIT_OBJECT_0, WAIT_TIMEOUT};
 use windows::Win32::NetworkManagement::WNet::WNetGetConnectionW;
 use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
 use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance};
@@ -99,6 +99,12 @@ pub fn open_sequential(p: &Path) -> std::io::Result<std::fs::File> {
 /// A child process without a console window (CreateNoWindow).
 pub fn spawn_hidden(exe: &Path, args: &[&str]) -> std::io::Result<std::process::Child> {
     std::process::Command::new(exe).args(args).creation_flags(0x08000000).spawn()
+}
+
+/// Process.WaitForExit(ms): true once the child has ended (or can't be waited on).
+pub fn wait_child(p: &std::process::Child, ms: u32) -> bool {
+    use std::os::windows::io::AsRawHandle;
+    unsafe { WaitForSingleObject(HANDLE(p.as_raw_handle()), ms) != WAIT_TIMEOUT }
 }
 
 /// IFileOperation: copies one file or folder into a folder with the shell's copy engine, FOF_NO_UI (silent, no

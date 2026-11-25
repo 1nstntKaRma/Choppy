@@ -34,7 +34,7 @@ impl SpeedGraph {
         let s = &all[all.len() - n..];
         // light smoothing so the line reads like a trend, not noise
         let mut sm = vec![0.0; n];
-        for i in 0..n {
+        for (i, smi) in sm.iter_mut().enumerate() {
             let (mut acc, mut w) = (0.0, 0.0);
             for k in -2i64..=2 {
                 let j = i as i64 + k;
@@ -45,14 +45,12 @@ impl SpeedGraph {
                 acc += s[j as usize] * wt;
                 w += wt;
             }
-            sm[i] = if w > 0.0 { acc / w } else { 0.0 };
+            *smi = if w > 0.0 { acc / w } else { 0.0 };
         }
         let max = sm.iter().cloned().fold(0.0, f64::max);
         // scale moves smoothly so the line doesn't jump
         let target = (max * 1.25).max(1.0);
-        self.scale_max = if self.scale_max <= 1.0 {
-            target
-        } else if target > self.scale_max {
+        self.scale_max = if self.scale_max <= 1.0 || target > self.scale_max {
             target
         } else {
             self.scale_max * 0.97 + target * 0.03

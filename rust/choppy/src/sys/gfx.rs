@@ -205,10 +205,7 @@ impl Gfx {
             });
             if trim {
                 let key = (f.fam, (f.size * 1000.0) as u64, f.weight);
-                let sign = match self.ellipsis.borrow().get(&key) {
-                    Some(e) => Some(e.clone()),
-                    None => None,
-                };
+                let sign = self.ellipsis.borrow().get(&key).cloned();
                 let sign = match sign {
                     Some(s) => s,
                     None => {
@@ -232,6 +229,8 @@ impl Gfx {
         let wide: Vec<u16> = text.encode_utf16().collect();
         let base = runs.first().map(|r| r.1).unwrap_or(Font { fam: Fam::Ui, size: 12.0, weight: 400 });
         let limited = o.max_w > 0.0 && (o.trim || o.wrap);
+        // a line that neither wraps nor trims still sits right or centered in the width it got (TextAlignment)
+        let aligned = o.max_w > 0.0 && o.align != TextAlign::Left;
         let fonts: Vec<Font> = runs.iter().map(|r| r.1).collect();
         let (line_h, asc) = if o.ideal {
             let (b, ls) = wpf_metrics(base.fam);
@@ -242,13 +241,13 @@ impl Gfx {
         // hard line breaks make more lines even without wrapping (a tooltip's "\n")
         let multi = (o.wrap && limited) || text.contains('\n');
         let run_lens: Vec<(u32, Argb)> = runs.iter().map(|r| (r.0.encode_utf16().count() as u32, r.2)).collect();
-        let Some(fmt) = self.format(base, o.trim && limited, o.wrap && limited, if limited { o.align } else { TextAlign::Left })
+        let Some(fmt) = self.format(base, o.trim && limited, o.wrap && limited, if limited || aligned { o.align } else { TextAlign::Left })
         else {
             return Text::empty(line_h, asc, run_lens);
         };
         unsafe {
             // WPF TextFormattingMode="Display": GDI-compatible widths at the screen's pixel size
-            let max_w = if limited { o.max_w } else { 100000.0 };
+            let max_w = if limited || aligned { o.max_w } else { 100000.0 };
             let made = if o.ideal {
                 self.dw.CreateTextLayout(&wide, &fmt, max_w as f32, 100000.0)
             } else {

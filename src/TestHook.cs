@@ -21,6 +21,16 @@ namespace Choppy
     internal sealed class TestHook
     {
         public static bool Park { get { return Environment.GetEnvironmentVariable("CHOPPY_PARK") == "1"; } }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+
+        /// <summary>rust branch only (step 4's pictures at 100 %): with the test hook, CHOPPY_DPI96=1 makes the UI
+        /// thread DPI-unaware before any window exists, so every window lays out and draws at 96 DPI.</summary>
+        public static void Dpi96IfAsked()
+        {
+            if (Environment.GetEnvironmentVariable("CHOPPY_DPI96") == "1" && !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CHOPPY_TESTHOOK")))
+                SetThreadDpiAwarenessContext(new IntPtr(-1));
+        }
         public bool QuitRequested;
         readonly App app;
         readonly string dir;

@@ -15,6 +15,7 @@ namespace Choppy
         static int Main(string[] args)
         {
             StartDir = Environment.CurrentDirectory;
+            TestHook.Dpi96IfAsked();   // rust branch only: CHOPPY_DPI96=1 with the test hook = the windows at 100 %
             Handoff.Prepare(args);   // an administrator copy takes test mode from its record (it starts with a fresh environment)
             // Never work "in" a random folder: anything relative can only ever land in Choppy's own data folder.
             try

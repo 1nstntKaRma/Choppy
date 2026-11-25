@@ -3,7 +3,6 @@
 //! it at once, even in the middle of a big file.
 
 use std::path::Path;
-use std::time::Duration;
 
 use super::{BenchErr, BenchResult};
 
@@ -58,17 +57,13 @@ pub fn run(warm_src: Option<&Path>, warm_dir: Option<&Path>, src: &Path, dest_di
         std::fs::write(&job, text).map_err(|e| BenchErr::Error(super::files::io_message(&e)))?;
         let exe = std::env::current_exe().map_err(|e| BenchErr::Error(e.to_string()))?;
         let mut p = crate::sys::spawn_hidden(&exe, &["--shellcopy", &job.display().to_string()]).map_err(|e| BenchErr::Error(super::files::io_message(&e)))?;
-        loop {
-            match p.try_wait() {
-                Ok(Some(_)) | Err(_) => break,
-                Ok(None) => {}
-            }
+        // Process.WaitForExit(50): back the moment it ends
+        while !crate::sys::wait_child(&p, 50) {
             if canceled() {
                 let _ = p.kill();
-                let _ = p.wait();
+                crate::sys::wait_child(&p, 10_000);
                 return Err(BenchErr::Canceled);
             }
-            std::thread::sleep(Duration::from_millis(50));
         }
         let res = match std::fs::read(&result) {
             Ok(b) => text_of(&b),

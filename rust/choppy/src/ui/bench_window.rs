@@ -1464,12 +1464,11 @@ impl Content for BenchContent {
                 h.sizing = Sizing::Free(false);
                 self.fit_to_screen(h);
             }
-            Ev::ExitSizeMove => {
-                if !h.win.is_maximized() && self.auto_height && h.sizing != Sizing::Free(true) {
+            Ev::ExitSizeMove
+                if !h.win.is_maximized() && self.auto_height && h.sizing != Sizing::Free(true) => {
                     h.sizing = Sizing::Free(true);
                     self.fit_to_screen(h);
                 }
-            }
             _ => {}
         }
     }

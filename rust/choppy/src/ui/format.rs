@@ -53,7 +53,7 @@ pub fn count_inv(n: i64) -> String {
 fn group(digits: &str, neg: bool, sep: &str) -> String {
     let mut out = String::new();
     for (i, c) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i) % 3 == 0 {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
             out.push_str(sep);
         }
         out.push(c);
@@ -244,7 +244,7 @@ fn time_text(w: &When) -> String {
     if culture().h24 {
         format!("{:02}:{:02}", w.hour, w.minute)
     } else {
-        let h = if w.hour % 12 == 0 { 12 } else { w.hour % 12 };
+        let h = if w.hour.is_multiple_of(12) { 12 } else { w.hour % 12 };
         format!("{h}:{:02} {}", w.minute, if w.hour < 12 { "AM" } else { "PM" })
     }
 }
@@ -281,7 +281,7 @@ mod tests {
         let d = &culture().decimal;
         assert_eq!(size(1_600_000_000), format!("1{d}49 GB"));
         assert_eq!(size(999), "999 B");
-        assert_eq!(size(1023 * 1024), format!("1{d}0 MB").replace(&format!("{d}0"), ""));
+        assert_eq!(size(1023 * 1024), "1 MB");
         assert_eq!(short(Duration::from_secs_f64(29.5)), "30 s");
         assert_eq!(short(Duration::from_secs_f64(30.5)), "30 s");
         assert_eq!(short(Duration::from_secs(3900)), "1 h 5 min");

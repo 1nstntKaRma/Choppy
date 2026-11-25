@@ -21,7 +21,7 @@ use crate::engine::usb_link;
 use crate::engine::volume_probe::VolumeInfo;
 use crate::job_manager::JobManager;
 use crate::sys::gfx::{Argb, Image, TextAlign};
-use crate::sys::win::{self, Spec, Win};
+use crate::sys::win::{self, Spec};
 use crate::ui::controls::{PathText, SpeedGraph, donut, drive_icon};
 use crate::ui::format;
 use crate::ui::host::{Content, Host, Place, Sizing, T_USER, Window};
@@ -624,8 +624,8 @@ impl MainContent {
             v.c2_name = "it goes on by itself".into();
         }
         v.cur_label = if j.as_admin() { "CURRENT FILE · AS ADMINISTRATOR".into() } else { "CURRENT FILE".into() };
-        if t.is_none() && retry_file.is_some() {
-            let rf = retry_file.unwrap().to_string_lossy();
+        if let (None, Some(rf)) = (&t, &retry_file) {
+            let rf = rf.to_string_lossy();
             v.cur_name = rf.clone();
             v.cur_done.clear();
             v.cur_of = j.retry_why().unwrap_or_else(|| "Trying again".into());
@@ -656,8 +656,8 @@ impl MainContent {
                 let v = &mut self.v;
                 v.cur_name = name.to_string_lossy();
                 v.cur_name_tip = Some(paths::to_short(&f.src).to_string_lossy());
-                let verb;
-                if t.verifying.load(SeqCst) {
+                
+                let verb = if t.verifying.load(SeqCst) {
                     let vtotal = (f.size() * if j.as_admin() { 1 } else { 2 }).max(1);
                     let mut vf = (t.verify_done.load(SeqCst) as f64 / vtotal as f64).min(1.0);
                     if j.as_admin() {
@@ -667,7 +667,7 @@ impl MainContent {
                     v.cur_of = format!("checking the copy {}%", (vf * 100.0) as i64);
                     v.cur_total.clear();
                     v.cur_frac = vf;
-                    verb = "Checking  ";
+                    "Checking  "
                 } else {
                     if f.size() > 0 {
                         let (a, b) = format::pair(t.done.load(SeqCst), f.size());
@@ -680,8 +680,8 @@ impl MainContent {
                         v.cur_total.clear();
                     }
                     v.cur_frac = if f.size() > 0 { (t.done.load(SeqCst) as f64 / f.size() as f64).min(1.0) } else { 1.0 };
-                    verb = if j.spec.op == OpKind::Move { "Moving  " } else { "Copying  " };
-                }
+                    if j.spec.op == OpKind::Move { "Moving  " } else { "Copying  " }
+                };
                 if phase != JobPhase::Waiting {
                     v.c2_label = if j.is_paused() { "Paused  ".into() } else { verb.into() };
                     v.c2_name = name.to_string_lossy();

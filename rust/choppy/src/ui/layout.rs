@@ -544,7 +544,8 @@ impl El {
         let rel = (fr.x, fr.y);
         let off = self.offset(lx, client, ink_guess, rel);
         let corner = (parent.0 + off.0, parent.1 + off.1);
-        let ink = self.arrange_override(lx, (aw, ah), corner);
+        // WPF hands ArrangeOverride a size already on whole pixels (24.4 DIPs = 30.5 px becomes 31 px at 125 %)
+        let ink = self.arrange_override(lx, (lx.rnd(aw), lx.rnd(ah)), corner);
         let rs = (lx.rnd(ink.0), lx.rnd(ink.1));
         let clipped = (rs.0.min(max_w), rs.1.min(max_h));
         let corner = if clipped != ink_guess {
@@ -739,7 +740,10 @@ impl El {
                 let b = border_sides(lx, *thick, *sides);
                 let pad = *pad;
                 if let Some(ch) = self.children.first_mut() {
-                    let inner = Rect::new(b.l + pad.l, b.t + pad.t, (s.0 - b.w() - pad.w()).max(0.0), (s.1 - b.h() - pad.h()).max(0.0));
+                    // WPF's HelperDeflateRect twice (the border, then the padding), each side in its order, so the
+                    // float error is WPF's too
+                    let (iw, ih) = ((s.0 - b.l - b.r).max(0.0), (s.1 - b.t - b.b).max(0.0));
+                    let inner = Rect::new(b.l + pad.l, b.t + pad.t, (iw - pad.l - pad.r).max(0.0), (ih - pad.t - pad.b).max(0.0));
                     ch.arrange(lx, inner, at);
                 }
                 s
@@ -796,8 +800,10 @@ impl El {
         let mut size: Vec<f64> = defs.iter().map(|d| if let Len::Px(v) = d { px(*v) } else { 0.0 }).collect();
         let star_like = |d: &Len| matches!(d, Len::Star(_)) && avail.is_finite();
         // single-cell children first, then the spanning ones grow the auto definitions they cover
-        for &(i, span, d) in kids.iter().filter(|k| k.1 == 1) {
-            if i < defs.len() && !star_like(&defs[i]) && !matches!(defs[i], Len::Px(_)) {
+        // (a pixel definition too, as WPF's UpdateMinSize: a child clipped to 46 DIPs and rounded to 58 px at 125 %
+        // makes its row 58 px)
+        for &(i, _, d) in kids.iter().filter(|k| k.1 == 1) {
+            if i < defs.len() && !star_like(&defs[i]) {
                 size[i] = size[i].max(d);
             }
         }
@@ -1165,7 +1171,8 @@ pub fn layout(root: &mut El, lx: &Lx, w: f64, h: f64) -> f64 {
     hh
 }
 
-/// A SizeToContent window's height in pixels: its content's, rounded up.
+/// A SizeToContent window's height in pixels: its content's, rounded up (a float error above a whole pixel, as
+/// pixels -> DIPs -> pixels leaves at 175 %, doesn't count).
 pub fn content_px(dip: f64, scale: f64) -> f64 {
     (dip * scale - 1e-7).ceil()
 }

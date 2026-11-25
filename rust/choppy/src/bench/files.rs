@@ -143,9 +143,8 @@ fn unregister(dir: &Path) {
 /// Removes one of the benchmark's folders: only one with its marker file (or an empty one), and inside it links are
 /// removed, never followed. True when it is gone; a folder that stays is kept on the list for the next start.
 pub fn remove(dir: &Path) -> bool {
-    let gone;
-    if !dir.exists() {
-        gone = true;
+    let gone = if !dir.exists() {
+        true
     } else if is_ours(dir) {
         let long = paths::to_long(&WString::from(dir.display().to_string()));
         let mut g = false;
@@ -160,12 +159,12 @@ pub fn remove(dir: &Path) -> bool {
             delete_tree(&long);
             g = !paths::exists(&long);
         }
-        gone = g;
+        g
     } else {
         // not ours (or the marker never got written): only an empty folder goes
         let _ = std::fs::remove_dir(dir);
-        gone = true; // whatever is in it isn't the benchmark's: off the list, untouched
-    }
+        true // whatever is in it isn't the benchmark's: off the list, untouched
+    };
     if gone {
         unregister(dir);
     }
@@ -288,7 +287,7 @@ pub fn write_big(path: &Path, size: i64, canceled: &dyn Fn() -> bool, progress: 
 
 fn fill(p: &mut [u8], seed: u64) {
     let mut x = 0x9E3779B97F4A7C15u64 ^ seed;
-    for c in p.chunks_exact_mut(8) {
+    for c in p.as_chunks_mut::<8>().0 {
         x ^= x << 13;
         x ^= x >> 7;
         x ^= x << 17;

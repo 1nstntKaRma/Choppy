@@ -113,13 +113,9 @@ struct Slot {
 
 /// A window handle on the UI thread (Copy, like HWND).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Default)]
 pub struct Win(HWND);
 
-impl Default for Win {
-    fn default() -> Self {
-        Win(HWND::default())
-    }
-}
 
 /// How a window is made.
 #[derive(Clone, Default)]
@@ -556,6 +552,13 @@ unsafe fn monitor_work(mon: HMONITOR) -> (i32, i32, i32, i32) {
 }
 
 /// The system DPI (the primary screen's at sign-in): what WinForms and ChoppyIcon.Frame go by.
+/// Test hook only (CHOPPY_DPI96): this thread's windows DPI-unaware, laid out and drawn at 96 DPI (100 %).
+pub fn thread_dpi_unaware() {
+    unsafe {
+        let _ = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_UNAWARE);
+    }
+}
+
 pub fn system_dpi() -> u32 {
     unsafe { GetDpiForSystem() }.max(96)
 }

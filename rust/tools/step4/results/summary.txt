@@ -1,0 +1,23 @@
+scene       scale  WPF size     Rust size    differ  visibly  same on monitor 2 (WPF / Rust)
+report       125%   720 x 869    720 x 869    2.54%   0.57%   0.09% differ / same
+compact      125%   720 x 365    720 x 365    3.29%   1.10%   same / same
+queue        125%   500 x 47     500 x 48    size differs   same / same
+settings     125%   675 x 631    675 x 631    2.46%   0.33%   same / same
+unithelp     125%   515 x 322    515 x 322    3.01%   0.00%   same / same
+about        125%   650 x 556    650 x 556    8.01%   0.57%   5.24% differ / same
+benchmark    125%  1075 x 753   1075 x 753    3.12%   0.15%   same / same
+conflict     125%   825 x 608    825 x 608    1.63%   0.14%   same / same
+report       100%   576 x 693    576 x 693    3.49%   0.27%   0.04% differ / 0.01% differ
+compact      100%   576 x 293    576 x 293    4.14%   0.32%   same / same
+queue        100%   400 x 38     400 x 38     3.24%   0.00%   same / same
+settings     100%   540 x 505    540 x 505    3.70%   0.27%   same / same
+unithelp     100%   412 x 264    412 x 264    3.91%   0.00%   same / same
+about        100%   520 x 445    520 x 445   10.04%   0.64%   6.36% differ / same
+benchmark    100%   860 x 601    860 x 601    4.50%   0.09%   same / same
+conflict     100%   660 x 488    660 x 488    1.77%   0.15%   same / same
+
+state (test hook pictures, 144 DPI)  WPF size     Rust size    differ  visibly
+run                                   864 x 1011   864 x 1011   8.41%   3.05%
+run-compact                           864 x 438    864 x 438    8.03%   3.06%
+compared                              990 x 804    990 x 804    6.08%   1.11%
+bench-done                           1290 x 990   1290 x 989   size differs

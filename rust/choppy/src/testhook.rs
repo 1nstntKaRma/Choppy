@@ -14,6 +14,14 @@ use std::rc::Rc;
 use crate::sys::win;
 use crate::ui::host::Window;
 
+/// With the test hook, CHOPPY_DPI96=1 makes the UI thread DPI-unaware before any window exists: every window at
+/// 96 DPI (100 %), as the C# test hook on the rust branch does, for the step-4 pictures at 100 %.
+pub fn dpi96_if_asked() {
+    if std::env::var("CHOPPY_DPI96").as_deref() == Ok("1") && std::env::var("CHOPPY_TESTHOOK").is_ok_and(|d| !d.is_empty()) {
+        win::thread_dpi_unaware();
+    }
+}
+
 pub fn park() -> bool {
     std::env::var("CHOPPY_PARK").as_deref() == Ok("1")
 }

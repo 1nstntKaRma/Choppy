@@ -13,7 +13,7 @@ use std::sync::{Arc, OnceLock};
 use crate::engine::copy_job::CopyJob;
 use crate::engine::model::{ConflictAnswer, ConflictInfo, ConflictPolicy, JobSpec, OpKind};
 use crate::engine::paths;
-use crate::engine::settings::{Settings, app_paths};
+use crate::engine::settings::Settings;
 use crate::job_manager::JobManager;
 use crate::sys::gfx::Gfx;
 use crate::sys::win::{self, Win};
@@ -86,6 +86,7 @@ pub fn with_main(f: impl Fn(&mut MainWindow) + 'static) {
 
 /// App.Start: the UI thread, the job manager wired to the windows, the test hook; then `args`; the message loop.
 pub fn run(args: &[WString]) -> i32 {
+    crate::testhook::dpi96_if_asked();
     crate::sys::com_init_sta();
     win::init_ui_thread();
     let Some(gfx) = Gfx::new() else { return 1 };
@@ -126,7 +127,7 @@ pub fn run(args: &[WString]) -> i32 {
 
 fn make_manager() -> Arc<JobManager> {
     let mut m = JobManager::default();
-    m.dispatch = Some(Arc::new(|f| win::post(f)));
+    m.dispatch = Some(Arc::new(win::post));
     m.on_ui_thread = Some(Arc::new(win::on_ui_thread));
     m.ask = Some(Arc::new(ask_conflict));
     m.ask_low_space = Some(Arc::new(ask_low_space));
