@@ -1,0 +1,2288 @@
+{
+  "tool": "Choppy Benchmark",
+  "version": "1.48.0",
+  "date": "2026-11-26T00:14:48",
+  "mode": "thorough",
+  "rounds": 3,
+  "seconds": 3820.0,
+  "canceled": false,
+  "error": null,
+  "units": "seconds = the average time until the copies are on the disk; MB/s = 1,048,576 bytes per second over that time; timeSaved = how much less time Choppy took than Windows (below 0 = more)",
+  "machine": {
+    "cpu": "AMD Ryzen 5 5600X 6-Core Processor",
+    "threads": 12,
+    "ramGB": 15.9,
+    "windows": "Windows 10 Home 22H2 (build 19045.7291)",
+    "admin": false
+  },
+  "summary": {
+    "text": "Choppy is Faster 31 of 39 · Marginal Tie 8 of 39 · Never Slower",
+    "cases": 39,
+    "faster": 31,
+    "marginalTie": 8,
+    "slower": 0,
+    "byDone": "Choppy is Faster 29 of 39 · Marginal Tie 5 of 39 · Slower 5 of 39"
+  },
+  "totals": {
+    "cases": 39,
+    "averageTimeSaved": 0.4218,
+    "bytes": 26211492314,
+    "choppySeconds": 278.231,
+    "windowsSeconds": 629.54,
+    "secondsSaved": 351.309,
+    "choppyMBps": 89.8,
+    "windowsMBps": 39.7,
+    "about": "averageTimeSaved = the average of the cases' timeSaved; seconds = the cases' average times added up (every case copied once); MBps = all the bytes over those seconds"
+  },
+  "drives": [
+    {
+      "letter": "C:",
+      "label": "",
+      "kind": "NVMe SSD",
+      "model": "XG7000-1TB 2280",
+      "bus": "NVMe",
+      "fileSystem": "NTFS",
+      "sizeGB": 953.2,
+      "freeGB": 261.9,
+      "system": true,
+      "network": false,
+      "physicalDisk": 2,
+      "tested": true,
+      "skipped": null,
+      "readMBps": 3717,
+      "writeMBps": 5462,
+      "cacheDrop": "yes",
+      "usb": null
+    },
+    {
+      "letter": "D:",
+      "label": "",
+      "kind": "Hard disk",
+      "model": "ST4000NE0025-2EW107",
+      "bus": "SATA",
+      "fileSystem": "NTFS",
+      "sizeGB": 3725.9,
+      "freeGB": 677.2,
+      "system": false,
+      "network": false,
+      "physicalDisk": 1,
+      "tested": true,
+      "skipped": null,
+      "readMBps": 182,
+      "writeMBps": 150,
+      "cacheDrop": "yes",
+      "usb": null
+    },
+    {
+      "letter": "E:",
+      "label": "",
+      "kind": null,
+      "model": null,
+      "bus": null,
+      "fileSystem": "NTFS",
+      "sizeGB": 931.5,
+      "freeGB": 584.8,
+      "system": false,
+      "network": false,
+      "physicalDisk": -1,
+      "tested": false,
+      "skipped": "not chosen for this run",
+      "readMBps": null,
+      "writeMBps": null,
+      "cacheDrop": null,
+      "usb": null
+    },
+    {
+      "letter": "F:",
+      "label": "",
+      "kind": "USB SSD",
+      "model": "Netac NV Me SSD 1TB",
+      "bus": "USB",
+      "fileSystem": "NTFS",
+      "sizeGB": 931.5,
+      "freeGB": 931.4,
+      "system": false,
+      "network": false,
+      "physicalDisk": 3,
+      "tested": true,
+      "skipped": null,
+      "readMBps": 836,
+      "writeMBps": 863,
+      "cacheDrop": "yes",
+      "usb": {
+        "runsAt": "10 Gbps",
+        "canDo": "10 Gbps",
+        "port": "USB 3",
+        "uasp": true,
+        "heldBack": false,
+        "advice": null
+      }
+    },
+    {
+      "letter": "G:",
+      "label": "",
+      "kind": null,
+      "model": null,
+      "bus": null,
+      "fileSystem": "FAT32",
+      "sizeGB": 15.0,
+      "freeGB": 5.5,
+      "system": false,
+      "network": false,
+      "physicalDisk": -1,
+      "tested": false,
+      "skipped": "not chosen for this run",
+      "readMBps": null,
+      "writeMBps": null,
+      "cacheDrop": null,
+      "usb": null
+    },
+    {
+      "letter": "N:",
+      "label": "",
+      "kind": "Network share",
+      "model": "\\\\nas\\NAS",
+      "bus": null,
+      "fileSystem": "NTFS",
+      "sizeGB": 1716.8,
+      "freeGB": 372.5,
+      "system": false,
+      "network": true,
+      "physicalDisk": -1,
+      "tested": true,
+      "skipped": null,
+      "readMBps": 31,
+      "writeMBps": 11,
+      "cacheDrop": "yes",
+      "usb": null
+    },
+    {
+      "letter": "X:",
+      "label": "",
+      "kind": "Hard disk",
+      "model": "ST4000DM006-2G5107",
+      "bus": "SATA",
+      "fileSystem": "NTFS",
+      "sizeGB": 3725.9,
+      "freeGB": 818.2,
+      "system": false,
+      "network": false,
+      "physicalDisk": 0,
+      "tested": true,
+      "skipped": null,
+      "readMBps": 187,
+      "writeMBps": 139,
+      "cacheDrop": "yes",
+      "usb": null
+    }
+  ],
+  "results": [
+    {
+      "from": "C:",
+      "to": "C:",
+      "route": "C: -> C:",
+      "kinds": "within one NVMe SSD",
+      "case": "big",
+      "title": "One big file",
+      "files": 1,
+      "bytes": 2147483648,
+      "verdict": "faster",
+      "timeSaved": 0.1582,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.2199,
+      "choppy": {
+        "seconds": 0.8,
+        "MBps": 2559.0,
+        "doneMBps": 3055.7,
+        "method": "Adaptive · 1 stream (8x4 2766 MB/s | 4x8 2643 MB/s)",
+        "runs": [
+          {
+            "done": 0.654,
+            "onDisk": 0.79
+          },
+          {
+            "done": 0.671,
+            "onDisk": 0.797
+          },
+          {
+            "done": 0.685,
+            "onDisk": 0.814
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 0.951,
+        "MBps": 2154.2,
+        "doneMBps": 2383.8,
+        "runs": [
+          {
+            "done": 0.847,
+            "onDisk": 0.956
+          },
+          {
+            "done": 0.927,
+            "onDisk": 0.971
+          },
+          {
+            "done": 0.804,
+            "onDisk": 0.925
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "C:",
+      "to": "C:",
+      "route": "C: -> C:",
+      "kinds": "within one NVMe SSD",
+      "case": "small",
+      "title": "1,000 small files",
+      "files": 1000,
+      "bytes": 199578408,
+      "verdict": "faster",
+      "timeSaved": 0.8217,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.844,
+      "choppy": {
+        "seconds": 0.635,
+        "MBps": 299.6,
+        "doneMBps": 351.2,
+        "method": "Adaptive · 8 streams",
+        "runs": [
+          {
+            "done": 0.542,
+            "onDisk": 0.631
+          },
+          {
+            "done": 0.541,
+            "onDisk": 0.643
+          },
+          {
+            "done": 0.542,
+            "onDisk": 0.632
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 3.564,
+        "MBps": 53.4,
+        "doneMBps": 54.8,
+        "runs": [
+          {
+            "done": 3.482,
+            "onDisk": 3.587
+          },
+          {
+            "done": 3.512,
+            "onDisk": 3.598
+          },
+          {
+            "done": 3.426,
+            "onDisk": 3.506
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "C:",
+      "to": "C:",
+      "route": "C: -> C:",
+      "kinds": "within one NVMe SSD",
+      "case": "mixed",
+      "title": "Mixed folder",
+      "files": 403,
+      "bytes": 616846944,
+      "verdict": "faster",
+      "timeSaved": 0.7589,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.7898,
+      "choppy": {
+        "seconds": 0.391,
+        "MBps": 1504.3,
+        "doneMBps": 1763.4,
+        "method": "Adaptive · 8 streams",
+        "runs": [
+          {
+            "done": 0.324,
+            "onDisk": 0.383
+          },
+          {
+            "done": 0.338,
+            "onDisk": 0.397
+          },
+          {
+            "done": 0.338,
+            "onDisk": 0.393
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 1.622,
+        "MBps": 362.6,
+        "doneMBps": 370.6,
+        "runs": [
+          {
+            "done": 1.641,
+            "onDisk": 1.679
+          },
+          {
+            "done": 1.568,
+            "onDisk": 1.589
+          },
+          {
+            "done": 1.552,
+            "onDisk": 1.599
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "C:",
+      "to": "D:",
+      "route": "C: -> D:",
+      "kinds": "NVMe -> HDD",
+      "case": "big",
+      "title": "One big file",
+      "files": 1,
+      "bytes": 1073741824,
+      "verdict": "marginal tie",
+      "timeSaved": 0.0028,
+      "doneVerdict": "slower",
+      "doneTimeSaved": -0.2102,
+      "choppy": {
+        "seconds": 4.904,
+        "MBps": 208.8,
+        "doneMBps": 404.1,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 2.533,
+            "onDisk": 4.97
+          },
+          {
+            "done": 2.505,
+            "onDisk": 4.865
+          },
+          {
+            "done": 2.564,
+            "onDisk": 4.877
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 4.918,
+        "MBps": 208.2,
+        "doneMBps": 489.1,
+        "runs": [
+          {
+            "done": 2.102,
+            "onDisk": 4.844
+          },
+          {
+            "done": 2.134,
+            "onDisk": 4.963
+          },
+          {
+            "done": 2.046,
+            "onDisk": 4.947
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "C:",
+      "to": "D:",
+      "route": "C: -> D:",
+      "kinds": "NVMe -> HDD",
+      "case": "small",
+      "title": "500 small files",
+      "files": 500,
+      "bytes": 98858036,
+      "verdict": "faster",
+      "timeSaved": 0.3587,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.7651,
+      "choppy": {
+        "seconds": 2.091,
+        "MBps": 45.1,
+        "doneMBps": 212.3,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 0.493,
+            "onDisk": 2.101
+          },
+          {
+            "done": 0.378,
+            "onDisk": 2.063
+          },
+          {
+            "done": 0.46,
+            "onDisk": 2.11
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 3.261,
+        "MBps": 28.9,
+        "doneMBps": 49.9,
+        "runs": [
+          {
+            "done": 1.962,
+            "onDisk": 3.689
+          },
+          {
+            "done": 1.761,
+            "onDisk": 3.048
+          },
+          {
+            "done": 1.95,
+            "onDisk": 3.046
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "C:",
+      "to": "D:",
+      "route": "C: -> D:",
+      "kinds": "NVMe -> HDD",
+      "case": "mixed",
+      "title": "Mixed folder",
+      "files": 403,
+      "bytes": 616846944,
+      "verdict": "faster",
+      "timeSaved": 0.2434,
+      "doneVerdict": "slower",
+      "doneTimeSaved": -0.7467,
+      "choppy": {
+        "seconds": 4.804,
+        "MBps": 122.5,
+        "doneMBps": 170.9,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 3.648,
+            "onDisk": 4.911
+          },
+          {
+            "done": 3.245,
+            "onDisk": 4.592
+          },
+          {
+            "done": 3.436,
+            "onDisk": 4.909
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 6.35,
+        "MBps": 92.6,
+        "doneMBps": 298.5,
+        "runs": [
+          {
+            "done": 1.592,
+            "onDisk": 6.55
+          },
+          {
+            "done": 2.505,
+            "onDisk": 6.186
+          },
+          {
+            "done": 1.817,
+            "onDisk": 6.313
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "D:",
+      "to": "C:",
+      "route": "D: -> C:",
+      "kinds": "HDD -> NVMe",
+      "case": "big",
+      "title": "One big file",
+      "files": 1,
+      "bytes": 1073741824,
+      "verdict": "marginal tie",
+      "timeSaved": -0.0001,
+      "doneVerdict": "marginal tie",
+      "doneTimeSaved": -0.007,
+      "choppy": {
+        "seconds": 5.685,
+        "MBps": 180.1,
+        "doneMBps": 180.2,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 5.648,
+            "onDisk": 5.651
+          },
+          {
+            "done": 5.606,
+            "onDisk": 5.608
+          },
+          {
+            "done": 5.795,
+            "onDisk": 5.797
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 5.684,
+        "MBps": 180.1,
+        "doneMBps": 181.4,
+        "runs": [
+          {
+            "done": 5.6,
+            "onDisk": 5.653
+          },
+          {
+            "done": 5.73,
+            "onDisk": 5.781
+          },
+          {
+            "done": 5.601,
+            "onDisk": 5.619
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "D:",
+      "to": "C:",
+      "route": "D: -> C:",
+      "kinds": "HDD -> NVMe",
+      "case": "small",
+      "title": "500 small files",
+      "files": 500,
+      "bytes": 98858036,
+      "verdict": "faster",
+      "timeSaved": 0.6576,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.6627,
+      "choppy": {
+        "seconds": 2.024,
+        "MBps": 46.6,
+        "doneMBps": 47.6,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 2.002,
+            "onDisk": 2.048
+          },
+          {
+            "done": 1.987,
+            "onDisk": 2.029
+          },
+          {
+            "done": 1.952,
+            "onDisk": 1.995
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 5.912,
+        "MBps": 15.9,
+        "doneMBps": 16.1,
+        "runs": [
+          {
+            "done": 5.881,
+            "onDisk": 5.924
+          },
+          {
+            "done": 5.801,
+            "onDisk": 5.841
+          },
+          {
+            "done": 5.93,
+            "onDisk": 5.972
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "D:",
+      "to": "C:",
+      "route": "D: -> C:",
+      "kinds": "HDD -> NVMe",
+      "case": "mixed",
+      "title": "Mixed folder",
+      "files": 403,
+      "bytes": 616846944,
+      "verdict": "faster",
+      "timeSaved": 0.3706,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.3716,
+      "choppy": {
+        "seconds": 4.926,
+        "MBps": 119.4,
+        "doneMBps": 120.7,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 4.876,
+            "onDisk": 4.944
+          },
+          {
+            "done": 4.931,
+            "onDisk": 4.973
+          },
+          {
+            "done": 4.821,
+            "onDisk": 4.862
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 7.827,
+        "MBps": 75.2,
+        "doneMBps": 75.8,
+        "runs": [
+          {
+            "done": 7.845,
+            "onDisk": 7.895
+          },
+          {
+            "done": 7.711,
+            "onDisk": 7.791
+          },
+          {
+            "done": 7.72,
+            "onDisk": 7.795
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "D:",
+      "to": "D:",
+      "route": "D: -> D:",
+      "kinds": "within one Hard disk",
+      "case": "big",
+      "title": "One big file",
+      "files": 1,
+      "bytes": 1073741824,
+      "verdict": "marginal tie",
+      "timeSaved": 0.0303,
+      "doneVerdict": "marginal tie",
+      "doneTimeSaved": -0.0065,
+      "choppy": {
+        "seconds": 10.734,
+        "MBps": 95.4,
+        "doneMBps": 122.4,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 8.546,
+            "onDisk": 10.903
+          },
+          {
+            "done": 8.258,
+            "onDisk": 10.567
+          },
+          {
+            "done": 8.304,
+            "onDisk": 10.732
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 11.069,
+        "MBps": 92.5,
+        "doneMBps": 123.1,
+        "runs": [
+          {
+            "done": 8.013,
+            "onDisk": 10.81
+          },
+          {
+            "done": 8.822,
+            "onDisk": 11.338
+          },
+          {
+            "done": 8.11,
+            "onDisk": 11.06
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "D:",
+      "to": "D:",
+      "route": "D: -> D:",
+      "kinds": "within one Hard disk",
+      "case": "small",
+      "title": "500 small files",
+      "files": 500,
+      "bytes": 98858036,
+      "verdict": "faster",
+      "timeSaved": 0.6052,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.7102,
+      "choppy": {
+        "seconds": 3.149,
+        "MBps": 29.9,
+        "doneMBps": 48.2,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 1.963,
+            "onDisk": 3.096
+          },
+          {
+            "done": 1.963,
+            "onDisk": 3.068
+          },
+          {
+            "done": 1.947,
+            "onDisk": 3.283
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 7.976,
+        "MBps": 11.8,
+        "doneMBps": 14.0,
+        "runs": [
+          {
+            "done": 6.891,
+            "onDisk": 8.193
+          },
+          {
+            "done": 6.568,
+            "onDisk": 7.872
+          },
+          {
+            "done": 6.806,
+            "onDisk": 7.863
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "D:",
+      "to": "D:",
+      "route": "D: -> D:",
+      "kinds": "within one Hard disk",
+      "case": "mixed",
+      "title": "Mixed folder",
+      "files": 403,
+      "bytes": 616846944,
+      "verdict": "faster",
+      "timeSaved": 0.2921,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.2374,
+      "choppy": {
+        "seconds": 8.093,
+        "MBps": 72.7,
+        "doneMBps": 88.2,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 6.598,
+            "onDisk": 8.057
+          },
+          {
+            "done": 6.827,
+            "onDisk": 8.249
+          },
+          {
+            "done": 6.58,
+            "onDisk": 7.973
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 11.432,
+        "MBps": 51.5,
+        "doneMBps": 67.3,
+        "runs": [
+          {
+            "done": 8.714,
+            "onDisk": 11.564
+          },
+          {
+            "done": 8.721,
+            "onDisk": 11.253
+          },
+          {
+            "done": 8.796,
+            "onDisk": 11.479
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "C:",
+      "to": "F:",
+      "route": "C: -> F:",
+      "kinds": "NVMe -> USB SSD",
+      "case": "big",
+      "title": "One big file",
+      "files": 1,
+      "bytes": 2147483648,
+      "verdict": "faster",
+      "timeSaved": 0.1984,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.1984,
+      "choppy": {
+        "seconds": 2.382,
+        "MBps": 859.7,
+        "doneMBps": 860.3,
+        "method": "Adaptive · 1 stream (8x4 869 MB/s | 4x8 866 MB/s | 16x4 789 MB/s)",
+        "runs": [
+          {
+            "done": 2.368,
+            "onDisk": 2.37
+          },
+          {
+            "done": 2.343,
+            "onDisk": 2.345
+          },
+          {
+            "done": 2.43,
+            "onDisk": 2.432
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 2.972,
+        "MBps": 689.1,
+        "doneMBps": 689.6,
+        "runs": [
+          {
+            "done": 2.96,
+            "onDisk": 2.962
+          },
+          {
+            "done": 2.995,
+            "onDisk": 2.997
+          },
+          {
+            "done": 2.955,
+            "onDisk": 2.957
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "C:",
+      "to": "F:",
+      "route": "C: -> F:",
+      "kinds": "NVMe -> USB SSD",
+      "case": "small",
+      "title": "1,000 small files",
+      "files": 1000,
+      "bytes": 199578408,
+      "verdict": "faster",
+      "timeSaved": 0.8724,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.8761,
+      "choppy": {
+        "seconds": 0.537,
+        "MBps": 354.1,
+        "doneMBps": 366.7,
+        "method": "Adaptive · 8 streams",
+        "runs": [
+          {
+            "done": 0.447,
+            "onDisk": 0.464
+          },
+          {
+            "done": 0.664,
+            "onDisk": 0.681
+          },
+          {
+            "done": 0.447,
+            "onDisk": 0.467
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 4.214,
+        "MBps": 45.2,
+        "doneMBps": 45.5,
+        "runs": [
+          {
+            "done": 4.183,
+            "onDisk": 4.214
+          },
+          {
+            "done": 4.273,
+            "onDisk": 4.299
+          },
+          {
+            "done": 4.107,
+            "onDisk": 4.128
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "C:",
+      "to": "F:",
+      "route": "C: -> F:",
+      "kinds": "NVMe -> USB SSD",
+      "case": "mixed",
+      "title": "Mixed folder",
+      "files": 403,
+      "bytes": 616846944,
+      "verdict": "faster",
+      "timeSaved": 0.636,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.6904,
+      "choppy": {
+        "seconds": 0.914,
+        "MBps": 643.9,
+        "doneMBps": 763.5,
+        "method": "Adaptive · 8 streams",
+        "runs": [
+          {
+            "done": 0.771,
+            "onDisk": 0.786
+          },
+          {
+            "done": 0.77,
+            "onDisk": 1.16
+          },
+          {
+            "done": 0.77,
+            "onDisk": 0.794
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 2.51,
+        "MBps": 234.4,
+        "doneMBps": 236.4,
+        "runs": [
+          {
+            "done": 2.465,
+            "onDisk": 2.485
+          },
+          {
+            "done": 2.542,
+            "onDisk": 2.564
+          },
+          {
+            "done": 2.458,
+            "onDisk": 2.481
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "F:",
+      "to": "C:",
+      "route": "F: -> C:",
+      "kinds": "USB SSD -> NVMe",
+      "case": "big",
+      "title": "One big file",
+      "files": 1,
+      "bytes": 2147483648,
+      "verdict": "marginal tie",
+      "timeSaved": 0.021,
+      "doneVerdict": "marginal tie",
+      "doneTimeSaved": 0.0019,
+      "choppy": {
+        "seconds": 2.169,
+        "MBps": 944.4,
+        "doneMBps": 945.5,
+        "method": "Adaptive · 1 stream (8x4 958 MB/s | 4x8 960 MB/s | 16x4 939 MB/s)",
+        "runs": [
+          {
+            "done": 2.163,
+            "onDisk": 2.166
+          },
+          {
+            "done": 2.176,
+            "onDisk": 2.178
+          },
+          {
+            "done": 2.159,
+            "onDisk": 2.161
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 2.215,
+        "MBps": 924.6,
+        "doneMBps": 943.7,
+        "runs": [
+          {
+            "done": 2.161,
+            "onDisk": 2.194
+          },
+          {
+            "done": 2.16,
+            "onDisk": 2.226
+          },
+          {
+            "done": 2.19,
+            "onDisk": 2.225
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "F:",
+      "to": "C:",
+      "route": "F: -> C:",
+      "kinds": "USB SSD -> NVMe",
+      "case": "small",
+      "title": "1,000 small files",
+      "files": 1000,
+      "bytes": 199578408,
+      "verdict": "faster",
+      "timeSaved": 0.8452,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.865,
+      "choppy": {
+        "seconds": 0.593,
+        "MBps": 321.2,
+        "doneMBps": 376.5,
+        "method": "Adaptive · 8 streams",
+        "runs": [
+          {
+            "done": 0.542,
+            "onDisk": 0.631
+          },
+          {
+            "done": 0.433,
+            "onDisk": 0.517
+          },
+          {
+            "done": 0.542,
+            "onDisk": 0.63
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 3.827,
+        "MBps": 49.7,
+        "doneMBps": 50.8,
+        "runs": [
+          {
+            "done": 3.871,
+            "onDisk": 3.952
+          },
+          {
+            "done": 3.663,
+            "onDisk": 3.749
+          },
+          {
+            "done": 3.703,
+            "onDisk": 3.78
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "F:",
+      "to": "C:",
+      "route": "F: -> C:",
+      "kinds": "USB SSD -> NVMe",
+      "case": "mixed",
+      "title": "Mixed folder",
+      "files": 403,
+      "bytes": 616846944,
+      "verdict": "faster",
+      "timeSaved": 0.5823,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.5993,
+      "choppy": {
+        "seconds": 0.846,
+        "MBps": 695.6,
+        "doneMBps": 736.8,
+        "method": "Adaptive · 8 streams",
+        "runs": [
+          {
+            "done": 0.866,
+            "onDisk": 0.919
+          },
+          {
+            "done": 0.758,
+            "onDisk": 0.799
+          },
+          {
+            "done": 0.771,
+            "onDisk": 0.819
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 2.025,
+        "MBps": 290.6,
+        "doneMBps": 295.2,
+        "runs": [
+          {
+            "done": 2.002,
+            "onDisk": 2.037
+          },
+          {
+            "done": 1.964,
+            "onDisk": 1.988
+          },
+          {
+            "done": 2.012,
+            "onDisk": 2.048
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "F:",
+      "to": "F:",
+      "route": "F: -> F:",
+      "kinds": "within one USB SSD",
+      "case": "big",
+      "title": "One big file",
+      "files": 1,
+      "bytes": 2147483648,
+      "verdict": "faster",
+      "timeSaved": 0.3322,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.3314,
+      "choppy": {
+        "seconds": 2.827,
+        "MBps": 724.4,
+        "doneMBps": 724.9,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 2.805,
+            "onDisk": 2.807
+          },
+          {
+            "done": 2.803,
+            "onDisk": 2.804
+          },
+          {
+            "done": 2.868,
+            "onDisk": 2.87
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 4.234,
+        "MBps": 483.8,
+        "doneMBps": 484.6,
+        "runs": [
+          {
+            "done": 4.099,
+            "onDisk": 4.117
+          },
+          {
+            "done": 4.211,
+            "onDisk": 4.213
+          },
+          {
+            "done": 4.368,
+            "onDisk": 4.37
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "F:",
+      "to": "F:",
+      "route": "F: -> F:",
+      "kinds": "within one USB SSD",
+      "case": "small",
+      "title": "1,000 small files",
+      "files": 1000,
+      "bytes": 199578408,
+      "verdict": "faster",
+      "timeSaved": 0.6485,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.6516,
+      "choppy": {
+        "seconds": 1.623,
+        "MBps": 117.3,
+        "doneMBps": 119.0,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 1.563,
+            "onDisk": 1.592
+          },
+          {
+            "done": 1.763,
+            "onDisk": 1.782
+          },
+          {
+            "done": 1.474,
+            "onDisk": 1.493
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 4.617,
+        "MBps": 41.2,
+        "doneMBps": 41.4,
+        "runs": [
+          {
+            "done": 4.584,
+            "onDisk": 4.611
+          },
+          {
+            "done": 4.69,
+            "onDisk": 4.711
+          },
+          {
+            "done": 4.503,
+            "onDisk": 4.528
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "F:",
+      "to": "F:",
+      "route": "F: -> F:",
+      "kinds": "within one USB SSD",
+      "case": "mixed",
+      "title": "Mixed folder",
+      "files": 403,
+      "bytes": 616846944,
+      "verdict": "faster",
+      "timeSaved": 0.5168,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.5197,
+      "choppy": {
+        "seconds": 1.385,
+        "MBps": 424.7,
+        "doneMBps": 430.7,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 1.34,
+            "onDisk": 1.362
+          },
+          {
+            "done": 1.34,
+            "onDisk": 1.358
+          },
+          {
+            "done": 1.417,
+            "onDisk": 1.436
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 2.867,
+        "MBps": 205.2,
+        "doneMBps": 206.9,
+        "runs": [
+          {
+            "done": 2.84,
+            "onDisk": 2.869
+          },
+          {
+            "done": 2.907,
+            "onDisk": 2.932
+          },
+          {
+            "done": 2.784,
+            "onDisk": 2.799
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "C:",
+      "to": "X:",
+      "route": "C: -> X:",
+      "kinds": "NVMe -> HDD",
+      "case": "big",
+      "title": "One big file",
+      "files": 1,
+      "bytes": 1073741824,
+      "verdict": "marginal tie",
+      "timeSaved": -0.0043,
+      "doneVerdict": "slower",
+      "doneTimeSaved": -0.2282,
+      "choppy": {
+        "seconds": 5.234,
+        "MBps": 195.6,
+        "doneMBps": 405.2,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 2.638,
+            "onDisk": 5.305
+          },
+          {
+            "done": 2.385,
+            "onDisk": 4.969
+          },
+          {
+            "done": 2.559,
+            "onDisk": 5.429
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 5.212,
+        "MBps": 196.5,
+        "doneMBps": 497.6,
+        "runs": [
+          {
+            "done": 2.109,
+            "onDisk": 5.407
+          },
+          {
+            "done": 2.083,
+            "onDisk": 5.122
+          },
+          {
+            "done": 1.982,
+            "onDisk": 5.106
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "C:",
+      "to": "X:",
+      "route": "C: -> X:",
+      "kinds": "NVMe -> HDD",
+      "case": "small",
+      "title": "500 small files",
+      "files": 500,
+      "bytes": 98858036,
+      "verdict": "faster",
+      "timeSaved": 0.3762,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.7814,
+      "choppy": {
+        "seconds": 2.353,
+        "MBps": 40.1,
+        "doneMBps": 249.3,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 0.401,
+            "onDisk": 2.236
+          },
+          {
+            "done": 0.397,
+            "onDisk": 2.644
+          },
+          {
+            "done": 0.336,
+            "onDisk": 2.178
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 3.771,
+        "MBps": 25.0,
+        "doneMBps": 54.5,
+        "runs": [
+          {
+            "done": 1.955,
+            "onDisk": 4.124
+          },
+          {
+            "done": 1.64,
+            "onDisk": 3.645
+          },
+          {
+            "done": 1.594,
+            "onDisk": 3.545
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "C:",
+      "to": "X:",
+      "route": "C: -> X:",
+      "kinds": "NVMe -> HDD",
+      "case": "mixed",
+      "title": "Mixed folder",
+      "files": 403,
+      "bytes": 616846944,
+      "verdict": "faster",
+      "timeSaved": 0.2272,
+      "doneVerdict": "slower",
+      "doneTimeSaved": -1.0605,
+      "choppy": {
+        "seconds": 5.523,
+        "MBps": 106.5,
+        "doneMBps": 159.2,
+        "method": "Adaptive · 1 stream (32x8 join4 143 MB/s)",
+        "runs": [
+          {
+            "done": 3.53,
+            "onDisk": 5.288
+          },
+          {
+            "done": 3.733,
+            "onDisk": 5.679
+          },
+          {
+            "done": 3.822,
+            "onDisk": 5.603
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 7.148,
+        "MBps": 82.3,
+        "doneMBps": 328.1,
+        "runs": [
+          {
+            "done": 1.778,
+            "onDisk": 6.753
+          },
+          {
+            "done": 1.845,
+            "onDisk": 8.296
+          },
+          {
+            "done": 1.756,
+            "onDisk": 6.394
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "X:",
+      "to": "C:",
+      "route": "X: -> C:",
+      "kinds": "HDD -> NVMe",
+      "case": "big",
+      "title": "One big file",
+      "files": 1,
+      "bytes": 1073741824,
+      "verdict": "marginal tie",
+      "timeSaved": 0.0012,
+      "doneVerdict": "marginal tie",
+      "doneTimeSaved": -0.0156,
+      "choppy": {
+        "seconds": 5.882,
+        "MBps": 174.1,
+        "doneMBps": 174.2,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 5.949,
+            "onDisk": 5.952
+          },
+          {
+            "done": 5.829,
+            "onDisk": 5.83
+          },
+          {
+            "done": 5.861,
+            "onDisk": 5.863
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 5.889,
+        "MBps": 173.9,
+        "doneMBps": 176.9,
+        "runs": [
+          {
+            "done": 5.805,
+            "onDisk": 5.919
+          },
+          {
+            "done": 5.758,
+            "onDisk": 5.861
+          },
+          {
+            "done": 5.806,
+            "onDisk": 5.888
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "X:",
+      "to": "C:",
+      "route": "X: -> C:",
+      "kinds": "HDD -> NVMe",
+      "case": "small",
+      "title": "500 small files",
+      "files": 500,
+      "bytes": 98858036,
+      "verdict": "faster",
+      "timeSaved": 0.7101,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.7138,
+      "choppy": {
+        "seconds": 2.496,
+        "MBps": 37.8,
+        "doneMBps": 38.4,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 2.433,
+            "onDisk": 2.474
+          },
+          {
+            "done": 2.476,
+            "onDisk": 2.521
+          },
+          {
+            "done": 2.451,
+            "onDisk": 2.493
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 8.612,
+        "MBps": 10.9,
+        "doneMBps": 11.0,
+        "runs": [
+          {
+            "done": 8.749,
+            "onDisk": 8.79
+          },
+          {
+            "done": 8.492,
+            "onDisk": 8.533
+          },
+          {
+            "done": 8.478,
+            "onDisk": 8.513
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "X:",
+      "to": "C:",
+      "route": "X: -> C:",
+      "kinds": "HDD -> NVMe",
+      "case": "mixed",
+      "title": "Mixed folder",
+      "files": 403,
+      "bytes": 616846944,
+      "verdict": "faster",
+      "timeSaved": 0.4605,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.4604,
+      "choppy": {
+        "seconds": 5.882,
+        "MBps": 100.0,
+        "doneMBps": 100.7,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 5.886,
+            "onDisk": 5.933
+          },
+          {
+            "done": 5.818,
+            "onDisk": 5.858
+          },
+          {
+            "done": 5.818,
+            "onDisk": 5.856
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 10.903,
+        "MBps": 54.0,
+        "doneMBps": 54.3,
+        "runs": [
+          {
+            "done": 10.816,
+            "onDisk": 10.895
+          },
+          {
+            "done": 10.534,
+            "onDisk": 10.611
+          },
+          {
+            "done": 11.121,
+            "onDisk": 11.201
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "X:",
+      "to": "X:",
+      "route": "X: -> X:",
+      "kinds": "within one Hard disk",
+      "case": "big",
+      "title": "One big file",
+      "files": 1,
+      "bytes": 1073741824,
+      "verdict": "marginal tie",
+      "timeSaved": 0.0334,
+      "doneVerdict": "slower",
+      "doneTimeSaved": -0.0471,
+      "choppy": {
+        "seconds": 11.528,
+        "MBps": 88.8,
+        "doneMBps": 113.3,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 9.376,
+            "onDisk": 11.808
+          },
+          {
+            "done": 8.992,
+            "onDisk": 11.641
+          },
+          {
+            "done": 8.746,
+            "onDisk": 11.133
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 11.926,
+        "MBps": 85.9,
+        "doneMBps": 118.6,
+        "runs": [
+          {
+            "done": 8.407,
+            "onDisk": 11.958
+          },
+          {
+            "done": 8.768,
+            "onDisk": 11.694
+          },
+          {
+            "done": 8.718,
+            "onDisk": 12.126
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "X:",
+      "to": "X:",
+      "route": "X: -> X:",
+      "kinds": "within one Hard disk",
+      "case": "small",
+      "title": "500 small files",
+      "files": 500,
+      "bytes": 98858036,
+      "verdict": "faster",
+      "timeSaved": 0.6314,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.7568,
+      "choppy": {
+        "seconds": 4.254,
+        "MBps": 22.2,
+        "doneMBps": 38.1,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 2.493,
+            "onDisk": 4.258
+          },
+          {
+            "done": 2.476,
+            "onDisk": 4.328
+          },
+          {
+            "done": 2.454,
+            "onDisk": 4.177
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 11.543,
+        "MBps": 8.2,
+        "doneMBps": 9.3,
+        "runs": [
+          {
+            "done": 10.066,
+            "onDisk": 11.37
+          },
+          {
+            "done": 10.366,
+            "onDisk": 11.682
+          },
+          {
+            "done": 10.099,
+            "onDisk": 11.578
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "X:",
+      "to": "X:",
+      "route": "X: -> X:",
+      "kinds": "within one Hard disk",
+      "case": "mixed",
+      "title": "Mixed folder",
+      "files": 403,
+      "bytes": 616846944,
+      "verdict": "faster",
+      "timeSaved": 0.3917,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.3893,
+      "choppy": {
+        "seconds": 10.311,
+        "MBps": 57.1,
+        "doneMBps": 68.6,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 8.55,
+            "onDisk": 10.192
+          },
+          {
+            "done": 8.772,
+            "onDisk": 10.591
+          },
+          {
+            "done": 8.385,
+            "onDisk": 10.15
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 16.95,
+        "MBps": 34.7,
+        "doneMBps": 41.9,
+        "runs": [
+          {
+            "done": 13.794,
+            "onDisk": 16.663
+          },
+          {
+            "done": 13.863,
+            "onDisk": 16.628
+          },
+          {
+            "done": 14.435,
+            "onDisk": 17.559
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "C:",
+      "to": "N:",
+      "route": "C: -> N:",
+      "kinds": "NVMe -> Network",
+      "case": "big",
+      "title": "One big file",
+      "files": 1,
+      "bytes": 536870912,
+      "verdict": "marginal tie",
+      "timeSaved": 0.0076,
+      "doneVerdict": "marginal tie",
+      "doneTimeSaved": 0.0004,
+      "choppy": {
+        "seconds": 46.019,
+        "MBps": 11.1,
+        "doneMBps": 11.2,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 45.553,
+            "onDisk": 45.926
+          },
+          {
+            "done": 45.537,
+            "onDisk": 45.877
+          },
+          {
+            "done": 45.781,
+            "onDisk": 46.252
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 46.369,
+        "MBps": 11.0,
+        "doneMBps": 11.2,
+        "runs": [
+          {
+            "done": 45.65,
+            "onDisk": 46.17
+          },
+          {
+            "done": 45.628,
+            "onDisk": 46.441
+          },
+          {
+            "done": 45.651,
+            "onDisk": 46.497
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "C:",
+      "to": "N:",
+      "route": "C: -> N:",
+      "kinds": "NVMe -> Network",
+      "case": "small",
+      "title": "250 small files",
+      "files": 250,
+      "bytes": 52673974,
+      "verdict": "faster",
+      "timeSaved": 0.4873,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.4984,
+      "choppy": {
+        "seconds": 11.864,
+        "MBps": 4.2,
+        "doneMBps": 4.5,
+        "method": "Adaptive · 16 streams",
+        "runs": [
+          {
+            "done": 11.871,
+            "onDisk": 12.452
+          },
+          {
+            "done": 10.893,
+            "onDisk": 11.44
+          },
+          {
+            "done": 10.847,
+            "onDisk": 11.7
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 23.141,
+        "MBps": 2.2,
+        "doneMBps": 2.2,
+        "runs": [
+          {
+            "done": 22.017,
+            "onDisk": 23.136
+          },
+          {
+            "done": 22.54,
+            "onDisk": 22.877
+          },
+          {
+            "done": 22.456,
+            "onDisk": 23.409
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "C:",
+      "to": "N:",
+      "route": "C: -> N:",
+      "kinds": "NVMe -> Network",
+      "case": "mixed",
+      "title": "Mixed folder",
+      "files": 403,
+      "bytes": 616846944,
+      "verdict": "faster",
+      "timeSaved": 0.2436,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.2396,
+      "choppy": {
+        "seconds": 61.412,
+        "MBps": 9.6,
+        "doneMBps": 9.6,
+        "method": "Adaptive · 16 streams",
+        "runs": [
+          {
+            "done": 60.89,
+            "onDisk": 61.316
+          },
+          {
+            "done": 60.751,
+            "onDisk": 61.197
+          },
+          {
+            "done": 61.293,
+            "onDisk": 61.722
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 81.186,
+        "MBps": 7.2,
+        "doneMBps": 7.3,
+        "runs": [
+          {
+            "done": 80.014,
+            "onDisk": 81.342
+          },
+          {
+            "done": 80.3,
+            "onDisk": 81.546
+          },
+          {
+            "done": 80.254,
+            "onDisk": 80.669
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "N:",
+      "to": "C:",
+      "route": "N: -> C:",
+      "kinds": "Network -> NVMe",
+      "case": "big",
+      "title": "One big file",
+      "files": 1,
+      "bytes": 536870912,
+      "verdict": "faster",
+      "timeSaved": 0.042,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.0425,
+      "choppy": {
+        "seconds": 9.993,
+        "MBps": 51.2,
+        "doneMBps": 51.6,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 9.783,
+            "onDisk": 9.864
+          },
+          {
+            "done": 9.998,
+            "onDisk": 10.073
+          },
+          {
+            "done": 9.959,
+            "onDisk": 10.041
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 10.431,
+        "MBps": 49.1,
+        "doneMBps": 49.5,
+        "runs": [
+          {
+            "done": 10.897,
+            "onDisk": 10.978
+          },
+          {
+            "done": 10.238,
+            "onDisk": 10.314
+          },
+          {
+            "done": 9.924,
+            "onDisk": 10.0
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "N:",
+      "to": "C:",
+      "route": "N: -> C:",
+      "kinds": "Network -> NVMe",
+      "case": "small",
+      "title": "250 small files",
+      "files": 250,
+      "bytes": 52673974,
+      "verdict": "faster",
+      "timeSaved": 0.9136,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.9144,
+      "choppy": {
+        "seconds": 2.307,
+        "MBps": 21.8,
+        "doneMBps": 22.0,
+        "method": "Adaptive · 16 streams",
+        "runs": [
+          {
+            "done": 2.262,
+            "onDisk": 2.287
+          },
+          {
+            "done": 2.312,
+            "onDisk": 2.339
+          },
+          {
+            "done": 2.272,
+            "onDisk": 2.297
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 26.691,
+        "MBps": 1.9,
+        "doneMBps": 1.9,
+        "runs": [
+          {
+            "done": 26.521,
+            "onDisk": 26.537
+          },
+          {
+            "done": 26.898,
+            "onDisk": 26.917
+          },
+          {
+            "done": 26.599,
+            "onDisk": 26.621
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "N:",
+      "to": "C:",
+      "route": "N: -> C:",
+      "kinds": "Network -> NVMe",
+      "case": "mixed",
+      "title": "Mixed folder",
+      "files": 403,
+      "bytes": 616846944,
+      "verdict": "faster",
+      "timeSaved": 0.7079,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.7095,
+      "choppy": {
+        "seconds": 14.935,
+        "MBps": 39.4,
+        "doneMBps": 39.6,
+        "method": "Adaptive · 16 streams",
+        "runs": [
+          {
+            "done": 13.856,
+            "onDisk": 13.941
+          },
+          {
+            "done": 16.503,
+            "onDisk": 16.595
+          },
+          {
+            "done": 14.173,
+            "onDisk": 14.269
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 51.132,
+        "MBps": 11.5,
+        "doneMBps": 11.5,
+        "runs": [
+          {
+            "done": 50.554,
+            "onDisk": 50.594
+          },
+          {
+            "done": 50.943,
+            "onDisk": 50.976
+          },
+          {
+            "done": 51.79,
+            "onDisk": 51.824
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "N:",
+      "to": "N:",
+      "route": "N: -> N:",
+      "kinds": "within one Network share",
+      "case": "big",
+      "title": "One big file",
+      "files": 1,
+      "bytes": 536870912,
+      "verdict": "faster",
+      "timeSaved": 0.4238,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.4564,
+      "choppy": {
+        "seconds": 0.695,
+        "MBps": 736.3,
+        "doneMBps": 827.0,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 0.62,
+            "onDisk": 0.73
+          },
+          {
+            "done": 0.617,
+            "onDisk": 0.674
+          },
+          {
+            "done": 0.62,
+            "onDisk": 0.682
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 1.207,
+        "MBps": 424.2,
+        "doneMBps": 449.5,
+        "runs": [
+          {
+            "done": 1.13,
+            "onDisk": 1.19
+          },
+          {
+            "done": 1.146,
+            "onDisk": 1.208
+          },
+          {
+            "done": 1.14,
+            "onDisk": 1.223
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "N:",
+      "to": "N:",
+      "route": "N: -> N:",
+      "kinds": "within one Network share",
+      "case": "small",
+      "title": "250 small files",
+      "files": 250,
+      "bytes": 52673974,
+      "verdict": "faster",
+      "timeSaved": 0.9201,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.9233,
+      "choppy": {
+        "seconds": 6.351,
+        "MBps": 7.9,
+        "doneMBps": 8.3,
+        "method": "Adaptive · 16 streams",
+        "runs": [
+          {
+            "done": 5.857,
+            "onDisk": 6.178
+          },
+          {
+            "done": 6.148,
+            "onDisk": 6.419
+          },
+          {
+            "done": 6.25,
+            "onDisk": 6.457
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 79.507,
+        "MBps": 0.6,
+        "doneMBps": 0.6,
+        "runs": [
+          {
+            "done": 79.41,
+            "onDisk": 79.535
+          },
+          {
+            "done": 79.381,
+            "onDisk": 79.619
+          },
+          {
+            "done": 79.221,
+            "onDisk": 79.366
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "N:",
+      "to": "N:",
+      "route": "N: -> N:",
+      "kinds": "within one Network share",
+      "case": "mixed",
+      "title": "Mixed folder",
+      "files": 403,
+      "bytes": 616846944,
+      "verdict": "faster",
+      "timeSaved": 0.9243,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.9264,
+      "choppy": {
+        "seconds": 9.678,
+        "MBps": 60.8,
+        "doneMBps": 62.6,
+        "method": "Adaptive · 16 streams",
+        "runs": [
+          {
+            "done": 9.456,
+            "onDisk": 9.851
+          },
+          {
+            "done": 9.374,
+            "onDisk": 9.541
+          },
+          {
+            "done": 9.347,
+            "onDisk": 9.642
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 127.878,
+        "MBps": 4.6,
+        "doneMBps": 4.6,
+        "runs": [
+          {
+            "done": 128.06,
+            "onDisk": 128.246
+          },
+          {
+            "done": 127.354,
+            "onDisk": 127.549
+          },
+          {
+            "done": 127.677,
+            "onDisk": 127.839
+          }
+        ]
+      },
+      "error": null
+    }
+  ],
+  "notes": []
+}

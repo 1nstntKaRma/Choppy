@@ -1,0 +1,470 @@
+{
+  "tool": "Choppy Benchmark",
+  "version": "1.0.0",
+  "date": "2026-11-26T01:19:36",
+  "mode": "thorough",
+  "rounds": 5,
+  "seconds": 256.0,
+  "canceled": false,
+  "error": null,
+  "units": "seconds = the average time until the copies are on the disk; MB/s = 1,048,576 bytes per second over that time; timeSaved = how much less time Choppy took than Windows (below 0 = more)",
+  "machine": {
+    "cpu": "AMD Ryzen 5 5600X 6-Core Processor",
+    "threads": 12,
+    "ramGB": 15.9,
+    "windows": "Windows 10 Home 22H2 (build 19045.7291)",
+    "admin": false
+  },
+  "summary": {
+    "text": "Choppy is Faster 2 of 2",
+    "cases": 2,
+    "faster": 2,
+    "marginalTie": 0,
+    "slower": 0,
+    "byDone": "Choppy is Faster 2 of 2"
+  },
+  "totals": {
+    "cases": 2,
+    "averageTimeSaved": 0.4121,
+    "bytes": 1233693888,
+    "choppySeconds": 10.331,
+    "windowsSeconds": 17.71,
+    "secondsSaved": 7.379,
+    "choppyMBps": 113.9,
+    "windowsMBps": 66.4,
+    "about": "averageTimeSaved = the average of the cases' timeSaved; seconds = the cases' average times added up (every case copied once); MBps = all the bytes over those seconds"
+  },
+  "drives": [
+    {
+      "letter": "C:",
+      "label": "",
+      "kind": "NVMe SSD",
+      "model": "XG7000-1TB 2280",
+      "bus": "NVMe",
+      "fileSystem": "NTFS",
+      "sizeGB": 953.2,
+      "freeGB": 261.9,
+      "system": true,
+      "network": false,
+      "physicalDisk": 2,
+      "tested": true,
+      "skipped": null,
+      "readMBps": 3743,
+      "writeMBps": 3971,
+      "cacheDrop": "yes",
+      "usb": null
+    },
+    {
+      "letter": "D:",
+      "label": "",
+      "kind": "Hard disk",
+      "model": "ST4000NE0025-2EW107",
+      "bus": "SATA",
+      "fileSystem": "NTFS",
+      "sizeGB": 3725.9,
+      "freeGB": 677.2,
+      "system": false,
+      "network": false,
+      "physicalDisk": 1,
+      "tested": true,
+      "skipped": null,
+      "readMBps": 195,
+      "writeMBps": 139,
+      "cacheDrop": "yes",
+      "usb": null
+    },
+    {
+      "letter": "E:",
+      "label": "",
+      "kind": null,
+      "model": null,
+      "bus": null,
+      "fileSystem": "NTFS",
+      "sizeGB": 931.5,
+      "freeGB": 584.8,
+      "system": false,
+      "network": false,
+      "physicalDisk": -1,
+      "tested": false,
+      "skipped": "not chosen for this run",
+      "readMBps": null,
+      "writeMBps": null,
+      "cacheDrop": null,
+      "usb": null
+    },
+    {
+      "letter": "F:",
+      "label": "",
+      "kind": "USB SSD",
+      "model": "Netac NV Me SSD 1TB",
+      "bus": "USB",
+      "fileSystem": "NTFS",
+      "sizeGB": 931.5,
+      "freeGB": 931.4,
+      "system": false,
+      "network": false,
+      "physicalDisk": 3,
+      "tested": true,
+      "skipped": null,
+      "readMBps": 858,
+      "writeMBps": 878,
+      "cacheDrop": "yes",
+      "usb": {
+        "runsAt": "10 Gbps",
+        "canDo": "10 Gbps",
+        "port": "USB 3",
+        "uasp": true,
+        "heldBack": false,
+        "advice": null
+      }
+    },
+    {
+      "letter": "G:",
+      "label": "",
+      "kind": null,
+      "model": null,
+      "bus": null,
+      "fileSystem": "FAT32",
+      "sizeGB": 15.0,
+      "freeGB": 5.5,
+      "system": false,
+      "network": false,
+      "physicalDisk": -1,
+      "tested": false,
+      "skipped": "not chosen for this run",
+      "readMBps": null,
+      "writeMBps": null,
+      "cacheDrop": null,
+      "usb": null
+    },
+    {
+      "letter": "N:",
+      "label": "",
+      "kind": "Network share",
+      "model": "\\\\nas\\NAS",
+      "bus": null,
+      "fileSystem": "NTFS",
+      "sizeGB": 1716.8,
+      "freeGB": 372.5,
+      "system": false,
+      "network": true,
+      "physicalDisk": -1,
+      "tested": true,
+      "skipped": null,
+      "readMBps": 38,
+      "writeMBps": 10,
+      "cacheDrop": "yes",
+      "usb": null
+    },
+    {
+      "letter": "X:",
+      "label": "",
+      "kind": "Hard disk",
+      "model": "ST4000DM006-2G5107",
+      "bus": "SATA",
+      "fileSystem": "NTFS",
+      "sizeGB": 3725.9,
+      "freeGB": 818.2,
+      "system": false,
+      "network": false,
+      "physicalDisk": 0,
+      "tested": true,
+      "skipped": null,
+      "readMBps": 188,
+      "writeMBps": 140,
+      "cacheDrop": "yes",
+      "usb": null
+    }
+  ],
+  "results": [
+    {
+      "from": "D:",
+      "to": "C:",
+      "route": "D: -> C:",
+      "kinds": "HDD -> NVMe",
+      "case": "mixed",
+      "title": "Mixed folder",
+      "files": 403,
+      "bytes": 616846944,
+      "verdict": "faster",
+      "timeSaved": 0.3756,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.3796,
+      "choppy": {
+        "seconds": 4.845,
+        "MBps": 121.4,
+        "doneMBps": 123.4,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 4.973,
+            "onDisk": 5.056
+          },
+          {
+            "done": 4.735,
+            "onDisk": 4.781
+          },
+          {
+            "done": 4.739,
+            "onDisk": 4.785
+          },
+          {
+            "done": 4.696,
+            "onDisk": 4.828
+          },
+          {
+            "done": 4.692,
+            "onDisk": 4.774
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 7.759,
+        "MBps": 75.8,
+        "doneMBps": 76.6,
+        "runs": [
+          {
+            "done": 8.067,
+            "onDisk": 8.117
+          },
+          {
+            "done": 7.679,
+            "onDisk": 7.782
+          },
+          {
+            "done": 7.532,
+            "onDisk": 7.618
+          },
+          {
+            "done": 7.613,
+            "onDisk": 7.702
+          },
+          {
+            "done": 7.528,
+            "onDisk": 7.574
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "X:",
+      "to": "C:",
+      "route": "X: -> C:",
+      "kinds": "HDD -> NVMe",
+      "case": "mixed",
+      "title": "Mixed folder",
+      "files": 403,
+      "bytes": 616846944,
+      "verdict": "faster",
+      "timeSaved": 0.4486,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.4556,
+      "choppy": {
+        "seconds": 5.487,
+        "MBps": 107.2,
+        "doneMBps": 109.3,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 5.458,
+            "onDisk": 5.529
+          },
+          {
+            "done": 5.38,
+            "onDisk": 5.542
+          },
+          {
+            "done": 5.381,
+            "onDisk": 5.466
+          },
+          {
+            "done": 5.328,
+            "onDisk": 5.491
+          },
+          {
+            "done": 5.357,
+            "onDisk": 5.406
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 9.951,
+        "MBps": 59.1,
+        "doneMBps": 59.5,
+        "runs": [
+          {
+            "done": 9.754,
+            "onDisk": 9.833
+          },
+          {
+            "done": 10.073,
+            "onDisk": 10.161
+          },
+          {
+            "done": 9.829,
+            "onDisk": 9.882
+          },
+          {
+            "done": 9.883,
+            "onDisk": 9.946
+          },
+          {
+            "done": 9.878,
+            "onDisk": 9.934
+          }
+        ]
+      },
+      "error": null
+    }
+  ],
+  "rustSummary": {
+    "text": "Choppy is Faster 2 of 2",
+    "averageTimeSaved": 0.4197,
+    "choppySeconds": 10.196,
+    "windowsSeconds": 17.71
+  },
+  "rustResults": [
+    {
+      "from": "D:",
+      "to": "C:",
+      "route": "D: -> C:",
+      "kinds": "HDD -> NVMe",
+      "case": "mixed",
+      "title": "Mixed folder",
+      "files": 403,
+      "bytes": 616846944,
+      "verdict": "faster",
+      "timeSaved": 0.3825,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.3883,
+      "choppy": {
+        "seconds": 4.791,
+        "MBps": 122.8,
+        "doneMBps": 125.2,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 4.687,
+            "onDisk": 4.8
+          },
+          {
+            "done": 4.68,
+            "onDisk": 4.723
+          },
+          {
+            "done": 4.678,
+            "onDisk": 4.794
+          },
+          {
+            "done": 4.754,
+            "onDisk": 4.825
+          },
+          {
+            "done": 4.703,
+            "onDisk": 4.813
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 7.759,
+        "MBps": 75.8,
+        "doneMBps": 76.6,
+        "runs": [
+          {
+            "done": 8.067,
+            "onDisk": 8.117
+          },
+          {
+            "done": 7.679,
+            "onDisk": 7.782
+          },
+          {
+            "done": 7.532,
+            "onDisk": 7.618
+          },
+          {
+            "done": 7.613,
+            "onDisk": 7.702
+          },
+          {
+            "done": 7.528,
+            "onDisk": 7.574
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "from": "X:",
+      "to": "C:",
+      "route": "X: -> C:",
+      "kinds": "HDD -> NVMe",
+      "case": "mixed",
+      "title": "Mixed folder",
+      "files": 403,
+      "bytes": 616846944,
+      "verdict": "faster",
+      "timeSaved": 0.4569,
+      "doneVerdict": "faster",
+      "doneTimeSaved": 0.4617,
+      "choppy": {
+        "seconds": 5.405,
+        "MBps": 108.8,
+        "doneMBps": 110.6,
+        "method": "Adaptive · 1 stream",
+        "runs": [
+          {
+            "done": 5.33,
+            "onDisk": 5.438
+          },
+          {
+            "done": 5.262,
+            "onDisk": 5.431
+          },
+          {
+            "done": 5.355,
+            "onDisk": 5.399
+          },
+          {
+            "done": 5.3,
+            "onDisk": 5.347
+          },
+          {
+            "done": 5.356,
+            "onDisk": 5.407
+          }
+        ]
+      },
+      "windows": {
+        "seconds": 9.951,
+        "MBps": 59.1,
+        "doneMBps": 59.5,
+        "runs": [
+          {
+            "done": 9.754,
+            "onDisk": 9.833
+          },
+          {
+            "done": 10.073,
+            "onDisk": 10.161
+          },
+          {
+            "done": 9.829,
+            "onDisk": 9.882
+          },
+          {
+            "done": 9.883,
+            "onDisk": 9.946
+          },
+          {
+            "done": 9.878,
+            "onDisk": 9.934
+          }
+        ]
+      },
+      "error": null
+    }
+  ],
+  "notes": []
+}

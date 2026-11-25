@@ -12,7 +12,7 @@ Read [PLAN.md](PLAN.md) first (steps, gates, rules, file map). One step per sess
 | 3 | Speed proof | **benchmark runs finished** (2026-11-25): gate met (48 cases, level with 1.48, nothing newly Slower), one porting fix (3.1); **waits for the user's sign-off** |
 | 4 | All windows | **done** (2026-11-25): every window the same size as 1.48's at 125 % and 100 % on both monitors (but the Queue pop-up at 125 % and a finished Benchmark: 1 px), pictures side by side and overlaid, self-test lines identical (but step 5's hook line), fix list 4.1-4.31 checked; **the look waits for the user's approval** |
 | 5 | Explorer / system | **done** (2026-11-25): gate met - self-test identical (97 lines), registry writes identical on a scratch key (10 steps), `--where` identical, C# and Rust hand jobs to each other through the pipe, opens in 0.020 s when running (1.48: 0.115 s) and 0.185 s when not (1.48: 1.141 s); fix list 5.1-5.31 checked; the live Explorer checks wait for an installed Rust Choppy (step 6) |
-| 6 | Switch-over | not started |
+| 6 | Switch-over | **prepared** (2026-11-26): build.ps1 builds with cargo, release.yml / build.yml build Rust (checked on GitHub: build-only for 1.48), final checks done, the switch-over package in `switchover/`, `rust` merges cleanly into main; **the switch-over itself waits for the user's go** (after they try it, with the version number and beta decided) |
 
 ## Step 0 (2026-11-24)
 
@@ -499,6 +499,145 @@ exit path). The app is now dropped at the end of `app::run`.
 - Switch-over notes: the installed 1.48 and a Rust Choppy share every outside name (mutex, pipe, HKCU keys, verbs, Run
   entry), so build.ps1's `--quit` before replacing the exe reaches either.
 
+## Step 6 (2026-11-25/26)
+
+**Boundary kept:** everything on `rust`; main, VERSION, tags and releases untouched; nothing installed. The switch-over
+itself waits for the user's go.
+
+**Changed** (commit 765eb8f + this one):
+- **build.ps1, only its build step:** `rust\Cargo.toml` instead of `src\Choppy.csproj`; `cargo --version` instead of
+  `dotnet --list-sdks`; `cargo build --release --locked -p choppy --target x86_64-pc-windows-msvc --target-dir
+  rust\target` run from `rust\` (so `rust\.cargo\config.toml` applies; RUSTFLAGS / CARGO_ENCODED_RUSTFLAGS cleared
+  for the build, they would replace it), then the FileVersion checked against VERSION, copied to `bin\Choppy.exe` and
+  the self-test as before. The release-zip case, the "no build tools" case (the existing exe, else the latest
+  release's exe with its SHA-256 checked) and the whole install / remove part are as they were; only the header and
+  the "No Rust here" wording changed. Takes ~80 s from nothing here.
+- **No local folder names in the exe** (the C# PathMap): build.ps1 adds `--remap-path-prefix=<CARGO_HOME>=cargo` to
+  config.toml's flags through `--config` (arrays merge; `trim-paths` isn't stable in cargo 1.100). Before, the exe
+  carried `C:\Users\<name>\.cargo\registry\...` in its panic texts.
+- **The same source gives the same exe** (C#'s Deterministic): config.toml adds `-C link-arg=/Brepro`. Two builds in
+  different folders are byte-identical, and **GitHub's build is byte-identical to the local one** (SHA-256
+  F37EFF8A791F357C... for 765eb8f): the exe tested here is exactly what GitHub would release.
+- `src/app.manifest` and `src/Choppy.ico` copied (byte for byte) to `rust/choppy/res/`; build.rs and ui.rs read them
+  there, so the build needs nothing from `src/` once the C# is removed.
+- **release.yml and build.yml:** a "Rust (MSVC)" step installs Rust 1.100.0 (`RUST_TOOLCHAIN`, the version tested
+  here; raised on purpose only), and after the stamp check a dumpbin step fails if the exe needs the VC++ runtime.
+  The version guard, the stamp check, the zip layout, SHA256SUMS.txt, the attestation and the publish step are
+  unchanged.
+
+**Checked:**
+- `build.ps1 -Shell Cancel` (with -NonInteractive, Windows PowerShell 5.1, as release.yml runs it): exit 0, "[Built]
+  bin\Choppy.exe (3684 KB), self-test passed". Never Apply / Install / RightClick / Revert.
+- GitHub: the push ran build.yml (green, 2m09s); `gh workflow run release.yml --ref rust` with VERSION 1.48 (tag v1.48
+  exists, the guard intact): "v1.48 is released already: build and self-test only", Package / attest / Publish
+  skipped, no new release or tag (v1.48 still latest). Both runs listed only Windows' own DLLs.
+- **Merge dry run:** in a scratch worktree of origin/main, `git merge --no-commit --no-ff 765eb8f`: automatic, no
+  conflict (main's tip 367241b is where `rust` started: a fast-forward). Not committed; the worktree removed.
+- **The switch-over rehearsed** on that merged tree: `git rm -r src nuget.config`, VERSION 2.00, `build.ps1 -Shell
+  Cancel`: builds, self-test ALL PASS, FileVersion 2.0.0.0 (what release.yml expects for 2.00), ProductName /
+  CompanyName / LegalCopyright / OriginalFilename as the C# exe's. Only comments still name `src/`. release.yml's
+  Package step run locally on it: `Choppy-v2.00.zip` (1.57 MB) = `bin/Choppy.exe`, `build.ps1`, `VERSION`,
+  `README.md`, `LICENSE`, both `.cmd`; matches `^Choppy-v.*\.zip$`. (Found: in a very deep folder the linker hits
+  Windows' 260-character limit, LNK1104 - a short folder builds.)
+- **ChocoPlus contract, by reading its code** (the ChocoPlus repository): `Get-GitHubAsset` takes the latest release
+  (`/releases/latest`, API then page - pre-releases never), the asset `^Choppy-v.*\.zip$`; its install function
+  extracts it to C:\Temp\Choppy, finds `build.ps1` and runs `powershell -NoProfile -NonInteractive -ExecutionPolicy
+  Bypass -File build.ps1 -NoBuild -Shell Apply|Revert|Install` (stdout / stderr to files); `Test-Choppy` =
+  `%LOCALAPPDATA%\Programs\Choppy\Choppy.exe`; updates compare the tag with the installed exe's FileVersion part by
+  part (`v2.00` vs `2.0.0.0` = the same; 2.00 > 1.48.0.0; a "1.5" would never be offered). With `-NoBuild` and
+  `bin\Choppy.exe` in the zip, build.ps1 never reaches its build step; the install part is unchanged.
+- **The finished exe** (bin\Choppy.exe of 765eb8f, 3,772,416 bytes = 3,684 KB; 0.95 MB for C# 1.48):
+  - self-test: 97 lines, ALL PASS;
+  - dumpbin: x64, Windows GUI, ASLR / NX / high-entropy; imports kernel32, user32, gdi32, ole32, oleaut32, shell32,
+    advapi32, dwmapi, setupapi, cfgmgr32, mpr, shlwapi, d2d1, dwrite, combase, propsys, ntdll, bcryptprimitives and two
+    API sets - no VC++ runtime;
+  - Microsoft Defender (`MpCmdRun -Scan -ScanType 3 -File ... -DisableRemediation`, signatures 1.463.465.0 of
+    2026-11-25): "found no threats";
+  - window latency (`tools/step5/latency.py`, median of 7, against a scratch copy of the installed 1.48): in the tray
+    **0.019 s** (1.48: 0.120 s), not running **0.192 s** (1.48: 1.147 s);
+  - memory (test mode, `--tray` after 10 s, then 5 s into a copy window): **37.8 MB** working set / 59.9 MB private,
+    with the copy window 40.8 / 62.2 MB (1.48: 99.9 / 99.5 MB, with the window 111.1 / 104.2 MB).
+
+**The final Benchmark** (the Rust exe's own, as 1.48's runs it: Choppy in its process; `--benchmark --thorough
+--network --drives C,D,F,X,N` in test mode, nothing else running; 64 min). The same drives as step 3's full run, so
+the same file sizes; E: left out (see Decisions). **Choppy is Faster 31 of 39 / Marginal Tie 8 / Never Slower** against
+Windows (+42 % on average, time saved 5 min 51 s). Against step 3's C# 1.48 numbers (`tools/switchover/compare.py`;
+C# from step 3's full run and its 5-round reruns, a day earlier; "Windows then" = Windows in that run):
+
+| Route | Case | Size | Rust (s) | C# 1.48 (s) | Windows now (s) | Windows then (s) | Rust vs C# 1.48 | Rust vs Windows | C# 1.48 vs Windows | Runs |
+|---|---|---|---|---|---|---|---|---|---|---|
+| C>C | big | 2 GB | 0.800 | 0.813 | 0.951 | 0.961 | +1.6% | Faster +15.8% | Faster +15.5% | 3 (spread 4%) |
+| C>C | small | 190 MB, 1000 files | 0.635 | 0.616 | 3.564 | 3.482 | -3.1% | Faster +82.2% | Faster +82.3% | 3 (spread 20%) |
+| C>C | mixed | 588 MB, 403 files | 0.391 | 0.401 | 1.622 | 1.597 | +2.5% | Faster +75.9% | Faster +74.9% | 3 (spread 4%) |
+| C>D | big | 1 GB | 4.904 | 4.822 | 4.918 | 4.825 | -1.7% | Tie +0.3% | Tie +0.0% | 3 (spread 3%) |
+| C>D | small | 94 MB, 500 files | 2.091 | 2.051 | 3.261 | 3.299 | -2.0% | Faster +35.9% | Faster +37.8% | 3 (spread 41%) |
+| C>D | mixed | 588 MB, 403 files | 4.804 | 4.905 | 6.350 | 5.487 | +2.1% | Faster +24.3% | Faster +10.6% | 3 (spread 13%) |
+| D>C | big | 1 GB | 5.685 | 5.718 | 5.684 | 5.669 | +0.6% | Tie -0.0% | Tie -0.9% | 3 (spread 4%) |
+| D>C | small | 94 MB, 500 files | 2.024 | 2.064 | 5.912 | 5.606 | +1.9% | Faster +65.8% | Faster +63.2% | 3 (spread 3%) |
+| D>C | mixed | 588 MB, 403 files | 4.926 | 4.196 | 7.827 | 6.894 | -17.4% ** | Faster +37.1% | Faster +39.1% | 3 (spread 2%) |
+| D>D | big | 1 GB | 10.734 | 10.735 | 11.069 | 11.483 | +0.0% | Tie +3.0% | Faster +6.5% | 3 (spread 3%) |
+| D>D | small | 94 MB, 500 files | 3.149 | 3.257 | 7.976 | 7.513 | +3.3% | Faster +60.5% | Faster +56.6% | 3 (spread 16%) |
+| D>D | mixed | 588 MB, 403 files | 8.093 | 9.551 | 11.432 | 14.001 | +15.3% ** | Faster +29.2% | Faster +31.8% | 3 (spread 5%) |
+| C>F | big | 2 GB | 2.382 | 2.395 | 2.972 | 2.999 | +0.5% | Faster +19.8% | Faster +20.2% | 3 (spread 6%) |
+| C>F | small | 190 MB, 1000 files | 0.537 | 0.592 | 4.214 | 4.233 | +9.3% | Faster +87.2% | Faster +86.0% | 3 (spread 40%) |
+| C>F | mixed | 588 MB, 403 files | 0.914 | 0.843 | 2.510 | 2.501 | -8.4% | Faster +63.6% | Faster +66.3% | 3 (spread 41%) |
+| F>C | big | 2 GB | 2.169 | 2.208 | 2.215 | 2.227 | +1.8% | Tie +2.1% | Tie +0.9% | 3 (spread 5%) |
+| F>C | small | 190 MB, 1000 files | 0.593 | 0.627 | 3.827 | 3.687 | +5.4% | Faster +84.5% | Faster +83.0% | 3 (spread 26%) |
+| F>C | mixed | 588 MB, 403 files | 0.846 | 0.813 | 2.025 | 2.063 | -4.1% | Faster +58.2% | Faster +60.6% | 3 (spread 14%) |
+| F>F | big | 2 GB | 2.827 | 2.828 | 4.234 | 4.186 | +0.0% | Faster +33.2% | Faster +32.5% | 3 (spread 9%) |
+| F>F | small | 190 MB, 1000 files | 1.623 | 1.587 | 4.617 | 4.462 | -2.3% | Faster +64.8% | Faster +64.4% | 3 (spread 18%) |
+| F>F | mixed | 588 MB, 403 files | 1.385 | 1.454 | 2.867 | 2.933 | +4.7% ** | Faster +51.7% | Faster +50.4% | 3 (spread 6%) |
+| C>X | big | 1 GB | 5.234 | 5.195 | 5.212 | 5.116 | -0.8% | Tie -0.4% | Tie -1.6% | 3 (spread 9%) |
+| C>X | small | 94 MB, 500 files | 2.353 | 2.750 | 3.771 | 3.626 | +14.4% | Faster +37.6% | Faster +24.1% | 3 (spread 31%) |
+| C>X | mixed | 588 MB, 403 files | 5.523 | 5.678 | 7.148 | 6.471 | +2.7% | Faster +22.7% | Faster +12.3% | 3 (spread 8%) |
+| X>C | big | 1 GB | 5.882 | 5.829 | 5.889 | 5.979 | -0.9% | Tie +0.1% | Tie +2.5% | 3 (spread 2%) |
+| X>C | small | 94 MB, 500 files | 2.496 | 2.545 | 8.612 | 8.891 | +1.9% | Faster +71.0% | Faster +71.4% | 3 (spread 2%) |
+| X>C | mixed | 588 MB, 403 files | 5.882 | 5.144 | 10.903 | 9.383 | -14.3% ** | Faster +46.1% | Faster +45.2% | 3 (spread 2%) |
+| X>X | big | 1 GB | 11.528 | 11.540 | 11.926 | 12.093 | +0.1% | Tie +3.3% | Faster +4.6% | 3 (spread 6%) |
+| X>X | small | 94 MB, 500 files | 4.254 | 4.245 | 11.543 | 11.287 | -0.2% | Faster +63.1% | Faster +62.4% | 3 (spread 4%) |
+| X>X | mixed | 588 MB, 403 files | 10.311 | 10.260 | 16.950 | 16.536 | -0.5% | Faster +39.2% | Faster +38.0% | 3 (spread 4%) |
+| C>N | big | 512 MB | 46.019 | 46.449 | 46.369 | 46.341 | +0.9% | Tie +0.8% | Tie -0.2% | 3 (spread 1%) |
+| C>N | small | 50 MB, 250 files | 11.864 | 12.542 | 23.141 | 23.460 | +5.4% ** | Faster +48.7% | Faster +46.5% | 3 (spread 9%) |
+| C>N | mixed | 588 MB, 403 files | 61.412 | 62.254 | 81.186 | 82.201 | +1.4% | Faster +24.4% | Faster +24.3% | 3 (spread 1%) |
+| N>C | big | 512 MB | 9.993 | 10.189 | 10.431 | 10.348 | +1.9% | Faster +4.2% | Tie +1.5% | 3 (spread 9%) |
+| N>C | small | 50 MB, 250 files | 2.307 | 2.449 | 26.691 | 27.130 | +5.8% ** | Faster +91.4% | Faster +91.0% | 3 (spread 8%) |
+| N>C | mixed | 588 MB, 403 files | 14.935 | 16.983 | 51.132 | 54.414 | +12.1% ** | Faster +70.8% | Faster +68.8% | 3 (spread 18%) |
+| N>N | big | 512 MB | 0.695 | 0.732 | 1.207 | 1.248 | +5.1% ** | Faster +42.4% | Faster +41.3% | 3 (spread 8%) |
+| N>N | small | 50 MB, 250 files | 6.351 | 6.443 | 79.507 | 83.385 | +1.4% | Faster +92.0% | Faster +92.3% | 3 (spread 4%) |
+| N>N | mixed | 588 MB, 403 files | 9.678 | 9.923 | 127.878 | 133.334 | +2.5% | Faster +92.4% | Faster +92.6% | 3 (spread 3%) |
+
+- Added up: Rust 278.2 s, C# 1.48 (step 3) 283.6 s, Windows (this run) 629.5 s. Nothing is Slower; the verdicts that
+  moved (D>D big and X>X big Faster -> Tie, N>C big Tie -> Faster) moved with Windows' own time, Rust's stayed on C#'s.
+- Two cases took longer than step 3's C# (D>C mixed -17.4 %, X>C mixed -14.3 %), but Windows took 13-16 % longer on
+  them too (the hard disks' placement noise, PLAN / the benchmark notes). **Head to head** with step 3's harness (C#
+  1.48 in its process, Rust in a warm child, Windows; the same files, 5 rounds): D>C mixed Rust 4.791 s vs C# 4.845 s
+  (+1.1 %), X>C mixed 5.405 s vs 5.487 s (+1.5 %) - level. The cases faster than step 3 (D>D mixed +15 %, N>C mixed
+  +12 %) are the same noise the other way: step 3's own two C# runs differed by up to 11 % on such cases.
+- Masked reports and the table: `tools/switchover/results/` (`final`, `hdd5`, `final-table.md`).
+
+**The switch-over package** (`rust/switchover/`): `CHECKLIST.md` (before the go; the merge; `src/` and the C# removed,
+kept in the v1.48 tag; the Rust code staying in `rust/`; the VERSION bump; the push that releases; checks; what to do
+if it goes wrong), `RELEASE_NOTES-draft.md` (house style, soft wording, no claims against Windows),
+`README-lines.md` (the README lines that no longer fit: the .NET badge, "under 1 MB on .NET Framework 4.8"; the rest
+still fits).
+
+**Only the user can do** (the switch-over waits for all of it):
+1. Try the Rust Choppy and install it themselves (e.g. `Activate Choppy.cmd` from a checkout of `rust`; settings and
+   everything else carry over, and the v1.48 zip goes back the same way).
+2. With it installed: step 5's live checks (real Ctrl+V, right-click "Paste with Choppy", start with Windows, the
+   administrator prompt Yes / No, `wherecheck.py` with Explorer windows open) and step 2's administrator copy.
+3. Approve step 4's look (pictures, the tray menu, tooltips) and sign off step 3's table.
+4. Decide the version number (2.00 suggested; it must be higher part by part than 1.48) and whether there is a public
+   beta (a GitHub pre-release, which ChocoPlus and the one-liner skip; it needs small changes first).
+5. SmartScreen: the new exe has no download history, so the first downloads may show "Windows protected your PC";
+   only a real download from GitHub shows it (installs through build.ps1 unblock the files).
+6. Leftovers from earlier steps to remove by hand: `C:\choppy-step5-adm`, `D:\choppy-engine-check`,
+   `X:\choppy-engine-check`.
+
+**For after the switch-over:** the crate's `#![allow(dead_code)]` (step 1's note); the "For after the switch-over"
+lists of steps 2, 3 and 5; optionally keep the step tools' pictures off main (the source zip the one-liner downloads
+grows from ~0.8 MB to ~4.6 MB, `rust/tools/step4/results` is 2.8 MB of it).
+
 ## Decisions
 
 - 2026-11-24: Build Tools 2026 (current winget package) rather than 2022.
@@ -532,11 +671,16 @@ exit path). The app is now dropped at the end of `app::run`.
   per-window `--where` lines and the live Ctrl+V go to the user.
 - 2026-11-25 (step 5): UI-thread errors are caught at the window procedures and the dispatcher (noted in errors.txt,
   Choppy goes on) - C#'s DispatcherUnhandledException; a panic must never unwind into Windows.
+- 2026-11-26 (step 6): the Rust code stays in `rust/` after the switch-over (build.ps1 builds `rust\Cargo.toml`; nothing
+  moves); the manifest and icon are copied into `rust/choppy/res/` now, so removing `src/` is one `git rm`.
+- 2026-11-26 (step 6): CI pins Rust 1.100.0, the toolchain every step was tested with; with `/Brepro` and the path remap
+  the exe GitHub builds is byte for byte the local one.
+- 2026-11-26 (step 6): the final Benchmark left E: out (the standing rule allows test files on C:, D:, X:, F: and the
+  network that was asked for); its 9 cases are in step 3's table.
 
 ## Next session
 
-**Step 6 (switch-over), on Extra without Ultracode.** Read PLAN.md (step 6's gate) and "For the next step(s)" of steps
-2-5. Only build.ps1's BUILD step changes (cargo); the zip layout `Choppy-vX.zip` with `bin\Choppy.exe`, the ChocoPlus
-contract, release.yml's version-stamp check and the self-test stay. Never install or update the installed Choppy (the
-user does that). The user still approves step 4's look, signs off step 3's table and has step 5's live checks (they
-need an installed Rust Choppy).
+**The switch-over, only on the user's go** (Extra without Ultracode). Follow `rust/switchover/CHECKLIST.md` with the
+version number and beta the user decided. Before it: the user has tried and installed the Rust Choppy themselves, done
+step 5's live checks, approved step 4's look and signed off step 3's table (Step 6, "Only the user can do"). Never
+install or update the installed Choppy (the user does that).

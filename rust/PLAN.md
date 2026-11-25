@@ -36,15 +36,17 @@ than today's < 1 MB exe (the .NET runtime ships with Windows, Rust carries what 
 
 ## Rust setup
 
-- Target `x86_64-pc-windows-msvc`; `rust/.cargo/config.toml` sets `+crt-static`, so no VC++ runtime is needed.
+- Target `x86_64-pc-windows-msvc`; `rust/.cargo/config.toml` sets `+crt-static`, so no VC++ runtime is needed, and
+  `/Brepro`, so the same source gives the same exe (step 6).
 - The official `windows` crate (+ `windows-sys` only if a call needs it) and as few other crates as possible; each
   one is listed with its reason in `rust/choppy/Cargo.toml`.
 - `unsafe` only in the `sys` module, behind safe wrappers. Everything else is `#![deny(unsafe_code)]`.
 - Dedicated threads like the C# code (workers, the pipeline, the pipe server, the hook thread). No async runtime.
 - Panics are caught at every thread boundary (`catch_unwind`), so a job fails safely: a `.chpart` file is never
   renamed into place after a panic.
-- `build.rs` embeds `src/app.manifest` (PerMonitorV2, longPathAware, supportedOS), `Choppy.ico` and the version
-  info. FileVersion must equal `VERSION` (`1.48` -> `1.48.0.0`) - release.yml checks it.
+- `build.rs` embeds `res/app.manifest` (PerMonitorV2, longPathAware, supportedOS), `res/Choppy.ico` (both copies of
+  the C# project's, since step 6) and the version info. FileVersion must equal `VERSION` (`1.48` -> `1.48.0.0`) -
+  build.ps1 and release.yml check it.
 - Release profile: `lto = true`, `codegen-units = 1`, `panic = "unwind"` (needed for catch_unwind), `opt-level = 3`,
   `strip = "symbols"`.
 - Workspace `rust/`: `choppy/` = the app (modules `sys`, `engine`, `bench`, `explorer`, `ui`, `cli`, `testhook`),
@@ -371,7 +373,19 @@ its rows are `checked`.
 | 5.29 | Self-test: the hook observe-only for 3.5 s, refreshed once, nothing dropped, stopped; no desktop = "SKIP Ctrl+V hook (no desktop to hook here)"; the bench block gets that answer as `desktop` | Cli.cs:873-883 | cli/selftest.rs | the 97 lines identical to C# 1.48's | checked |
 | 5.30 | The administrator copy (`--elevated-job <record> <sha>`): test mode from a genuine record, its own `-admin` instance, the copy, its `.progress` / `.result`, exits when done | App.cs:108-119; Program.cs:40 | main.rs; app.rs `handle_args` | ipccheck: run here without the prompt, C# and Rust result files identical; the prompt itself on the user's list | checked |
 | 5.31 | Keep-awake: the copy's monitor thread (2.5) and the Benchmark (4.25) hold ES_SYSTEM_REQUIRED while they run; App has nothing more | CopyJob.cs:1819; Benchmark.cs:384 | copy_job.rs; bench/benchmark.rs | steps 2 and 4 | checked |
-| 6.x | (filled in step 6) | | | | |
+| 6.1 | The version stamp: `-p:Version=Major.Minor.Max(0,Build)` from VERSION, FileVersion = that + ".0" | build.ps1 Get-Stamp; Choppy.csproj | build.rs (VERSIONINFO from VERSION); build.ps1 checks FileVersion after the build | build.ps1 here (1.48.0.0) and on the rehearsal tree (2.00 -> 2.0.0.0); release.yml's stamp check on GitHub | checked |
+| 6.2 | The exe's identity: AssemblyName Choppy, Product, Company, Copyright, Description, the manifest, the icon | Choppy.csproj | build.rs (res/app.manifest, res/Choppy.ico: byte copies of src/, git hash-object identical); ui.rs ICO | VersionInfo read back (ProductName, CompanyName, LegalCopyright, OriginalFilename Choppy.exe) | checked |
+| 6.3 | LICENSE embedded (About's license box) | Choppy.csproj EmbeddedResource | ui/dialogs.rs include_str!(LICENSE at the top) | step 4's About pictures | checked |
+| 6.4 | No local folder names inside the exe (PathMap) | Choppy.csproj PathMap | build.ps1: `--remap-path-prefix=<CARGO_HOME>=cargo` added to config.toml's flags through `--config`; the workspace's own files are relative already | the exe has no `C:\Users\...` left (only `cargo\registry\...`, `choppy\src\...`, `/rustc/<hash>`, the PDB's bare name) | checked |
+| 6.5 | The same source gives the same exe (Deterministic) | Choppy.csproj Deterministic | config.toml `-C link-arg=/Brepro` (no link time, a hash instead) | two builds in different folders byte-identical; GitHub's build of 765eb8f = the local one (SHA-256 F37EFF8A...) | checked |
+| 6.6 | A 64-bit process (AnyCPU, Prefer32Bit false), a GUI program | Choppy.csproj | target x86_64-pc-windows-msvc; `windows_subsystem = "windows"` | dumpbin: machine x64, subsystem Windows GUI, ASLR + NX + high-entropy | checked |
+| 6.7 | Packages from nuget.org only (nuget.config) | nuget.config | Cargo.lock + `--locked` (crates.io, the lock file never changed by a build) | build.ps1 and both workflows build `--locked` | checked |
+| 6.8 | build.ps1's build: a release zip (no project) uses its bin\Choppy.exe; no build tools = the existing bin\Choppy.exe, else the latest release's exe with its SHA-256 checked; build, copy to bin\Choppy.exe, self-test (a failure prints it and stops), "[Built] ... KB, self-test passed" | build.ps1:53-89 | build.ps1 Invoke-Build: `rust\Cargo.toml`, `cargo --version`, `cargo build --release --locked -p choppy` from `rust\` (so config.toml applies; RUSTFLAGS from the environment cleared, they would replace it) into `rust\target` | `build.ps1 -Shell Cancel` here (85 s, exit 0) and on GitHub (Build and Release runs), with -NonInteractive | checked |
+| 6.9 | build.ps1's install / remove part, its switches, -NonInteractive, the elevated run through the desktop user's task | build.ps1:91-304 | unchanged (the diff touches only the header and the build section) | `git diff`; ChocoPlus's Choppy script and its install function read: `-NoBuild -Shell Apply\|Revert\|Install` with -NonInteractive from the release zip never reaches the build | checked |
+| 6.10 | release.yml: the version guard (a released VERSION = build + self-test only), the stamp check, the zip layout, SHA256SUMS.txt (LF), the attestation, the release | release.yml | + Rust 1.100.0 (the tested toolchain, pinned) before the build, + "only Windows' own DLLs" (dumpbin, no vcruntime / msvcp / ucrtbase / api-ms-win-crt) after it; the rest unchanged | `gh workflow run release.yml --ref rust` with VERSION 1.48: "v1.48 is released already: build and self-test only", Package / attest / Publish skipped, no new release or tag; the Package step run locally on the rehearsal tree (Choppy-v2.00.zip: bin/Choppy.exe, build.ps1, VERSION, README.md, LICENSE, the two .cmd) | checked |
+| 6.11 | build.yml: the same build on other branches and pull requests, the exe kept 14 days | build.yml | + the same Rust and DLL steps | the push of 765eb8f: green, the exe's hash printed | checked |
+| 6.12 | Activate Choppy.cmd (`-Shell Apply`) and Revert to Windows Copy.cmd (`-NoBuild -Shell Revert`) | *.cmd | unchanged | read; in the release zip both reach the install part as before (bin\Choppy.exe is there) | checked |
+| 6.13 | No VC++ runtime needed | (.NET was in Windows) | config.toml `+crt-static` | dumpbin: kernel32, user32, gdi32, ole32, oleaut32, shell32, advapi32, dwmapi, setupapi, cfgmgr32, mpr, shlwapi, d2d1, dwrite, combase, propsys, ntdll, bcryptprimitives, 2 API sets - here and on GitHub | checked (on purpose: no PDB inside like C#'s DebugType embedded; a panic's message names file and line) |
 
 ## UI look test (step 0)
 

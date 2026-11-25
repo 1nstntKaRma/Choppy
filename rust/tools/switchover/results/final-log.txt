@@ -1,0 +1,285 @@
+0.0s Removing what an earlier run left behind
+0.0s Looking at the drives
+0.5s Measuring C: (NVMe SSD)
+0.9s Measuring D: (Hard disk)
+3.5s Measuring F: (USB SSD)
+4.5s Measuring N: (Network share)
+20.6s Measuring X: (Hard disk)
+plan: C:>C: 2048 MB + 1000 files, C:>D: 1024 MB + 500 files, D:>C: 1024 MB + 500 files, D:>D: 1024 MB + 500 files, C:>F: 2048 MB + 1000 files, F:>C: 2048 MB + 1000 files, F:>F: 2048 MB + 1000 files, C:>X: 1024 MB + 500 files, X:>C: 1024 MB + 500 files, X:>X: 1024 MB + 500 files, C:>N: 512 MB + 250 files, N:>C: 512 MB + 250 files, N:>N: 512 MB + 250 files; about 1 h 0 min
+23.2s C: → C: · One big file · writing the test files
+24.3s C: → C: · One big file · Choppy, run 1 of 3
+25.3s C: → C: · One big file · Windows, run 1 of 3
+26.7s C: → C: · One big file · Windows, run 2 of 3
+28.1s C: → C: · One big file · Choppy, run 2 of 3
+29.3s C: → C: · One big file · Choppy, run 3 of 3
+30.4s C: → C: · One big file · Windows, run 3 of 3
+31.7s C: → C: · 1,000 small files · writing the test files
+32.8s C: → C: · 1,000 small files · Windows, run 1 of 3
+36.9s C: → C: · 1,000 small files · Choppy, run 1 of 3
+37.9s C: → C: · 1,000 small files · Choppy, run 2 of 3
+39.0s C: → C: · 1,000 small files · Windows, run 2 of 3
+43.1s C: → C: · 1,000 small files · Windows, run 3 of 3
+47.1s C: → C: · 1,000 small files · Choppy, run 3 of 3
+48.3s C: → C: · Mixed folder · writing the test files
+48.9s C: → C: · Mixed folder · Choppy, run 1 of 3
+49.7s C: → C: · Mixed folder · Windows, run 1 of 3
+51.8s C: → C: · Mixed folder · Windows, run 2 of 3
+53.9s C: → C: · Mixed folder · Choppy, run 2 of 3
+54.7s C: → C: · Mixed folder · Choppy, run 3 of 3
+55.4s C: → C: · Mixed folder · Windows, run 3 of 3
+57.6s C: → D: · One big file · writing the test files
+58.1s C: → D: · One big file · Choppy, run 1 of 3
+63.9s C: → D: · One big file · Windows, run 1 of 3
+69.6s C: → D: · One big file · Windows, run 2 of 3
+75.6s C: → D: · One big file · Choppy, run 2 of 3
+81.3s C: → D: · One big file · Choppy, run 3 of 3
+87.0s C: → D: · One big file · Windows, run 3 of 3
+92.9s C: → D: · 500 small files · writing the test files
+93.4s C: → D: · 500 small files · Windows, run 1 of 3
+98.2s C: → D: · 500 small files · Choppy, run 1 of 3
+101.4s C: → D: · 500 small files · Choppy, run 2 of 3
+104.7s C: → D: · 500 small files · Windows, run 2 of 3
+109.0s C: → D: · 500 small files · Windows, run 3 of 3
+113.3s C: → D: · 500 small files · Choppy, run 3 of 3
+116.7s C: → D: · Mixed folder · writing the test files
+117.2s C: → D: · Mixed folder · Choppy, run 1 of 3
+123.2s C: → D: · Mixed folder · Windows, run 1 of 3
+130.9s C: → D: · Mixed folder · Windows, run 2 of 3
+138.3s C: → D: · Mixed folder · Choppy, run 2 of 3
+144.0s C: → D: · Mixed folder · Choppy, run 3 of 3
+150.0s C: → D: · Mixed folder · Windows, run 3 of 3
+157.6s D: → C: · One big file · writing the test files
+169.6s D: → C: · One big file · Choppy, run 1 of 3
+176.0s D: → C: · One big file · Windows, run 1 of 3
+182.7s D: → C: · One big file · Windows, run 2 of 3
+189.5s D: → C: · One big file · Choppy, run 2 of 3
+195.9s D: → C: · One big file · Choppy, run 3 of 3
+202.5s D: → C: · One big file · Windows, run 3 of 3
+209.1s D: → C: · 500 small files · writing the test files
+211.4s D: → C: · 500 small files · Windows, run 1 of 3
+218.2s D: → C: · 500 small files · Choppy, run 1 of 3
+221.2s D: → C: · 500 small files · Choppy, run 2 of 3
+224.2s D: → C: · 500 small files · Windows, run 2 of 3
+231.0s D: → C: · 500 small files · Windows, run 3 of 3
+237.9s D: → C: · 500 small files · Choppy, run 3 of 3
+241.1s D: → C: · Mixed folder · writing the test files
+249.5s D: → C: · Mixed folder · Choppy, run 1 of 3
+255.3s D: → C: · Mixed folder · Windows, run 1 of 3
+264.2s D: → C: · Mixed folder · Windows, run 2 of 3
+273.0s D: → C: · Mixed folder · Choppy, run 2 of 3
+278.8s D: → C: · Mixed folder · Choppy, run 3 of 3
+284.5s D: → C: · Mixed folder · Windows, run 3 of 3
+293.6s D: → D: · One big file · writing the test files
+305.3s D: → D: · One big file · Choppy, run 1 of 3
+317.0s D: → D: · One big file · Windows, run 1 of 3
+328.7s D: → D: · One big file · Windows, run 2 of 3
+341.2s D: → D: · One big file · Choppy, run 2 of 3
+352.6s D: → D: · One big file · Choppy, run 3 of 3
+364.3s D: → D: · One big file · Windows, run 3 of 3
+376.4s D: → D: · 500 small files · writing the test files
+378.7s D: → D: · 500 small files · Windows, run 1 of 3
+388.1s D: → D: · 500 small files · Choppy, run 1 of 3
+392.4s D: → D: · 500 small files · Choppy, run 2 of 3
+396.7s D: → D: · 500 small files · Windows, run 2 of 3
+405.9s D: → D: · 500 small files · Windows, run 3 of 3
+415.0s D: → D: · 500 small files · Choppy, run 3 of 3
+420.0s D: → D: · Mixed folder · writing the test files
+427.3s D: → D: · Mixed folder · Choppy, run 1 of 3
+436.5s D: → D: · Mixed folder · Windows, run 1 of 3
+449.3s D: → D: · Mixed folder · Windows, run 2 of 3
+461.8s D: → D: · Mixed folder · Choppy, run 2 of 3
+471.1s D: → D: · Mixed folder · Choppy, run 3 of 3
+480.3s D: → D: · Mixed folder · Windows, run 3 of 3
+493.4s C: → F: · One big file · writing the test files
+494.4s C: → F: · One big file · Choppy, run 1 of 3
+497.0s C: → F: · One big file · Windows, run 1 of 3
+500.4s C: → F: · One big file · Windows, run 2 of 3
+503.8s C: → F: · One big file · Choppy, run 2 of 3
+506.5s C: → F: · One big file · Choppy, run 3 of 3
+509.2s C: → F: · One big file · Windows, run 3 of 3
+512.6s C: → F: · 1,000 small files · writing the test files
+513.4s C: → F: · 1,000 small files · Windows, run 1 of 3
+518.1s C: → F: · 1,000 small files · Choppy, run 1 of 3
+519.1s C: → F: · 1,000 small files · Choppy, run 2 of 3
+520.4s C: → F: · 1,000 small files · Windows, run 2 of 3
+525.4s C: → F: · 1,000 small files · Windows, run 3 of 3
+530.1s C: → F: · 1,000 small files · Choppy, run 3 of 3
+531.3s C: → F: · Mixed folder · writing the test files
+531.9s C: → F: · Mixed folder · Choppy, run 1 of 3
+533.1s C: → F: · Mixed folder · Windows, run 1 of 3
+536.0s C: → F: · Mixed folder · Windows, run 2 of 3
+539.2s C: → F: · Mixed folder · Choppy, run 2 of 3
+540.7s C: → F: · Mixed folder · Choppy, run 3 of 3
+541.9s C: → F: · Mixed folder · Windows, run 3 of 3
+545.0s F: → C: · One big file · writing the test files
+549.8s F: → C: · One big file · Choppy, run 1 of 3
+552.3s F: → C: · One big file · Windows, run 1 of 3
+554.9s F: → C: · One big file · Windows, run 2 of 3
+557.5s F: → C: · One big file · Choppy, run 2 of 3
+560.0s F: → C: · One big file · Choppy, run 3 of 3
+562.4s F: → C: · One big file · Windows, run 3 of 3
+565.1s F: → C: · 1,000 small files · writing the test files
+566.1s F: → C: · 1,000 small files · Windows, run 1 of 3
+570.5s F: → C: · 1,000 small files · Choppy, run 1 of 3
+571.6s F: → C: · 1,000 small files · Choppy, run 2 of 3
+572.6s F: → C: · 1,000 small files · Windows, run 2 of 3
+576.9s F: → C: · 1,000 small files · Windows, run 3 of 3
+581.2s F: → C: · 1,000 small files · Choppy, run 3 of 3
+582.5s F: → C: · Mixed folder · writing the test files
+584.2s F: → C: · Mixed folder · Choppy, run 1 of 3
+585.4s F: → C: · Mixed folder · Windows, run 1 of 3
+587.9s F: → C: · Mixed folder · Windows, run 2 of 3
+590.4s F: → C: · Mixed folder · Choppy, run 2 of 3
+591.6s F: → C: · Mixed folder · Choppy, run 3 of 3
+592.8s F: → C: · Mixed folder · Windows, run 3 of 3
+595.4s F: → F: · One big file · writing the test files
+600.2s F: → F: · One big file · Choppy, run 1 of 3
+603.3s F: → F: · One big file · Windows, run 1 of 3
+607.8s F: → F: · One big file · Windows, run 2 of 3
+612.5s F: → F: · One big file · Choppy, run 2 of 3
+615.6s F: → F: · One big file · Choppy, run 3 of 3
+618.7s F: → F: · One big file · Windows, run 3 of 3
+623.6s F: → F: · 1,000 small files · writing the test files
+624.6s F: → F: · 1,000 small files · Windows, run 1 of 3
+629.8s F: → F: · 1,000 small files · Choppy, run 1 of 3
+631.9s F: → F: · 1,000 small files · Choppy, run 2 of 3
+634.2s F: → F: · 1,000 small files · Windows, run 2 of 3
+639.6s F: → F: · 1,000 small files · Windows, run 3 of 3
+644.8s F: → F: · 1,000 small files · Choppy, run 3 of 3
+647.1s F: → F: · Mixed folder · writing the test files
+648.8s F: → F: · Mixed folder · Choppy, run 1 of 3
+650.5s F: → F: · Mixed folder · Windows, run 1 of 3
+653.9s F: → F: · Mixed folder · Windows, run 2 of 3
+657.3s F: → F: · Mixed folder · Choppy, run 2 of 3
+659.1s F: → F: · Mixed folder · Choppy, run 3 of 3
+660.9s F: → F: · Mixed folder · Windows, run 3 of 3
+664.3s C: → X: · One big file · writing the test files
+664.9s C: → X: · One big file · Choppy, run 1 of 3
+671.0s C: → X: · One big file · Windows, run 1 of 3
+677.3s C: → X: · One big file · Windows, run 2 of 3
+683.4s C: → X: · One big file · Choppy, run 2 of 3
+689.2s C: → X: · One big file · Choppy, run 3 of 3
+695.5s C: → X: · One big file · Windows, run 3 of 3
+701.6s C: → X: · 500 small files · writing the test files
+702.0s C: → X: · 500 small files · Windows, run 1 of 3
+707.2s C: → X: · 500 small files · Choppy, run 1 of 3
+710.4s C: → X: · 500 small files · Choppy, run 2 of 3
+714.0s C: → X: · 500 small files · Windows, run 2 of 3
+718.7s C: → X: · 500 small files · Windows, run 3 of 3
+723.4s C: → X: · 500 small files · Choppy, run 3 of 3
+726.7s C: → X: · Mixed folder · writing the test files
+727.2s C: → X: · Mixed folder · Choppy, run 1 of 3
+733.5s C: → X: · Mixed folder · Windows, run 1 of 3
+741.3s C: → X: · Mixed folder · Windows, run 2 of 3
+750.6s C: → X: · Mixed folder · Choppy, run 2 of 3
+757.3s C: → X: · Mixed folder · Choppy, run 3 of 3
+763.9s C: → X: · Mixed folder · Windows, run 3 of 3
+771.4s X: → C: · One big file · writing the test files
+784.0s X: → C: · One big file · Choppy, run 1 of 3
+790.7s X: → C: · One big file · Windows, run 1 of 3
+797.6s X: → C: · One big file · Windows, run 2 of 3
+804.4s X: → C: · One big file · Choppy, run 2 of 3
+811.0s X: → C: · One big file · Choppy, run 3 of 3
+817.7s X: → C: · One big file · Windows, run 3 of 3
+824.6s X: → C: · 500 small files · writing the test files
+827.4s X: → C: · 500 small files · Windows, run 1 of 3
+837.2s X: → C: · 500 small files · Choppy, run 1 of 3
+840.6s X: → C: · 500 small files · Choppy, run 2 of 3
+844.0s X: → C: · 500 small files · Windows, run 2 of 3
+853.5s X: → C: · 500 small files · Windows, run 3 of 3
+863.0s X: → C: · 500 small files · Choppy, run 3 of 3
+866.5s X: → C: · Mixed folder · writing the test files
+876.5s X: → C: · Mixed folder · Choppy, run 1 of 3
+883.2s X: → C: · Mixed folder · Windows, run 1 of 3
+895.1s X: → C: · Mixed folder · Windows, run 2 of 3
+906.7s X: → C: · Mixed folder · Choppy, run 2 of 3
+913.5s X: → C: · Mixed folder · Choppy, run 3 of 3
+920.2s X: → C: · Mixed folder · Windows, run 3 of 3
+932.5s X: → X: · One big file · writing the test files
+945.4s X: → X: · One big file · Choppy, run 1 of 3
+958.0s X: → X: · One big file · Windows, run 1 of 3
+970.9s X: → X: · One big file · Windows, run 2 of 3
+983.6s X: → X: · One big file · Choppy, run 2 of 3
+996.1s X: → X: · One big file · Choppy, run 3 of 3
+1008.1s X: → X: · One big file · Windows, run 3 of 3
+1021.1s X: → X: · 500 small files · writing the test files
+1023.9s X: → X: · 500 small files · Windows, run 1 of 3
+1036.4s X: → X: · 500 small files · Choppy, run 1 of 3
+1041.7s X: → X: · 500 small files · Choppy, run 2 of 3
+1047.1s X: → X: · 500 small files · Windows, run 2 of 3
+1060.0s X: → X: · 500 small files · Windows, run 3 of 3
+1072.7s X: → X: · 500 small files · Choppy, run 3 of 3
+1078.2s X: → X: · Mixed folder · writing the test files
+1087.8s X: → X: · Mixed folder · Choppy, run 1 of 3
+1099.0s X: → X: · Mixed folder · Windows, run 1 of 3
+1116.7s X: → X: · Mixed folder · Windows, run 2 of 3
+1134.4s X: → X: · Mixed folder · Choppy, run 2 of 3
+1146.0s X: → X: · Mixed folder · Choppy, run 3 of 3
+1157.2s X: → X: · Mixed folder · Windows, run 3 of 3
+1176.2s C: → N: · One big file · writing the test files
+1176.4s C: → N: · One big file · Choppy, run 1 of 3
+1223.7s C: → N: · One big file · Windows, run 1 of 3
+1271.4s C: → N: · One big file · Windows, run 2 of 3
+1319.3s C: → N: · One big file · Choppy, run 2 of 3
+1366.4s C: → N: · One big file · Choppy, run 3 of 3
+1414.0s C: → N: · One big file · Windows, run 3 of 3
+1462.1s C: → N: · 250 small files · writing the test files
+1462.3s C: → N: · 250 small files · Windows, run 1 of 3
+1495.9s C: → N: · 250 small files · Choppy, run 1 of 3
+1518.6s C: → N: · 250 small files · Choppy, run 2 of 3
+1540.4s C: → N: · 250 small files · Windows, run 2 of 3
+1573.9s C: → N: · 250 small files · Windows, run 3 of 3
+1607.8s C: → N: · 250 small files · Choppy, run 3 of 3
+1629.9s C: → N: · Mixed folder · writing the test files
+1630.5s C: → N: · Mixed folder · Choppy, run 1 of 3
+1707.2s C: → N: · Mixed folder · Windows, run 1 of 3
+1804.4s C: → N: · Mixed folder · Windows, run 2 of 3
+1901.8s C: → N: · Mixed folder · Choppy, run 2 of 3
+1979.1s C: → N: · Mixed folder · Choppy, run 3 of 3
+2056.6s C: → N: · Mixed folder · Windows, run 3 of 3
+2153.4s N: → C: · One big file · writing the test files
+2217.5s N: → C: · One big file · Choppy, run 1 of 3
+2228.3s N: → C: · One big file · Windows, run 1 of 3
+2240.6s N: → C: · One big file · Windows, run 2 of 3
+2252.2s N: → C: · One big file · Choppy, run 2 of 3
+2263.2s N: → C: · One big file · Choppy, run 3 of 3
+2274.2s N: → C: · One big file · Windows, run 3 of 3
+2285.6s N: → C: · 250 small files · writing the test files
+2314.9s N: → C: · 250 small files · Windows, run 1 of 3
+2342.7s N: → C: · 250 small files · Choppy, run 1 of 3
+2346.5s N: → C: · 250 small files · Choppy, run 2 of 3
+2350.4s N: → C: · 250 small files · Windows, run 2 of 3
+2379.3s N: → C: · 250 small files · Windows, run 3 of 3
+2407.9s N: → C: · 250 small files · Choppy, run 3 of 3
+2418.8s N: → C: · Mixed folder · writing the test files
+2527.0s N: → C: · Mixed folder · Choppy, run 1 of 3
+2541.9s N: → C: · Mixed folder · Windows, run 1 of 3
+2594.9s N: → C: · Mixed folder · Windows, run 2 of 3
+2648.1s N: → C: · Mixed folder · Choppy, run 2 of 3
+2666.7s N: → C: · Mixed folder · Choppy, run 3 of 3
+2683.0s N: → C: · Mixed folder · Windows, run 3 of 3
+2748.3s N: → N: · One big file · writing the test files
+2811.5s N: → N: · One big file · Choppy, run 1 of 3
+2813.6s N: → N: · One big file · Windows, run 1 of 3
+2816.8s N: → N: · One big file · Windows, run 2 of 3
+2819.9s N: → N: · One big file · Choppy, run 2 of 3
+2822.0s N: → N: · One big file · Choppy, run 3 of 3
+2824.1s N: → N: · One big file · Windows, run 3 of 3
+2827.4s N: → N: · 250 small files · writing the test files
+2856.4s N: → N: · 250 small files · Windows, run 1 of 3
+2947.1s N: → N: · 250 small files · Choppy, run 1 of 3
+2964.3s N: → N: · 250 small files · Choppy, run 2 of 3
+2981.8s N: → N: · 250 small files · Windows, run 2 of 3
+3073.3s N: → N: · 250 small files · Windows, run 3 of 3
+3164.4s N: → N: · 250 small files · Choppy, run 3 of 3
+3188.7s N: → N: · Mixed folder · writing the test files
+3295.4s N: → N: · Mixed folder · Choppy, run 1 of 3
+3320.5s N: → N: · Mixed folder · Windows, run 1 of 3
+3465.8s N: → N: · Mixed folder · Windows, run 2 of 3
+3610.5s N: → N: · Mixed folder · Choppy, run 2 of 3
+3636.5s N: → N: · Mixed folder · Choppy, run 3 of 3
+3663.0s N: → N: · Mixed folder · Windows, run 3 of 3
+3819.4s Removing the test files
+Choppy is Faster 31 of 39 · Marginal Tie 8 of 39 · Never Slower
++42% faster on average · Choppy 89.8 MB/s · Windows 39.7 MB/s · Time saved 5 min 51 s
+<folder>\final.html
