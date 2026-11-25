@@ -75,6 +75,11 @@ impl NetRandom {
         ret
     }
 
+    /// Random.NextDouble (Sample): a sample over int.MaxValue.
+    pub fn next_double(&mut self) -> f64 {
+        self.internal_sample() as f64 * (1.0 / i32::MAX as f64)
+    }
+
     pub fn next_bytes(&mut self, buf: &mut [u8]) {
         for b in buf.iter_mut() {
             *b = (self.internal_sample() % 256) as u8;
@@ -85,6 +90,7 @@ impl NetRandom {
 pub fn self_test(out_file: Option<&WString>) -> i32 {
     let mut sb = String::new();
     let mut fails = 0;
+    let mut skipped: Vec<String> = Vec::new();
     let mut check = |name: &str, ok: bool| {
         append_line(&mut sb, &format!("{}{}", if ok { "PASS " } else { "FAIL " }, name));
         if !ok {
@@ -209,7 +215,18 @@ pub fn self_test(out_file: Option<&WString>) -> i32 {
             && ntfs.max_file_size() == 0
             && fs(None).max_file_size() == 0,
     );
-    // (step 5: the Ctrl+V hook check; step 4: the bench checks)
+    // (step 5: the Ctrl+V hook check here - PasteHook.Start also says whether there is a desktop)
+    let desktop = true;
+    for (ok, name) in super::bench_checks::bench_checks(desktop) {
+        match ok {
+            Some(ok) => check(&name, ok),
+            None => skipped.push(name),
+        }
+    }
+    // a SKIP line stands where its check would be: the bench block ends with the only one there can be
+    for l in skipped {
+        append_line(&mut sb, &l);
+    }
     append_line(&mut sb, &if fails == 0 { "ALL PASS".to_string() } else { format!("{fails} FAILED") });
     if let Some(f) = out_file {
         write_all_text(f, &sb, false).expect("--selftest: the output file");

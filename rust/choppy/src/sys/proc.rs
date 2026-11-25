@@ -5,7 +5,10 @@
 use core::ffi::c_void;
 
 use windows::Win32::Foundation::{CloseHandle, HANDLE, SYSTEMTIME, WAIT_OBJECT_0};
-use windows::Win32::Globalization::{DATE_SHORTDATE, GetDateFormatEx, GetTimeFormatEx, TIME_FORMAT_FLAGS};
+use windows::Win32::Globalization::{
+    DATE_SHORTDATE, GetDateFormatEx, GetLocaleInfoEx, GetTimeFormatEx, LOCALE_SDECIMAL, LOCALE_SSHORTTIME, LOCALE_STHOUSAND,
+    TIME_FORMAT_FLAGS,
+};
 use windows::Win32::Security::{CheckTokenMembership, CreateWellKnownSid, PSID, WinBuiltinAdministratorsSid};
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::Power::{EXECUTION_STATE, SetThreadExecutionState};
@@ -208,5 +211,54 @@ pub fn general_date_time(t: &LocalTime) -> String {
         let date = WString::from_nul_terminated(&d[..dn.max(0) as usize]);
         let time = WString::from_nul_terminated(&h[..tn.max(0) as usize]);
         format!("{date} {time}")
+    }
+}
+
+/// What .NET's CurrentCulture takes from the user's locale for numbers and the clock: the decimal point, the
+/// thousands separator, and the short time pattern ("h:mm tt", "HH:mm").
+pub struct LocaleInfo {
+    pub decimal: String,
+    pub group: String,
+    pub short_time: String,
+}
+
+pub fn locale_info() -> LocaleInfo {
+    let get = |what: u32, default: &str| -> String {
+        let mut b = [0u16; 64];
+        let n = unsafe { GetLocaleInfoEx(PCWSTR::null(), what, Some(&mut b)) };
+        if n <= 1 { default.to_string() } else { String::from_utf16_lossy(&b[..(n - 1) as usize]) }
+    };
+    LocaleInfo {
+        decimal: get(LOCALE_SDECIMAL, "."),
+        group: get(LOCALE_STHOUSAND, ","),
+        short_time: get(LOCALE_SSHORTTIME, "h:mm tt"),
+    }
+}
+
+/// The UI thread is a COM single-threaded apartment (WPF's STA): the shell's thumbnails, the taskbar button, WIC.
+pub fn com_init_sta() {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+    }
+}
+
+/// A process with this exe name runs (Process.GetProcessesByName: any session of this user's view).
+pub fn process_running(exe: &str) -> bool {
+    use windows::Win32::System::Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS};
+    unsafe {
+        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else { return false };
+        let mut e = PROCESSENTRY32W { dwSize: size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
+        let mut found = false;
+        let mut ok = Process32FirstW(snap, &mut e).is_ok();
+        while ok {
+            let n = e.szExeFile.iter().position(|&c| c == 0).unwrap_or(e.szExeFile.len());
+            if String::from_utf16_lossy(&e.szExeFile[..n]).eq_ignore_ascii_case(exe) {
+                found = true;
+                break;
+            }
+            ok = Process32NextW(snap, &mut e).is_ok();
+        }
+        let _ = CloseHandle(snap);
+        found
     }
 }

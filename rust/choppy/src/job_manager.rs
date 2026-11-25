@@ -111,7 +111,7 @@ impl JobManager {
         let spec = JobSpec {
             op: job.spec.op,
             dest: job.spec.dest.clone(),
-            verify: job.spec.verify,
+            verify: job.spec_verify(), // Spec.Verify: the copy window's quick toggle changes it
             policy: if policy == ConflictPolicy::Ask { ConflictPolicy::Ask } else { policy },
             origin: "Retry".into(),
             explicit_items: Some(

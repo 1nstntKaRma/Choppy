@@ -185,6 +185,8 @@ pub struct CopyJob {
     pub notes: Mutex<Vec<String>>,
     log_path: Mutex<Option<PathBuf>>,
     verify: AtomicBool, // effective for this job (the setting; can be switched live)
+    /// C#'s Spec.Verify, which the copy window's quick toggle changes too (the job takes it when it starts).
+    spec_verify: AtomicBool,
     pub speed: Mutex<Speed>,
 
     // ---- callbacks from the UI (set before Start) ----
@@ -307,6 +309,7 @@ impl CopyJob {
             notes: Mutex::new(Vec::new()),
             log_path: Mutex::new(None),
             verify: AtomicBool::new(false),
+            spec_verify: AtomicBool::new(spec.verify),
             speed: Mutex::new(Speed::default()),
             ask_conflict: None,
             ask_low_space: None,
@@ -398,6 +401,13 @@ impl CopyJob {
     /// The setting can be switched while the copy runs.
     pub fn set_verify(&self, on: bool) {
         self.verify.store(on, SEQ);
+    }
+    /// Spec.Verify: what the job takes when it starts (the copy window sets it with Verify).
+    pub fn spec_verify(&self) -> bool {
+        self.spec_verify.load(SEQ)
+    }
+    pub fn set_spec_verify(&self, on: bool) {
+        self.spec_verify.store(on, SEQ);
     }
     pub fn as_admin(&self) -> bool {
         self.as_admin.load(SEQ)
@@ -590,7 +600,7 @@ impl CopyJob {
     }
 
     fn run_job(self: &Arc<Self>) -> Result<(), JobError> {
-        self.verify.store(self.spec.verify, SEQ);
+        self.verify.store(self.spec_verify.load(SEQ), SEQ);
         self.set_phase(JobPhase::Analyzing);
         let me = self.clone();
         spawn("CopyJob monitor".into(), None, move || {

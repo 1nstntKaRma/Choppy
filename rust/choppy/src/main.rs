@@ -5,6 +5,7 @@
 // the port fills in step by step: some parts are only used by the steps after this one
 #![allow(dead_code)]
 
+mod app;
 mod bench;
 mod cli;
 mod engine;
@@ -38,6 +39,6 @@ fn main() {
     ) {
         std::process::exit(cli::run(&args));
     }
-    // (step 5: --revive, Instance.Claim, App.Start)
-    std::process::exit(1);
+    // App.Start (step 5 adds --revive, Instance.Claim and the hand-over to a running Choppy first)
+    std::process::exit(app::run(&args));
 }

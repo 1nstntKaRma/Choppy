@@ -4,10 +4,12 @@
 //! Exit code: 0 = all done, 2 = some files failed/skipped (self-test: a check failed), 3 = canceled, 1 = error.
 #![deny(unsafe_code)]
 
+mod bench_checks;
+mod bench_cli;
 mod bench_copy;
 mod job;
 mod plan_dump;
-mod selftest;
+pub mod selftest;
 mod usb;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -23,6 +25,8 @@ pub fn run(args: &[WString]) -> i32 {
             "--usb" => usb::usb(args.get(1)),
             "--plan-dump" => plan_dump::plan_dump(args),
             "--benchcopy" => bench_copy::child(args.get(1)), // step 3: the C# Benchmark's child (Bench/EngineChild.cs)
+            "--benchmark" => bench_cli::bench_cli(args),
+            "--shellcopy" if args.len() >= 2 => crate::bench::shell_copy::child(&args[1].to_string_lossy()),
             _ => {
                 eprintln!("not ported yet: {first}");
                 1
@@ -61,7 +65,7 @@ fn append_line(sb: &mut String, line: &str) {
 }
 
 /// The drive roots in use, "A:\" to "Z:\" (DriveInfo.GetDrives).
-fn drive_roots() -> Vec<WString> {
+pub fn drive_roots() -> Vec<WString> {
     let mask = crate::sys::get_logical_drives();
     (0..26u8).filter(|i| mask & (1 << i) != 0).map(|i| WString::from(format!("{}:\\", (b'A' + i) as char))).collect()
 }

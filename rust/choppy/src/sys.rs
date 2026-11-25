@@ -2,15 +2,19 @@
 //! engine hands in is already in \\?\ long form (as in Native.cs). Later steps add the calls they need here.
 #![allow(unsafe_code)]
 
+mod bench;
 mod device;
 mod file;
+pub mod gfx;
 mod io;
 mod proc;
 mod reg;
 mod ring;
 mod text;
 mod volume;
+pub mod win;
 
+pub use bench::*;
 pub use device::*;
 pub use file::*;
 pub use io::*;

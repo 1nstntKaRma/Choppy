@@ -173,6 +173,33 @@ namespace Choppy
             enc.Frames.Add(BitmapFrame.Create(rtb));
             Directory.CreateDirectory(Path.GetDirectoryName(file));
             using (var fs = File.Create(file)) enc.Save(fs);
+            if (Environment.GetEnvironmentVariable("CHOPPY_DUMP") == "1") DumpLayout(w, file + ".layout.txt");
+        }
+
+        // rust branch only (step 4's side-by-side checks): every named element's and TextBlock's pixel rectangle in
+        // the window, as the Rust port's test hook writes its own
+        static void DumpLayout(Window w, string file)
+        {
+            var d = VisualTreeHelper.GetDpi(w);
+            var lines = new System.Collections.Generic.List<string>();
+            lines.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture, "window {0:F2} x {1:F2} scale {2}", w.ActualWidth * d.DpiScaleX, w.ActualHeight * d.DpiScaleY, d.DpiScaleX));
+            Action<DependencyObject, int> walk = null;
+            walk = (e, depth) =>
+            {
+                var fe = e as FrameworkElement;
+                if (fe != null && !fe.IsVisible) return;
+                string n = fe != null && !string.IsNullOrEmpty(fe.Name) && !fe.Name.StartsWith("PART_") ? fe.Name
+                    : e is System.Windows.Controls.TextBlock ? "TB:" + ((System.Windows.Controls.TextBlock)e).Text : null;
+                if (n != null && fe != null)
+                {
+                    var p = fe.TransformToAncestor(w).Transform(new Point(0, 0));
+                    lines.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0,-16} x={1,7:F2} y={2,7:F2} w={3,7:F2} h={4,7:F2}",
+                        new string(' ', 2 * Math.Min(depth, 6)) + n, p.X * d.DpiScaleX, p.Y * d.DpiScaleY, fe.ActualWidth * d.DpiScaleX, fe.ActualHeight * d.DpiScaleY));
+                }
+                for (int i = 0; i < VisualTreeHelper.GetChildrenCount(e); i++) walk(VisualTreeHelper.GetChild(e, i), depth + 1);
+            };
+            walk(w, 0);
+            File.WriteAllLines(file, lines);
         }
     }
 }

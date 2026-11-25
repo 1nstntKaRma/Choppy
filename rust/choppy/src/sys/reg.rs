@@ -123,3 +123,11 @@ pub fn reg_delete_tree(subkey: &str) -> Result<(), u32> {
     let e = unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, PCWSTR(sk.as_ptr())) };
     if e == ERROR_FILE_NOT_FOUND { Ok(()) } else { err(e) }
 }
+
+/// A value of that name sits in HKCU\<subkey> (Registry.CurrentUser.OpenSubKey(...).GetValue(name) != null).
+pub fn reg_value_exists(subkey: &str, name: &str) -> bool {
+    match reg_read_values(subkey) {
+        Ok(Some(v)) => v.iter().any(|(n, _)| n.to_string_lossy().eq_ignore_ascii_case(name)),
+        _ => false,
+    }
+}
