@@ -33,6 +33,12 @@ namespace Choppy.Bench
         public int BigMB;                         // tests: this big file size on every route
         public int RoundsOverride;                // runs each other than the default (the window's Runs, the command line's --rounds)
         public HashSet<string> RoutesOnly;        // tests: only these routes ("C>D", "D>D")
+        public string TweakArgs;                  // tests: the same engine switches as text, for a Choppy in a child process
+        // The move to Rust, step 3 (rust branch only): the Rust choppy.exe. Then each case runs three ways in turns on the
+        // same source - this C# Choppy (in this process, as always), the Rust one (in a child process: EngineChild) and
+        // Windows; the C# results go to Report.Results, the Rust ones (sharing Windows' runs) to Report.RustResults.
+        // (This Choppy.exe as RustExe = the C# engine in a child: a check of the method itself.)
+        public string RustExe;
 
         public readonly BenchReport Report = new BenchReport();
         volatile bool cancel;
@@ -476,10 +482,12 @@ namespace Choppy.Bench
             string warm = Path.Combine(srcDir, "Warm-up.bin");
             File.WriteAllBytes(warm, new byte[64 << 10]);
             int caseNo = 0;
+            bool three = RustExe != null;
             foreach (var c in r.Cases)
             {
                 if (cancel) throw new OperationCanceledException();
                 var res = new BenchResult { From = r.From, To = r.To, Case = c };
+                var resR = three ? new BenchResult { From = r.From, To = r.To, Case = c } : null;
                 string label = r.From.Letter + " → " + r.To.Letter + " · " + c.Title;
                 try
                 {
@@ -489,13 +497,21 @@ namespace Choppy.Bench
                     Prime(files);
                     // A-B-B-A (-A-B): each one goes first and last as often, and the next case starts with the other one
                     string order = string.Concat(Enumerable.Repeat(caseNo % 2 == 0 ? "CWWC" : "WCCW", Rounds)).Substring(0, 2 * Rounds);
-                    double perRun = (r.Est - Enumerable.Range(0, r.Cases.Count).Sum(i => MakeSeconds(r, r.Cases[i]))) / (2.0 * Rounds * r.Cases.Count);
-                    int[] seen = new int[2];
+                    if (three)
+                    {
+                        // C# (C), Rust (R), Windows (W): A-B-C-C-B-A, and each case starts one further along
+                        string p = "CRW".Substring(caseNo % 3) + "CRW".Substring(0, caseNo % 3);
+                        string cycle = p + new string(p.Reverse().ToArray());
+                        order = string.Concat(Enumerable.Repeat(cycle, Rounds)).Substring(0, 3 * Rounds);
+                    }
+                    double perRun = (r.Est - Enumerable.Range(0, r.Cases.Count).Sum(i => MakeSeconds(r, r.Cases[i]))) / ((three ? 3.0 : 2.0) * Rounds * r.Cases.Count);
+                    int[] seen = new int[3];
                     for (int k = 0; k < order.Length; k++)
                     {
-                        bool choppy = order[k] == 'C';
-                        int nth = ++seen[choppy ? 0 : 1];
-                        Step(label + " · " + (choppy ? "Choppy" : "Windows") + ", run " + nth + " of " + Rounds, Math.Max(0.5, perRun));
+                        char side = order[k];
+                        int nth = ++seen[side == 'C' ? 0 : side == 'W' ? 1 : 2];
+                        string who = side == 'W' ? "Windows" : !three ? "Choppy" : side == 'C' ? "Choppy (C#)" : "Choppy (Rust)";
+                        Step(label + " · " + who + ", run " + nth + " of " + Rounds, Math.Max(0.5, perRun));
                         // the source is read from the disk every time: dropped from the cache, or written again where that can't be done
                         if (k > 0)
                         {
@@ -503,18 +519,28 @@ namespace Choppy.Bench
                             else { BenchFiles.DeleteTree(Paths.ToLong(src)); files = MakeSource(r, c, srcDir, out src); Prime(files); }
                         }
                         Thread.Sleep(Slow(r.From) || Slow(r.To) ? 750 : 250);    // the disks settle (what the last delete left to write)
-                        res.Runs.Add(CopyOnce(r, c, choppy, src, warm, res));
+                        var run = CopyOnce(r, c, side, src, warm, side == 'R' ? resR : res);
+                        if (side != 'R') res.Runs.Add(run);
+                        if (three && side != 'C') resR.Runs.Add(run);   // Windows' runs count for both
                     }
                     res.Score();
+                    if (three)
+                    {
+                        resR.Score();
+                        if (Log != null) Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "result: {0} {1}: C# {2:0.000} s, Rust {3:0.000} s, Windows {4:0.000} s; Rust vs C# {5:+0.0;-0.0;0.0}% (C# vs Windows {6:+0.0;-0.0;0.0}%, Rust vs Windows {7:+0.0;-0.0;0.0}%); Rust's process end {8:0} ms",
+                            r.From.Letter.Substring(0, 1) + ">" + r.To.Letter.Substring(0, 1), c.Key, res.ChoppySecs, resR.ChoppySecs, res.WindowsSecs,
+                            res.ChoppySecs > 0 ? (res.ChoppySecs - resR.ChoppySecs) / res.ChoppySecs * 100 : 0, res.Saved * 100, resR.Saved * 100,
+                            Mean(resR.Runs.Where(x => x.Choppy).Select(x => x.After * 1000).ToList())));
+                    }
                 }
                 catch (OperationCanceledException) { throw; }
-                catch (Exception ex) { res.Error = ex.Message; }
+                catch (Exception ex) { res.Error = ex.Message; if (resR != null) resR.Error = ex.Message; }
                 finally
                 {
                     foreach (var dir in Directory.GetFileSystemEntries(srcDir))
                         if (!string.Equals(dir, warm, StringComparison.OrdinalIgnoreCase)) BenchFiles.DeleteTree(Paths.ToLong(dir));
                 }
-                lock (progLock) Report.Results.Add(res);
+                lock (progLock) { Report.Results.Add(res); if (resR != null) Report.RustResults.Add(resR); }
                 caseNo++;
             }
             BenchFiles.DeleteTree(Paths.ToLong(srcDir));
@@ -566,8 +592,9 @@ namespace Choppy.Bench
         }
 
         /// <summary>One timed copy into a fresh folder on the destination, then flushed (the time to the disk), checked and deleted.</summary>
-        BenchRun CopyOnce(Route r, BenchCase c, bool choppy, string src, string warm, BenchResult res)
+        BenchRun CopyOnce(Route r, BenchCase c, char side, string src, string warm, BenchResult res)
         {
+            bool choppy = side != 'W';
             int n = ++copyNo;
             string dest = Path.Combine(r.To.TestDir, "Copy " + n);
             string warmDest = Path.Combine(r.To.TestDir, "Warm-up " + n);
@@ -575,8 +602,19 @@ namespace Choppy.Bench
             Directory.CreateDirectory(warmDest);
             try
             {
-                double done;
-                if (choppy)
+                double done, after = 0;
+                if (side == 'R')
+                {
+                    // step 3: the Rust engine in a child, timed as ChoppyCopy times this one (EngineChild); from the moment
+                    // it said done until here (its process ending) counts against it, as part of the time to the disk
+                    string m;
+                    long ended;
+                    try { done = EngineChild.Run(RustExe, warm, warmDest, src, dest, TweakArgs, Canceled, out m, out ended); }
+                    catch (IOException ex) { throw new IOException("Choppy (Rust): " + ex.Message); }
+                    if (ended > 0) after = Math.Max(0, (EngineChild.PreciseNow() - ended) / 1e7);
+                    if (m != null) res.Method = m;
+                }
+                else if (choppy)
                 {
                     string m;
                     ChoppyCopy(warm, warmDest, out m);
@@ -591,7 +629,7 @@ namespace Choppy.Bench
                 long bytes = copies.Sum(x => x.Value);
                 if (copies.Count != c.Files || bytes != c.Bytes)
                     throw new IOException((choppy ? "Choppy's" : "Windows'") + " copy has " + copies.Count + " of " + c.Files + " files, " + bytes + " of " + c.Bytes + " bytes");
-                return new BenchRun { Choppy = choppy, Done = done, OnDisk = done + flush };
+                return new BenchRun { Choppy = choppy, Done = done, OnDisk = done + after + flush, After = after };
             }
             finally
             {
@@ -603,23 +641,38 @@ namespace Choppy.Bench
         /// <summary>Choppy's engine as any copy runs it (Adaptive picks the way; the pipeline and its tuner as usual). Seconds until it says done.</summary>
         double ChoppyCopy(string src, string dest, out string method)
         {
+            return EngineCopy(src, dest, Tweak, Canceled, out method);
+        }
+
+        /// <summary>ChoppyCopy for the Benchmark's own process and for a child (--benchcopy: EngineChild).</summary>
+        internal static double EngineCopy(string src, string dest, Action<JobSpec> tweak, Func<bool> canceled, out string method)
+        {
+            long ended;
+            return EngineCopy(src, dest, tweak, canceled, out method, out ended);
+        }
+
+        /// <summary>... and the moment it said done (a FILETIME to the microsecond: EngineChild.PreciseNow).</summary>
+        internal static double EngineCopy(string src, string dest, Action<JobSpec> tweak, Func<bool> canceled, out string method, out long ended)
+        {
             var spec = new JobSpec { Op = OpKind.Copy, Origin = "Benchmark", Policy = ConflictPolicy.Skip, Dest = Paths.ToLong(dest) };
             spec.Sources.Add(Paths.ToLong(src));
-            if (Tweak != null) Tweak(spec);
+            if (tweak != null) tweak(spec);
             var job = new CopyJob(spec);
             job.AskConflict = i => new ConflictAnswer { Choice = ConflictPolicy.Skip };
             job.AskLowSpace = (need, free) => false;
             job.AskElevate = () => false;
             double secs = 0;
+            long end = 0;
             var sw = new Stopwatch();
             using (var finished = new ManualResetEventSlim())
             {
-                job.Finished += j => { secs = sw.Elapsed.TotalSeconds; finished.Set(); };
+                job.Finished += j => { secs = sw.Elapsed.TotalSeconds; end = EngineChild.PreciseNow(); finished.Set(); };
                 sw.Start();
                 job.Start();
-                while (!finished.Wait(50)) if (cancel) job.Cancel();
+                while (!finished.Wait(50)) if (canceled()) job.Cancel();
             }
-            if (cancel) throw new OperationCanceledException();
+            ended = end;
+            if (canceled()) throw new OperationCanceledException();
             method = job.Plan != null ? job.Plan.Badge + (!string.IsNullOrEmpty(job.TuneSummary) ? " (" + job.TuneSummary + ")" : "") : null;
             if (job.Phase != JobPhase.Done || job.FailedFiles > 0 || job.SkippedFiles > 0)
             {

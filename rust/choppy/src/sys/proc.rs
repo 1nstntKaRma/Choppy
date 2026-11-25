@@ -10,7 +10,9 @@ use windows::Win32::Security::{CheckTokenMembership, CreateWellKnownSid, PSID, W
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::Power::{EXECUTION_STATE, SetThreadExecutionState};
 use windows::Win32::Storage::FileSystem::FileTimeToLocalFileTime;
-use windows::Win32::System::SystemInformation::{GetSystemTimeAsFileTime, GlobalMemoryStatusEx, MEMORYSTATUSEX};
+use windows::Win32::System::SystemInformation::{
+    GetSystemTimeAsFileTime, GetSystemTimePreciseAsFileTime, GlobalMemoryStatusEx, MEMORYSTATUSEX,
+};
 use windows::Win32::System::Threading::{
     GetCurrentProcessId, GetCurrentThread, GetExitCodeProcess, OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_SYNCHRONIZE,
     SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL, WaitForSingleObject,
@@ -157,6 +159,13 @@ pub fn memory_status() -> Option<(u64, u64)> {
 /// The time now as a FILETIME (UTC, 100 ns since 1601).
 pub fn now_file_time() -> i64 {
     let f = unsafe { GetSystemTimeAsFileTime() };
+    (((f.dwHighDateTime as u64) << 32) | f.dwLowDateTime as u64) as i64
+}
+
+/// The time now as a FILETIME, to the microsecond (GetSystemTimePreciseAsFileTime): the Benchmark's child tells its
+/// parent when its copy ended (step 3), in a clock both processes read.
+pub fn now_precise_file_time() -> i64 {
+    let f = unsafe { GetSystemTimePreciseAsFileTime() };
     (((f.dwHighDateTime as u64) << 32) | f.dwLowDateTime as u64) as i64
 }
 

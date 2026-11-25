@@ -106,6 +106,7 @@ namespace Choppy.Bench
         public bool Choppy;
         public double Done;      // seconds until it said it was done
         public double OnDisk;    // ... and until its copies were on the disk
+        public double After;     // step 3: of that, the Rust child's process ending (counted against it)
     }
 
     internal sealed class BenchResult
@@ -213,6 +214,7 @@ namespace Choppy.Bench
         public bool Admin;
         public List<BenchDrive> Drives;
         public readonly List<BenchResult> Results = new List<BenchResult>();
+        public readonly List<BenchResult> RustResults = new List<BenchResult>();   // step 3 (rust branch only): the Rust engine's, beside Results
         public readonly List<string> Notes = new List<string>();
         public bool Canceled;
         public string Error;
@@ -384,9 +386,27 @@ namespace Choppy.Bench
                     + ", \"cacheDrop\": " + S(d.PurgeNote) + ", \"usb\": " + UsbJson(d.Usb) + " }");
             }
             j.Append("\n  ],\n  \"results\": [");
-            for (int i = 0; i < Results.Count; i++)
+            ResultsJson(j, Results);
+            if (RustResults.Count > 0)
             {
-                var r = Results[i];
+                // step 3 (rust branch only): the Rust engine's results, against the same Windows runs
+                var rt = BenchTotals.Of(RustResults);
+                j.Append("\n  ],\n  \"rustSummary\": { \"text\": " + S(SummaryOf(RustResults.Count(r => r.Scored && r.Verdict > 0), RustResults.Count(r => r.Scored && r.Verdict == 0), RustResults.Count(r => r.Scored && r.Verdict < 0), Ended))
+                    + ", \"averageTimeSaved\": " + (rt != null ? N(rt.AvgSaved, "0.0000") : "null") + ", \"choppySeconds\": " + (rt != null ? N(rt.ChoppySecs, "0.000") : "null")
+                    + ", \"windowsSeconds\": " + (rt != null ? N(rt.WindowsSecs, "0.000") : "null") + " },\n  \"rustResults\": [");
+                ResultsJson(j, RustResults);
+            }
+            j.Append("\n  ],\n  \"notes\": [");
+            for (int i = 0; i < Notes.Count; i++) j.Append((i == 0 ? "" : ", ") + S(Notes[i]));
+            j.Append("]\n}\n");
+            return j.ToString();
+        }
+
+        static void ResultsJson(StringBuilder j, List<BenchResult> results)
+        {
+            for (int i = 0; i < results.Count; i++)
+            {
+                var r = results[i];
                 j.Append(i == 0 ? "\n" : ",\n");
                 j.Append("    { \"from\": " + S(r.From.Letter) + ", \"to\": " + S(r.To.Letter) + ", \"route\": " + S(r.From.Letter + " -> " + r.To.Letter)
                     + ", \"kinds\": " + S(r.RouteKinds.Replace("→", "->")) + ", \"case\": " + S(r.Case.Key) + ", \"title\": " + S(r.Case.Title)
@@ -397,10 +417,6 @@ namespace Choppy.Bench
                 j.Append("      \"windows\": { \"seconds\": " + N(r.WindowsSecs, "0.000") + ", \"MBps\": " + N(r.WindowsMBps, "0.0") + ", \"doneMBps\": " + N(r.WindowsDoneMBps, "0.0") + ", \"runs\": " + Runs(r, false) + " },\n");
                 j.Append("      \"error\": " + S(r.Error) + " }");
             }
-            j.Append("\n  ],\n  \"notes\": [");
-            for (int i = 0; i < Notes.Count; i++) j.Append((i == 0 ? "" : ", ") + S(Notes[i]));
-            j.Append("]\n}\n");
-            return j.ToString();
         }
 
         /// <summary>{ "runsAt": "USB 2.0", "canDo": "5 Gbps", "port": "USB 3", "uasp": false, "heldBack": true } or null</summary>

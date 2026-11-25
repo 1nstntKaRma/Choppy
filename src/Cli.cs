@@ -18,6 +18,8 @@ namespace Choppy
     ///   Choppy.exe --usb [out.txt]       how each USB drive is connected (runs at, can do, port, UASP)
     ///   Choppy.exe --benchmark [out.json] [--thorough] [--network] [--drives C,D] [--list] [--log progress.txt] [--cancel-after sec] [--tiny]
     ///                 tests: [--routes C>D,D>D] [--cases big|small] [--big MB] [--rounds N] [--choppy "--chunk 1 --slots 512 ..."]
+    ///                 the move to Rust (rust branch only): [--rust choppy.exe] = C#, Rust and Windows in turns
+    ///   Choppy.exe --benchcopy job.txt   (the Benchmark's child: one timed copy by this engine; Bench.EngineChild)
     /// Exit code: 0 = all done, 2 = some files failed/skipped, 3 = canceled, 1 = error.
     /// </summary>
     internal static class Cli
@@ -32,6 +34,7 @@ namespace Choppy
                 if (args.Length >= 2 && args[0] == "--plan-dump") return PlanDump(args);
                 if (args.Length >= 1 && args[0] == "--benchmark") return BenchCli(args);
                 if (args.Length >= 2 && args[0] == "--shellcopy") return Bench.ShellCopy.Child(args[1]);
+                if (args.Length >= 2 && args[0] == "--benchcopy") return Bench.EngineChild.Child(args[1]);   // step 3 (rust branch only)
                 var rest = new List<string>();
                 string json = null, log = null;
                 var spec = new JobSpec { Origin = "CLI" };
@@ -127,10 +130,13 @@ namespace Choppy
                     // tests: Choppy's side with fixed engine switches (as --cli takes them), only some cases, a fixed big size, more rounds
                     case "--choppy":
                         {
-                            var opts = args[++i].Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                            b.TweakArgs = args[++i];
+                            var opts = b.TweakArgs.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                             b.Tweak = sp => { for (int k = 0; k < opts.Length; k++) EngineOption(opts, ref k, sp); };
                         }
                         break;
+                    // the move to Rust, step 3 (rust branch only): C#, the Rust choppy.exe and Windows in turns (Benchmark.RustExe)
+                    case "--rust": b.RustExe = Full(args[++i]); break;
                     case "--cases": b.Cases = new HashSet<string>(args[++i].Split(',')); break;
                     case "--big": b.BigMB = int.Parse(args[++i]); break;
                     case "--rounds": b.RoundsOverride = int.Parse(args[++i]); break;
@@ -170,7 +176,7 @@ namespace Choppy
         static string Full(string p) { return Path.IsPathRooted(p) ? p : Path.Combine(Program.StartDir ?? "", p); }
 
         /// <summary>Test switches for the engine (fixed ways instead of Adaptive's choice). False = not one of them.</summary>
-        static bool EngineOption(string[] args, ref int i, JobSpec spec)
+        internal static bool EngineOption(string[] args, ref int i, JobSpec spec)
         {
             switch (args[i])
             {

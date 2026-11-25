@@ -23,9 +23,9 @@ namespace Choppy
                 Environment.CurrentDirectory = AppPaths.DataDir;
             }
             catch { }
-            if (args.Length > 0 && (args[0] == "--cli" || args[0] == "--selftest" || args[0] == "--where" || args[0] == "--usb" || args[0] == "--plan-dump" || args[0] == "--benchmark" || args[0] == "--shellcopy"))
+            if (args.Length > 0 && (args[0] == "--cli" || args[0] == "--selftest" || args[0] == "--where" || args[0] == "--usb" || args[0] == "--plan-dump" || args[0] == "--benchmark" || args[0] == "--shellcopy" || args[0] == "--benchcopy"))
             {
-                Profile(args[0] == "--shellcopy" ? "shellcopy.jit" : "cli.jit");   // the benchmark's child runs beside it
+                Profile(args[0] == "--shellcopy" ? "shellcopy.jit" : args[0] == "--benchcopy" ? "benchcopy.jit" : "cli.jit");   // the benchmark's child runs beside it
                 return RunCli(args);
             }
             // a Choppy that ended on an error started this one: wait until it is gone, then watch Ctrl+V from the tray

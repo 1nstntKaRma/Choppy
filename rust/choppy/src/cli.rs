@@ -1,8 +1,10 @@
 //! The command line (Cli.cs), split by command: --usb + --plan-dump (step 1), --cli + --selftest (step 2; step 1's
-//! checks are in already), --benchmark + --shellcopy (step 4), --where (step 5).
+//! checks are in already), --benchcopy (step 3: the C# Benchmark's child), --benchmark + --shellcopy (step 4),
+//! --where (step 5).
 //! Exit code: 0 = all done, 2 = some files failed/skipped (self-test: a check failed), 3 = canceled, 1 = error.
 #![deny(unsafe_code)]
 
+mod bench_copy;
 mod job;
 mod plan_dump;
 mod selftest;
@@ -20,6 +22,7 @@ pub fn run(args: &[WString]) -> i32 {
             "--cli" => job::run(args),
             "--usb" => usb::usb(args.get(1)),
             "--plan-dump" => plan_dump::plan_dump(args),
+            "--benchcopy" => bench_copy::child(args.get(1)), // step 3: the C# Benchmark's child (Bench/EngineChild.cs)
             _ => {
                 eprintln!("not ported yet: {first}");
                 1
