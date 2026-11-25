@@ -1,0 +1,46 @@
+{
+  "tool": "Choppy Benchmark",
+  "version": "1.48.0",
+  "date": "2026-11-25T11:03:01",
+  "mode": "thorough", "rounds": 5, "seconds": 52.1,
+  "canceled": false, "error": null,
+  "units": "seconds = the average time until the copies are on the disk; MB/s = 1,048,576 bytes per second over that time; timeSaved = how much less time Choppy took than Windows (below 0 = more)",
+  "machine": { "cpu": "AMD Ryzen 5 5600X 6-Core Processor", "threads": 12, "ramGB": 15.9, "windows": "Windows 10 Home 22H2 (build 19045.7291)", "admin": false },
+  "summary": { "text": "Choppy is Faster 2 of 2", "cases": 2, "faster": 2, "marginalTie": 0, "slower": 0, "byDone": "Choppy is Faster 2 of 2" },
+  "totals": { "cases": 2, "averageTimeSaved": 0.7876, "bytes": 816425352, "choppySeconds": 1.056, "windowsSeconds": 5.181, "secondsSaved": 4.125, "choppyMBps": 737.2, "windowsMBps": 150.3, "about": "averageTimeSaved = the average of the cases' timeSaved; seconds = the cases' average times added up (every case copied once); MBps = all the bytes over those seconds" },
+  "drives": [
+    { "letter": "C:", "label": "", "kind": "NVMe SSD", "model": "XG7000-1TB 2280", "bus": "NVMe", "fileSystem": "NTFS", "sizeGB": 953.2, "freeGB": 269.1, "system": true, "network": false, "physicalDisk": 2, "tested": true, "skipped": null, "readMBps": 3994, "writeMBps": 4939, "cacheDrop": "yes", "usb": null },
+    { "letter": "D:", "label": "", "kind": null, "model": null, "bus": null, "fileSystem": "NTFS", "sizeGB": 3725.9, "freeGB": 677.2, "system": false, "network": false, "physicalDisk": -1, "tested": false, "skipped": "not chosen for this run", "readMBps": null, "writeMBps": null, "cacheDrop": null, "usb": null },
+    { "letter": "E:", "label": "", "kind": null, "model": null, "bus": null, "fileSystem": "NTFS", "sizeGB": 931.5, "freeGB": 584.8, "system": false, "network": false, "physicalDisk": -1, "tested": false, "skipped": "not chosen for this run", "readMBps": null, "writeMBps": null, "cacheDrop": null, "usb": null },
+    { "letter": "F:", "label": "", "kind": null, "model": null, "bus": null, "fileSystem": "NTFS", "sizeGB": 931.5, "freeGB": 931.4, "system": false, "network": false, "physicalDisk": -1, "tested": false, "skipped": "not chosen for this run", "readMBps": null, "writeMBps": null, "cacheDrop": null, "usb": null },
+    { "letter": "G:", "label": "", "kind": null, "model": null, "bus": null, "fileSystem": "FAT32", "sizeGB": 15.0, "freeGB": 5.5, "system": false, "network": false, "physicalDisk": -1, "tested": false, "skipped": "not chosen for this run", "readMBps": null, "writeMBps": null, "cacheDrop": null, "usb": null },
+    { "letter": "N:", "label": null, "kind": null, "model": "\\\\nas\\NAS", "bus": null, "fileSystem": null, "sizeGB": 0.0, "freeGB": 0.0, "system": false, "network": true, "physicalDisk": -1, "tested": false, "skipped": "a network drive - turn on Network drives to include it", "readMBps": null, "writeMBps": null, "cacheDrop": null, "usb": null },
+    { "letter": "X:", "label": "", "kind": null, "model": null, "bus": null, "fileSystem": "NTFS", "sizeGB": 3725.9, "freeGB": 818.2, "system": false, "network": false, "physicalDisk": -1, "tested": false, "skipped": "not chosen for this run", "readMBps": null, "writeMBps": null, "cacheDrop": null, "usb": null }
+  ],
+  "results": [
+    { "from": "C:", "to": "C:", "route": "C: -> C:", "kinds": "within one NVMe SSD", "case": "small", "title": "1,000 small files", "files": 1000, "bytes": 199578408,
+      "verdict": "faster", "timeSaved": 0.8118, "doneVerdict": "faster", "doneTimeSaved": 0.8386,
+      "choppy": { "seconds": 0.661, "MBps": 287.9, "doneMBps": 345.2, "method": "Adaptive · 8 streams", "runs": [{ "done": 0.609, "onDisk": 0.719 }, { "done": 0.449, "onDisk": 0.591 }, { "done": 0.541, "onDisk": 0.649 }, { "done": 0.557, "onDisk": 0.639 }, { "done": 0.601, "onDisk": 0.708 }] },
+      "windows": { "seconds": 3.512, "MBps": 54.2, "doneMBps": 55.7, "runs": [{ "done": 3.450, "onDisk": 3.542 }, { "done": 3.442, "onDisk": 3.538 }, { "done": 3.382, "onDisk": 3.482 }, { "done": 3.507, "onDisk": 3.605 }, { "done": 3.300, "onDisk": 3.393 }] },
+      "error": null },
+    { "from": "C:", "to": "C:", "route": "C: -> C:", "kinds": "within one NVMe SSD", "case": "mixed", "title": "Mixed folder", "files": 403, "bytes": 616846944,
+      "verdict": "faster", "timeSaved": 0.7634, "doneVerdict": "faster", "doneTimeSaved": 0.7993,
+      "choppy": { "seconds": 0.395, "MBps": 1489.4, "doneMBps": 1823.2, "method": "Adaptive · 8 streams", "runs": [{ "done": 0.323, "onDisk": 0.389 }, { "done": 0.324, "onDisk": 0.430 }, { "done": 0.225, "onDisk": 0.286 }, { "done": 0.388, "onDisk": 0.446 }, { "done": 0.353, "onDisk": 0.423 }] },
+      "windows": { "seconds": 1.669, "MBps": 352.4, "doneMBps": 365.9, "runs": [{ "done": 1.640, "onDisk": 1.696 }, { "done": 1.609, "onDisk": 1.677 }, { "done": 1.567, "onDisk": 1.632 }, { "done": 1.582, "onDisk": 1.639 }, { "done": 1.639, "onDisk": 1.702 }] },
+      "error": null }
+  ],
+  "rustSummary": { "text": "Choppy is Faster 2 of 2", "averageTimeSaved": 0.7903, "choppySeconds": 1.036, "windowsSeconds": 5.181 },
+  "rustResults": [
+    { "from": "C:", "to": "C:", "route": "C: -> C:", "kinds": "within one NVMe SSD", "case": "small", "title": "1,000 small files", "files": 1000, "bytes": 199578408,
+      "verdict": "faster", "timeSaved": 0.8179, "doneVerdict": "faster", "doneTimeSaved": 0.8437,
+      "choppy": { "seconds": 0.640, "MBps": 297.5, "doneMBps": 356.5, "method": "Adaptive · 8 streams", "runs": [{ "done": 0.508, "onDisk": 0.622 }, { "done": 0.511, "onDisk": 0.618 }, { "done": 0.627, "onDisk": 0.727 }, { "done": 0.511, "onDisk": 0.621 }, { "done": 0.512, "onDisk": 0.611 }] },
+      "windows": { "seconds": 3.512, "MBps": 54.2, "doneMBps": 55.7, "runs": [{ "done": 3.450, "onDisk": 3.542 }, { "done": 3.442, "onDisk": 3.538 }, { "done": 3.382, "onDisk": 3.482 }, { "done": 3.507, "onDisk": 3.605 }, { "done": 3.300, "onDisk": 3.393 }] },
+      "error": null },
+    { "from": "C:", "to": "C:", "route": "C: -> C:", "kinds": "within one NVMe SSD", "case": "mixed", "title": "Mixed folder", "files": 403, "bytes": 616846944,
+      "verdict": "faster", "timeSaved": 0.7628, "doneVerdict": "faster", "doneTimeSaved": 0.7965,
+      "choppy": { "seconds": 0.396, "MBps": 1485.9, "doneMBps": 1798.1, "method": "Adaptive · 8 streams", "runs": [{ "done": 0.307, "onDisk": 0.382 }, { "done": 0.305, "onDisk": 0.374 }, { "done": 0.307, "onDisk": 0.375 }, { "done": 0.310, "onDisk": 0.378 }, { "done": 0.407, "onDisk": 0.472 }] },
+      "windows": { "seconds": 1.669, "MBps": 352.4, "doneMBps": 365.9, "runs": [{ "done": 1.640, "onDisk": 1.696 }, { "done": 1.609, "onDisk": 1.677 }, { "done": 1.567, "onDisk": 1.632 }, { "done": 1.582, "onDisk": 1.639 }, { "done": 1.639, "onDisk": 1.702 }] },
+      "error": null }
+  ],
+  "notes": []
+}

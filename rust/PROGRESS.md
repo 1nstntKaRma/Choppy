@@ -9,7 +9,7 @@ Read [PLAN.md](PLAN.md) first (steps, gates, rules, file map). One step per sess
 | 0 | Tools + UI look test | **done** (2026-11-24): tools installed, both prototypes compared, **the user picked A** |
 | 1 | Basics | **done** (2026-11-24): gate met, plan dump identical to C# 1.48, fix list 1.1-1.79 checked |
 | 2 | Copy engine | **done** (2026-11-25): gate met (33 copy / move scenarios identical to C# 1.48), self-test lines identical, review pass done, fix list 2.1-2.64 checked |
-| 3 | Speed proof | not started |
+| 3 | Speed proof | **benchmark runs finished** (2026-11-25): gate met (48 cases, level with 1.48, nothing newly Slower), one porting fix (3.1); **waits for the user's sign-off** |
 | 4 | All windows | not started |
 | 5 | Explorer / system | not started |
 | 6 | Switch-over | not started |
@@ -207,6 +207,112 @@ incomplete rename, no memory-unsafety found. Fixed:
   `handoff::report` (as App.cs does); `main.rs` already calls `handoff::prepare`.
 - Rerun the gate after any engine change: `check.py` (all scenarios, ~20 min; or by name).
 
+## Step 3 (2026-11-25)
+
+**Benchmark runs: finished** (13:15 JST). Nothing more is timed for step 3; the drives are free for step 4.
+
+**How it was measured.** The proven C# Benchmark (`src/Bench`, `rust` branch only) runs three sides in turns on every
+case, on the same source (dropped from the cache before each run, order A-B-C-C-B-A): C# 1.48 in its own process as
+always, the Rust engine in a child (`choppy.exe --benchcopy -`, one warm process for the whole run, like the app) and
+Windows' copy (`--shellcopy`). Rust is timed exactly as `Benchmark.ChoppyCopy` times C#: an untimed warm-up file, then
+from right before the job starts to its Finished event; the moment it ended comes back with the answer and the time
+until the parent has it (~0.1 ms) counts against Rust; then the copies are flushed for every side (time to the disk).
+Starting the Rust process isn't counted (C# starts none). Details, switches and the masked reports:
+`rust/tools/speedproof/` (README, `table.py`, `results/`). Rerun: `Choppy.exe --benchmark out.json --thorough --network
+--rust <rust choppy.exe>` in test mode, with nothing else running.
+
+**Found and fixed (fix list 3.1):** every `Thread.Sleep` of the C# is Win32 Sleep, which wakes on the system timer's
+tick (15.6 ms here: Sleep(100) is ~109 ms); Rust's `std::thread::sleep` is high-resolution (exactly 100 ms). A copy
+ends only when its idle workers wake from their 100 ms naps, so Rust's "done" fell on 100 ms steps and C#'s on ~109 ms
+steps: 1,000 small files within the NVMe were done at 0.509 s in every Rust run against 0.448 or 0.557 s for C#, and
+small-file cases looked 5-20 % faster or slower by luck. Now every sleep goes through `sys::sleep_ms` (Win32 Sleep),
+as .NET does; a phase trace of both engines shows the same steps since. The step 2 gate (`check.py`) passes again (33
+scenarios + usage, all identical).
+
+**Checked, not a porting difference:** the method (a C# A/A run - the C# engine in the child against itself - shows
+the same spread); the tuner's trials on NVMe -> hard disk mixed (both engines try them, timing decides); the small-file
+batch, CopyFileEx callback, size reservation and cached-tail code (line by line the same). Hard-disk small files:
+the flush of 500 files onto D: / X: (both ~80 % full) swings +/-25 % from run to run; three 5-round runs of C>X small
+gave Rust -5.5 %, +4.2 % and (pre-fix) +5.8 % against C#, and the A/A run showed C# against itself +6.6 % / +10.3 %.
+
+**Gate: met.** One Thorough + Network run with the fixed engine (C: NVMe, D: / X: hard disks, F: Netac SSD in a 10 Gbps
+USB case, N: the NAS), the E: run (the 10 Gbps MS YSUSP20 USB drive, plugged in during the step, woken first), and 5
+rounds for every case that run left in doubt (C>D, C>X, N>C; C>E small / mixed, E>C small / mixed). Times = average
+seconds to the disk; "Rust vs C#" = how much less time Rust took (below 0 = more); verdicts as the Benchmark judges
+(4 % = Marginal Tie).
+
+| Route | Case | Size | Rust | C# 1.48 | Windows | Rust vs C# | Rust vs Windows | C# vs Windows | Runs |
+|---|---|---|---|---|---|---|---|---|---|
+| C>C | big | 2 GB | 0.814 s | 0.813 s | 0.961 s | -0.1% | Faster +15.4% | Faster +15.5% | 3 |
+| C>C | small | 190 MB, 1000 files | 0.645 s | 0.616 s | 3.482 s | -4.7% | Faster +81.5% | Faster +82.3% | 3 |
+| C>C | mixed | 588 MB, 403 files | 0.395 s | 0.401 s | 1.597 s | +1.5% | Faster +75.3% | Faster +74.9% | 3 |
+| C>D | big | 1 GB | 4.780 s | 4.822 s | 4.825 s | +0.9% | Tie +0.9% | Tie +0.0% | 5 |
+| C>D | small | 94 MB, 500 files | 1.978 s | 2.051 s | 3.299 s | +3.6% | Faster +40.0% | Faster +37.8% | 5 |
+| C>D | mixed | 588 MB, 403 files | 4.806 s | 4.905 s | 5.487 s | +2.0% | Faster +12.4% | Faster +10.6% | 5 |
+| D>C | big | 1 GB | 5.634 s | 5.718 s | 5.669 s | +1.5% | Tie +0.6% | Tie -0.9% | 3 |
+| D>C | small | 94 MB, 500 files | 2.037 s | 2.064 s | 5.606 s | +1.3% | Faster +63.7% | Faster +63.2% | 3 |
+| D>C | mixed | 588 MB, 403 files | 4.155 s | 4.196 s | 6.894 s | +1.0% | Faster +39.7% | Faster +39.1% | 3 |
+| D>D | big | 1 GB | 10.778 s | 10.735 s | 11.483 s | -0.4% | Faster +6.1% | Faster +6.5% | 3 |
+| D>D | small | 94 MB, 500 files | 3.210 s | 3.257 s | 7.513 s | +1.4% | Faster +57.3% | Faster +56.6% | 3 |
+| D>D | mixed | 588 MB, 403 files | 9.165 s | 9.551 s | 14.001 s | +4.0% | Faster +34.5% | Faster +31.8% | 3 |
+| C>F | big | 2 GB | 2.399 s | 2.395 s | 2.999 s | -0.2% | Faster +20.0% | Faster +20.2% | 3 |
+| C>F | small | 190 MB, 1000 files | 0.540 s | 0.592 s | 4.233 s | +8.8% | Faster +87.2% | Faster +86.0% | 3 |
+| C>F | mixed | 588 MB, 403 files | 0.864 s | 0.843 s | 2.501 s | -2.5% | Faster +65.5% | Faster +66.3% | 3 |
+| F>C | big | 2 GB | 2.176 s | 2.208 s | 2.227 s | +1.4% | Tie +2.3% | Tie +0.9% | 3 |
+| F>C | small | 190 MB, 1000 files | 0.643 s | 0.627 s | 3.687 s | -2.6% | Faster +82.5% | Faster +83.0% | 3 |
+| F>C | mixed | 588 MB, 403 files | 0.827 s | 0.813 s | 2.063 s | -1.7% | Faster +59.9% | Faster +60.6% | 3 |
+| F>F | big | 2 GB | 2.740 s | 2.828 s | 4.186 s | +3.1% | Faster +34.5% | Faster +32.5% | 3 |
+| F>F | small | 190 MB, 1000 files | 1.653 s | 1.587 s | 4.462 s | -4.2% | Faster +62.9% | Faster +64.4% | 3 |
+| F>F | mixed | 588 MB, 403 files | 1.459 s | 1.454 s | 2.933 s | -0.3% | Faster +50.2% | Faster +50.4% | 3 |
+| C>X | big | 1 GB | 5.222 s | 5.195 s | 5.116 s | -0.5% | Tie -2.1% | Tie -1.6% | 5 |
+| C>X | small | 94 MB, 500 files | 2.901 s | 2.750 s | 3.626 s | -5.5% | Faster +20.0% | Faster +24.1% | 5 |
+| C>X | mixed | 588 MB, 403 files | 5.866 s | 5.678 s | 6.471 s | -3.3% | Faster +9.3% | Faster +12.3% | 5 |
+| X>C | big | 1 GB | 5.946 s | 5.829 s | 5.979 s | -2.0% | Tie +0.6% | Tie +2.5% | 3 |
+| X>C | small | 94 MB, 500 files | 2.472 s | 2.545 s | 8.891 s | +2.9% | Faster +72.2% | Faster +71.4% | 3 |
+| X>C | mixed | 588 MB, 403 files | 5.153 s | 5.144 s | 9.383 s | -0.2% | Faster +45.1% | Faster +45.2% | 3 |
+| X>X | big | 1 GB | 11.612 s | 11.540 s | 12.093 s | -0.6% | Tie +4.0% | Faster +4.6% | 3 |
+| X>X | small | 94 MB, 500 files | 4.409 s | 4.245 s | 11.287 s | -3.9% | Faster +60.9% | Faster +62.4% | 3 |
+| X>X | mixed | 588 MB, 403 files | 10.497 s | 10.260 s | 16.536 s | -2.3% | Faster +36.5% | Faster +38.0% | 3 |
+| C>N | big | 512 MB | 46.175 s | 46.449 s | 46.341 s | +0.6% | Tie +0.4% | Tie -0.2% | 3 |
+| C>N | small | 50 MB, 250 files | 12.622 s | 12.542 s | 23.460 s | -0.6% | Faster +46.2% | Faster +46.5% | 3 |
+| C>N | mixed | 588 MB, 403 files | 61.314 s | 62.254 s | 82.201 s | +1.5% | Faster +25.4% | Faster +24.3% | 3 |
+| N>C | big | 512 MB | 10.160 s | 10.189 s | 10.348 s | +0.3% | Tie +1.8% | Tie +1.5% | 5 |
+| N>C | small | 50 MB, 250 files | 2.408 s | 2.449 s | 27.130 s | +1.7% | Faster +91.1% | Faster +91.0% | 5 |
+| N>C | mixed | 588 MB, 403 files | 17.459 s | 16.983 s | 54.414 s | -2.8% | Faster +67.9% | Faster +68.8% | 5 |
+| N>N | big | 512 MB | 0.725 s | 0.732 s | 1.248 s | +1.0% | Faster +41.9% | Faster +41.3% | 3 |
+| N>N | small | 50 MB, 250 files | 6.630 s | 6.443 s | 83.385 s | -2.9% | Faster +92.0% | Faster +92.3% | 3 |
+| N>N | mixed | 588 MB, 403 files | 9.662 s | 9.923 s | 133.334 s | +2.6% | Faster +92.8% | Faster +92.6% | 3 |
+| C>E | big | 2 GB | 2.513 s | 2.536 s | 3.009 s | +0.9% | Faster +16.5% | Faster +15.7% | 3 |
+| C>E | small | 190 MB, 1000 files | 1.419 s | 1.478 s | 4.177 s | +4.0% | Faster +66.0% | Faster +64.6% | 5 |
+| C>E | mixed | 588 MB, 403 files | 1.340 s | 1.320 s | 2.576 s | -1.5% | Faster +48.0% | Faster +48.8% | 5 |
+| E>C | big | 2 GB | 2.100 s | 2.115 s | 2.182 s | +0.7% | Tie +3.8% | Tie +3.1% | 3 |
+| E>C | small | 190 MB, 1000 files | 1.274 s | 1.296 s | 3.637 s | +1.7% | Faster +65.0% | Faster +64.4% | 5 |
+| E>C | mixed | 588 MB, 403 files | 1.097 s | 1.123 s | 2.037 s | +2.3% | Faster +46.1% | Faster +44.9% | 5 |
+| E>E | big | 2 GB | 4.606 s | 4.627 s | 5.410 s | +0.5% | Faster +14.9% | Faster +14.5% | 3 |
+| E>E | small | 190 MB, 1000 files | 1.638 s | 1.617 s | 4.482 s | -1.3% | Faster +63.4% | Faster +63.9% | 3 |
+| E>E | mixed | 588 MB, 403 files | 1.928 s | 1.887 s | 3.455 s | -2.2% | Faster +44.2% | Faster +45.4% | 3 |
+
+- Rust: Faster 39 / Marginal Tie 9 / **Slower 0** of 48. C# 1.48 in the same runs: Faster 40 / Marginal Tie 8 / Slower 0.
+  The one verdict that differs is X>X big (C# +4.6 % Faster, Rust +4.0 % Tie: 0.6 % apart, on the line).
+- Every case added up: Rust 300.8 s, C# 1.48 301.6 s, Windows 672.3 s (Rust 0.3 % less time than C#).
+- No case is apart beyond its runs' spread; nothing is newly Slower.
+- First run (before the fix, a new Rust process per copy, `results/full`): also never Slower against Windows except
+  C>X big 1 GB (-6.6 %), which 5 rounds after the fix put at a Tie (Rust -2.1 %, C# -1.6 %).
+
+**Only the user can do:** sign off on the table above (step 4 doesn't wait for it).
+
+**For after the switch-over** (1.48 behaviour kept on purpose):
+- A copy ends only when its idle workers wake from their 100 ms naps (`WorkerLoop`): every copy's "done" comes up to
+  ~110 ms late. Waking them when the last file is taken would end it at once.
+
+**For the next steps:**
+- `src/Bench/EngineChild.cs` and the three-way parts of Benchmark.cs / BenchReport.cs / Cli.cs (`--rust`,
+  `--rust-fresh`, `--size-down`, `RustResults`, `rustSummary` / `rustResults` in the JSON, `run:` / `result:` log lines,
+  `BenchRun.After`, `CHOPPY_BENCH_TRACE`) are step 3's harness: **not ported**. Step 4 ports the Benchmark as 1.48 has it
+  (in-process ChoppyCopy, the 1.48 JSON / HTML). The Rust `--benchcopy` switch stays as a test switch, so the C#
+  Benchmark can compare any later engine change.
+- Any C# `Thread.Sleep` that later steps port goes through `sys::sleep_ms` (fix list 3.1), never `std::thread::sleep`.
+
 ## Decisions
 
 - 2026-11-24: Build Tools 2026 (current winget package) rather than 2022.
@@ -225,13 +331,14 @@ incomplete rename, no memory-unsafety found. Fixed:
   switch-over" (step 2).
 - 2026-11-25 (step 2): the review pass ran as 5 reviewer agents on Extra in parallel (Ultracode can't be switched on
   while the user is away).
+- 2026-11-25 (step 3): C# stays in the Benchmark's own process (the proven way); the Rust engine runs in one warm child
+  for the whole run. A new process per copy would count a process start for neither but a fresh .NET would pay its
+  JIT inside the timed copy (measured: a C# child is slower than C# in-process), so a warm child is the fair match.
+- 2026-11-25 (step 3): reruns keep the full run's file sizes (`--size-down 1`): fewer routes would otherwise get bigger
+  files from the time budget.
 
 ## Next session
 
-**Step 3 (speed proof), on Extra without Ultracode.** Read PLAN.md (step 3's gate) and step 2's "For the next steps".
-The proven C# Benchmark (src/Bench, on the `rust` branch only) runs Choppy's side as an in-process CopyJob
-(Benchmark.cs:609); teach it to run the Rust engine instead - `choppy.exe --cli copy <sources> <dest> --json <file>`
-as a child, the way it already runs Windows' side (`--shellcopy`) - and take the badge / tune from its JSON, measuring
-the time to the disk as today. Then a Thorough + Network run on the user's PC against 1.48's: no new Slower on any
-route; disputed hard-disk routes get 5 rounds (placement noise reaches ~20 %). **The user signs off.** After any engine
-change, rerun `rust/tools/enginecheck/check.py` (the step 2 gate).
+**Step 4 (all windows), on Extra without Ultracode.** Read PLAN.md (step 4's gate, file map, the UI layer from look test
+A) and "For the next steps" of steps 2 and 3. The Benchmark window and `src/Bench` are ported as 1.48 has them - not
+step 3's three-way harness. Sleeps: `sys::sleep_ms`. The user still signs off step 3's table; that doesn't hold step 4.
