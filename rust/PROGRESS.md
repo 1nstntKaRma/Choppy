@@ -627,8 +627,8 @@ still fits).
 2. With it installed: step 5's live checks (real Ctrl+V, right-click "Paste with Choppy", start with Windows, the
    administrator prompt Yes / No, `wherecheck.py` with Explorer windows open) and step 2's administrator copy.
 3. Approve step 4's look (pictures, the tray menu, tooltips) and sign off step 3's table.
-4. Decide the version number (2.00 suggested; it must be higher part by part than 1.48) and whether there is a public
-   beta (a GitHub pre-release, which ChocoPlus and the one-liner skip; it needs small changes first).
+4. ~~Decide the version number~~ **2.0** (the user, 2026-11-26). Still open: a public beta or not (a GitHub
+   pre-release, which ChocoPlus and the one-liner skip; it needs small changes first).
 5. SmartScreen: the new exe has no download history, so the first downloads may show "Windows protected your PC";
    only a real download from GitHub shows it (installs through build.ps1 unblock the files).
 6. Leftovers from earlier steps to remove by hand: `C:\choppy-step5-adm`, `D:\choppy-engine-check`,
@@ -637,6 +637,29 @@ still fits).
 **For after the switch-over:** the crate's `#![allow(dead_code)]` (step 1's note); the "For after the switch-over"
 lists of steps 2, 3 and 5; optionally keep the step tools' pictures off main (the source zip the one-liner downloads
 grows from ~0.8 MB to ~4.6 MB, `rust/tools/step4/results` is 2.8 MB of it).
+
+## After step 6: the user's try (2026-11-26)
+
+The user installed the step-6 exe and ran a Thorough Benchmark (Faster 39 / Marginal Tie 9 / Never Slower of 48).
+Choppy then froze twice: after the Benchmark, and when the user clicked Settings' **Logs folder** (Ctrl+V did nothing
+after that). The second time the frozen process was sampled live with dbghelp (no debugger here) and matched to a
+symbol build of the same source (the calling function identical in size: settings_window click):
+
+    run_loop -> DispatchMessage -> settings click -> shell_open -> ShellExecuteExW -> (Windows' own message loop)
+      -> DispatchMessage -> dispatch_proc -> drain (handler still busy) -> post_local -> PostMessageW -> ... forever
+
+The busy-retry posted itself and the dispatch pass emptied its queue in one go, so the retry ran again at once and
+ShellExecuteEx's loop never got its turn back. The Benchmark's Open folder / Open report go the same way. Nothing was
+noted because nothing failed: the thread just never came back (and whoever ended it left no error).
+
+- **Fix list 6.14** (sys/win.rs): passes run only the work that waited when they began; busy handlers are retried on
+  a 15 ms timer. `logsclick.py` (scratch): the old exe hung every time, the fix answered 3 of 3.
+- **Fix list 6.15** (paste_hook.rs): a Ctrl+V Choppy would take goes to Windows while Windows calls Choppy's UI thread
+  hung (IsHungAppWindow), with a line in ctrl-v.txt.
+- **Fix list 6.16** (guard.rs, the user's wish): a tray Choppy that ends without quitting is started again once it is
+  completely gone - nothing ever closes or pokes a Choppy that isn't answering; at most 3 times an hour, only after
+  30 s of running, only with Default file manager on. `guardtest.py` (scratch) passed every case.
+- **Version: 2.0** (the user). CHECKLIST and the release-notes draft say 2.0 now.
 
 ## Decisions
 

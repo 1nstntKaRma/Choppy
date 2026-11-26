@@ -805,44 +805,24 @@ extern "system" fn wndproc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     }
 }
 
-/// Hands an event to the window's handler; a busy handler gets it right after it returns.
+/// How soon a handler that was still busy is looked at again. The handler stays busy while Windows runs a message
+/// loop of its own inside it (ShellExecuteEx opening a folder, a COM call to Explorer); a retry posted at once came
+/// straight back inside that loop, again and again, and never let it end: the window froze (fix list 6.14).
+const BUSY_RETRY_MS: u32 = 15;
+
 /// A destroyed window's last events, delivered when its handler is free.
 fn finish_later(slot: Box<Slot>, win: Win) {
-    post_local(Box::new(move || {
-        let busy = slot.handler.try_borrow_mut().is_err();
-        if busy {
-            return finish_later(slot, win);
-        }
-        if let Ok(mut hd) = slot.handler.try_borrow_mut() {
-            loop {
-                let next = slot.queue.borrow_mut().pop_front();
-                match next {
-                    Some(e) => {
-                        hd.event(win, e);
-                    }
-                    None => break,
-                }
-            }
-        }
-    }));
+    post_local(Box::new(move || finish_now(slot, win)));
 }
 
-/// The handler was busy (something outside its own events holds it): what waited is delivered soon after.
-fn schedule_drain(slot: &Slot, win: Win) {
-    if slot.drain_posted.replace(true) {
-        return;
+fn finish_now(slot: Box<Slot>, win: Win) {
+    let busy = slot.handler.try_borrow_mut().is_err();
+    if busy {
+        return after(BUSY_RETRY_MS, Box::new(move || finish_now(slot, win)));
     }
-    post_local(Box::new(move || {
-        if !win.exists() {
-            return;
-        }
-        let Some(s) = win.slot() else { return };
-        s.drain_posted.set(false);
-        let Ok(mut hd) = s.handler.try_borrow_mut() else {
-            return schedule_drain(s, win);
-        };
+    if let Ok(mut hd) = slot.handler.try_borrow_mut() {
         loop {
-            let next = s.queue.borrow_mut().pop_front();
+            let next = slot.queue.borrow_mut().pop_front();
             match next {
                 Some(e) => {
                     hd.event(win, e);
@@ -850,11 +830,40 @@ fn schedule_drain(slot: &Slot, win: Win) {
                 None => break,
             }
         }
-        drop(hd);
-        if s.repaint.replace(false) && !s.destroyed.get() {
-            win.invalidate();
+    }
+}
+
+/// The handler was busy (something outside its own events holds it): what waited is delivered soon after.
+fn schedule_drain(slot: &Slot, win: Win) {
+    if slot.drain_posted.replace(true) {
+        return;
+    }
+    post_local(Box::new(move || drain(win)));
+}
+
+fn drain(win: Win) {
+    if !win.exists() {
+        return;
+    }
+    let Some(s) = win.slot() else { return };
+    let Ok(mut hd) = s.handler.try_borrow_mut() else {
+        // still busy: a moment later (drain_posted stays set, so this is the only retry waiting)
+        return after(BUSY_RETRY_MS, Box::new(move || drain(win)));
+    };
+    s.drain_posted.set(false);
+    loop {
+        let next = s.queue.borrow_mut().pop_front();
+        match next {
+            Some(e) => {
+                hd.event(win, e);
+            }
+            None => break,
         }
-    }));
+    }
+    drop(hd);
+    if s.repaint.replace(false) && !s.destroyed.get() {
+        win.invalidate();
+    }
 }
 
 fn deliver(slot: &Slot, win: Win, ev: Ev) -> bool {
@@ -1055,6 +1064,37 @@ pub fn kill(id: usize) {
     }
 }
 
+/// Runs `f` once on the UI thread after `ms`. A timer's message comes only when nothing more urgent waits, so work
+/// that waits for something this way never keeps the thread spinning.
+pub fn after(ms: u32, f: LocalJob) {
+    let f = RefCell::new(Some(f));
+    timer(
+        ms,
+        true,
+        Rc::new(move || {
+            let job = f.borrow_mut().take();
+            if let Some(job) = job {
+                job();
+            }
+        }),
+    );
+}
+
+/// Windows considers the UI thread hung: it hasn't looked at its messages for about 5 seconds although some wait
+/// (IsHungAppWindow; a thread that is only idle, or busy inside a message loop of Windows' own, isn't). Any thread
+/// may ask; it costs nothing.
+pub fn ui_hung() -> bool {
+    let h = dispatch_hwnd();
+    !h.0.is_null() && unsafe { IsHungAppWindow(h).as_bool() }
+}
+
+static SESSION_END: std::sync::OnceLock<fn()> = std::sync::OnceLock::new();
+
+/// Called when Windows signs out or shuts down (WM_ENDSESSION).
+pub fn on_session_end(f: fn()) {
+    let _ = SESSION_END.set(f);
+}
+
 pub fn set_device_handler(f: Option<Rc<dyn Fn(usize)>>) {
     DEVICE_HANDLER.with(|d| *d.borrow_mut() = f);
 }
@@ -1063,12 +1103,17 @@ extern "system" fn dispatch_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRE
     unsafe {
         match msg {
             WM_DISPATCH => {
-                loop {
+                // only the work that waits now: what it posts runs on its own message (each post has one), after
+                // what Windows has waiting - so work that posts work can never keep this loop going, and a message
+                // loop of Windows' own that we run inside (a shell call, a COM call to Explorer) gets its turn back
+                let n = QUEUE.lock().unwrap_or_else(|e| e.into_inner()).len();
+                for _ in 0..n {
                     let job = QUEUE.lock().unwrap_or_else(|e| e.into_inner()).pop_front();
                     let Some(job) = job else { break };
                     guard(job);
                 }
-                loop {
+                let n = LOCAL.with(|q| q.borrow().len());
+                for _ in 0..n {
                     let job = LOCAL.with(|q| q.borrow_mut().pop_front());
                     let Some(job) = job else { break };
                     guard(job);
@@ -1077,10 +1122,19 @@ extern "system" fn dispatch_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRE
             }
             WM_TIMER if w.0 == IDLE_TIMER => {
                 let _ = KillTimer(Some(h), IDLE_TIMER);
-                loop {
+                // the same: idle work added meanwhile set the timer again
+                let n = IDLE.with(|q| q.borrow().len());
+                for _ in 0..n {
                     let job = IDLE.with(|q| q.borrow_mut().pop_front());
                     let Some(job) = job else { break };
                     guard(job);
+                }
+                LRESULT(0)
+            }
+            WM_ENDSESSION if w.0 != 0 => {
+                // Windows signs out or shuts down: Choppy ends with it, on purpose (nothing to start again)
+                if let Some(f) = SESSION_END.get() {
+                    guard(f);
                 }
                 LRESULT(0)
             }

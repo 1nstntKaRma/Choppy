@@ -103,6 +103,8 @@ pub fn run(args: &[WString], mutex: crate::sys::NamedMutex, pipe_name: &str, ele
     // an error on the UI thread is noted and Choppy goes on; one that ends the process: noted, and a Choppy that
     // watches Ctrl+V starts again in the tray
     win::on_ui_error(|e| note_error(&e, false));
+    // signing out or shutting down ends Choppy on purpose: its guard starts nothing
+    win::on_session_end(crate::guard::quitting);
     ELEVATED.store(elevated, std::sync::atomic::Ordering::SeqCst);
     crate::sys::on_crash(on_crash);
     let Some(gfx) = Gfx::new() else { return 1 };
@@ -176,7 +178,8 @@ pub fn run(args: &[WString], mutex: crate::sys::NamedMutex, pipe_name: &str, ele
         }));
     }
     let code = win::run_loop();
-    // OnExit
+    // OnExit: a quit on purpose - the guard (if any) leaves without starting anything
+    crate::guard::quitting();
     paste_hook::stop();
     // the app (its windows, the test hook's timer) goes now, while the UI thread's other thread-locals are still there:
     // left to the thread's end, it would reach for ones already gone (Rust aborts then: exit code 0xC0000409)
@@ -191,7 +194,7 @@ pub fn run(args: &[WString], mutex: crate::sys::NamedMutex, pipe_name: &str, ele
 static ELEVATED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// errors.txt in the data folder: DateTime.Now + " " + the error ("(closed) " first when it ended Choppy).
-fn note_error(text: &str, closed: bool) {
+pub fn note_error(text: &str, closed: bool) {
     let now = crate::sys::file_time_to_local(crate::sys::now_file_time()).map(|t| crate::sys::general_date_time(&t)).unwrap_or_default();
     let line = format!("{now} {}{text}\r\n", if closed { "(closed) " } else { "" });
     let path = app_paths::data_dir().join("errors.txt");
@@ -205,6 +208,10 @@ fn note_error(text: &str, closed: bool) {
 /// fails right at the start: it would only fail again).
 fn on_crash() {
     note_error("the process ended on an error Windows reported", true);
+    // the guard starts it again once this process is completely gone
+    if crate::guard::running() {
+        return;
+    }
     let elevated = ELEVATED.load(std::sync::atomic::Ordering::SeqCst);
     if elevated || app_paths::test_mode() || crate::started().elapsed().as_secs() < 30 {
         return;
@@ -763,6 +770,8 @@ pub fn apply_takeover() {
     let on = Settings::current().explorer_takeover;
     if on {
         with(|a| a.resident = true);
+        // a tray Choppy that ends without quitting is started again, once it is completely gone (guard.rs)
+        crate::guard::start();
         ensure_tray();
         if !app_paths::test_mode() {
             paste_hook::start(Some(on_explorer_paste), false);

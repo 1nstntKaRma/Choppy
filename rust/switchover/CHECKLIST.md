@@ -21,10 +21,9 @@ and the two `.cmd` files (1.57 MB).
    `wherecheck.py` with Explorer windows open. And step 2's administrator copy end to end.
 3. Approve step 4's look (`rust/tools/step4/results/`, the tray menu, a tooltip) and sign off step 3's table.
 4. Decide:
-   - **The version number.** `2.00` is suggested (a new program inside, the same Choppy outside). Any number works if
-     it is higher part by part than 1.48, because ChocoPlus compares the parts as numbers: `2.00` (2 > 1) or `1.49`
-     (49 > 48) are fine; `1.5` would read as 1.5 < 1.48 and ChocoPlus would never offer it. About and Settings show
-     `v2.0.0` for 2.00, as 1.48 shows `v1.48.0`.
+   - **The version number: `2.0`** (the user's choice, 2026-11-26). It works because ChocoPlus compares the parts
+     as numbers: 2.0 (2 > 1) is newer than 1.48; a `1.5` would read as 1.5 < 1.48 and never be offered. About and
+     Settings show `v2.0.0`, as 1.48 shows `v1.48.0`; the exe is stamped 2.0.0.0; the next version is 2.01.
    - **A beta or not.**
      - No public beta: the user's own try (step 1) is the beta; then release the version directly.
      - A public beta as a GitHub pre-release: ChocoPlus (`/releases/latest`, API and page) and build.ps1's download
@@ -84,7 +83,7 @@ release.yml, and a new VERSION publishes a public release.
 4. **Bump VERSION and add the release notes.**
 
    ```
-   printf '2.00' > VERSION                   # the chosen number; no newline, like today's file
+   printf '2.0' > VERSION                    # the chosen number; no newline, like today's file
    ```
 
    Copy `rust/switchover/RELEASE_NOTES-draft.md` into `.github/RELEASE_NOTES.md` (fill in the chosen number and
@@ -95,7 +94,7 @@ release.yml, and a new VERSION publishes a public release.
 
    ```
    powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\build.ps1 -Shell Cancel
-   (Get-Item bin\Choppy.exe).VersionInfo.FileVersion        # 2.0.0.0 for 2.00
+   (Get-Item bin\Choppy.exe).VersionInfo.FileVersion        # 2.0.0.0 for 2.0
    ```
 
    It prints `[Built] bin\Choppy.exe (... KB), self-test passed`. Build from a short folder path: deep in a long path
@@ -105,7 +104,7 @@ release.yml, and a new VERSION publishes a public release.
 
    ```
    git add VERSION .github/RELEASE_NOTES.md README.md
-   git commit -m "Version 2.00: Choppy in Rust - ..."
+   git commit -m "Version 2.0: Choppy in Rust - ..."
    ```
 
 7. **Push - this publishes the release.**
@@ -114,19 +113,19 @@ release.yml, and a new VERSION publishes a public release.
    git push origin main
    ```
 
-   release.yml then: "Releasing v2.00." -> Rust 1.100.0 -> build.ps1 build + self-test -> the version stamp check ->
-   only Windows' own DLLs -> `Choppy-v2.00.zip` + `Choppy.exe` + `SHA256SUMS.txt` -> build provenance -> the release
-   and its tag `v2.00`, marked latest.
+   release.yml then: "Releasing v2.0." -> Rust 1.100.0 -> build.ps1 build + self-test -> the version stamp check ->
+   only Windows' own DLLs -> `Choppy-v2.0.zip` + `Choppy.exe` + `SHA256SUMS.txt` -> build provenance -> the release
+   and its tag `v2.0`, marked latest.
 
 8. **Check the release.**
 
    ```
    gh run list --workflow release.yml --limit 1
-   gh release view v2.00                      # the three assets
-   gh attestation verify Choppy-v2.00.zip --repo 1nstntKaRma/Choppy   # after downloading it
+   gh release view v2.0                       # the three assets
+   gh attestation verify Choppy-v2.0.zip --repo 1nstntKaRma/Choppy   # after downloading it
    ```
 
-   ChocoPlus then sees v2.00 as newer than an installed 1.48.0.0 (its update dot on the Choppy button), and the
+   ChocoPlus then sees v2.0 as newer than an installed 1.48.0.0 (its update dot on the Choppy button), and the
    README's one-liner / build.ps1's download fallback get the Rust exe. The exe GitHub builds is byte for byte the
    one a local `build.ps1` build of the same commit gives (checked for 1.48: SHA-256 F37EFF8A...).
 
@@ -137,8 +136,8 @@ release.yml, and a new VERSION publishes a public release.
 ## If the release goes wrong
 
 - A broken build or a failing self-test on GitHub stops before anything is published: fix, push again.
-- A problem found after publishing: the quickest fix is the next version (2.01). To take 2.00 back, the user deletes
-  the release and its tag on GitHub (`gh release delete v2.00 --cleanup-tag`); v1.48 is the latest release again, and
+- A problem found after publishing: the quickest fix is the next version (2.01). To take 2.0 back, the user deletes
+  the release and its tag on GitHub (`gh release delete v2.0 --cleanup-tag`); v1.48 is the latest release again, and
   ChocoPlus offers it only where an installed version is older than it.
 - Going back to C# in main: `git revert` the switch-over commits (or reset main to 367241b with the user's okay), then
   a new VERSION above the last released one.

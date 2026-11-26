@@ -11,6 +11,7 @@ mod bench;
 mod cli;
 mod engine;
 mod explorer;
+mod guard;
 mod instance;
 mod job_manager;
 mod sys; // the one module with unsafe code (it allows it itself)
@@ -54,6 +55,10 @@ fn main() {
         "--cli" | "--selftest" | "--where" | "--usb" | "--benchmark" | "--shellcopy" | "--plan-dump" | "--benchcopy"
     ) {
         std::process::exit(cli::run(&args));
+    }
+    // the tray Choppy's guard (guard.rs): only waits for it to end; no window, no instance of its own
+    if args.len() == 2 && args[0].eq_str(guard::ARG) {
+        std::process::exit(guard::run(&args[1].to_string_lossy()));
     }
     // a Choppy that ended on an error started this one: wait until it is gone, then watch Ctrl+V from the tray
     if args.len() == 2

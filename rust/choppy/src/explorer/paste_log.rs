@@ -42,6 +42,11 @@ pub fn write(line: &str) {
     }
 }
 
+/// Written at once, on this thread (a process about to end: the guard).
+pub fn write_now(line: &str) {
+    let _ = append(&[format!("{}  {line}", now_text())]);
+}
+
 fn flush() {
     loop {
         let lines: Vec<String> = {

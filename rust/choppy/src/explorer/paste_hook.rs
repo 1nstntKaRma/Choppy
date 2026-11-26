@@ -124,6 +124,13 @@ fn on_key(vk: u32, msg: u32, extra: usize) -> bool {
     }
     if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
         match check(vk) {
+            // Choppy's window thread isn't answering: a paste taken now would wait for it - Windows does this one
+            (Why::Take, _) if !OBSERVE_ONLY.load(SeqCst) && crate::sys::win::ui_hung() => {
+                paste_log::write(&format!(
+                    "{} left to Windows: Choppy isn't answering at the moment",
+                    if vk == VK_V { "Ctrl+V" } else { "Shift+Insert" }
+                ));
+            }
             (Why::Take, fg) if !OBSERVE_ONLY.load(SeqCst) => {
                 PRESSED_AT.store(micros(), SeqCst);
                 SWALLOW_UP.store(vk, SeqCst);

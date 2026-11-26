@@ -361,3 +361,93 @@ pub fn on_crash(f: fn()) {
         SetUnhandledExceptionFilter(Some(filter));
     }
 }
+
+// ================= the guard (2.0) =================
+
+/// A named manual-reset event (closed when dropped): a tray Choppy's "I quit on purpose" for its guard.
+pub struct NamedEvent(HANDLE);
+
+unsafe impl Send for NamedEvent {}
+unsafe impl Sync for NamedEvent {}
+
+impl NamedEvent {
+    /// Made (not set yet), or opened when it is already there.
+    pub fn create(name: &str) -> Option<NamedEvent> {
+        use windows::Win32::System::Threading::CreateEventW;
+        let n = windows::core::HSTRING::from(name);
+        unsafe { CreateEventW(None, true, false, &n) }.ok().map(NamedEvent)
+    }
+
+    /// Opened for waiting; None when no process has it any more.
+    pub fn open(name: &str) -> Option<NamedEvent> {
+        use windows::Win32::System::Threading::{OpenEventW, SYNCHRONIZATION_SYNCHRONIZE};
+        let n = windows::core::HSTRING::from(name);
+        unsafe { OpenEventW(SYNCHRONIZATION_SYNCHRONIZE, false, &n) }.ok().map(NamedEvent)
+    }
+
+    pub fn set(&self) {
+        unsafe {
+            let _ = windows::Win32::System::Threading::SetEvent(self.0);
+        }
+    }
+}
+
+impl Drop for NamedEvent {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = CloseHandle(self.0);
+        }
+    }
+}
+
+/// How the process a guard waits for ended.
+pub enum GuardEnd {
+    /// it said it quits on purpose (its event), or it can't be waited for
+    Quit,
+    /// it is completely gone without saying so: its exit code and how long it ran (seconds)
+    Gone { code: u32, ran: f64 },
+}
+
+/// Waits - without a time limit, using no CPU - until `quit` is set or process `pid` has completely ended. Nothing is
+/// asked of that process and nothing is done to it.
+pub fn wait_guarded(pid: u32, quit: &NamedEvent) -> GuardEnd {
+    use windows::Win32::Foundation::FILETIME;
+    use windows::Win32::System::Threading::{GetProcessTimes, INFINITE, PROCESS_QUERY_LIMITED_INFORMATION, WaitForMultipleObjects};
+    unsafe {
+        let Ok(h) = OpenProcess(PROCESS_SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else { return GuardEnd::Quit };
+        let p = Process(h);
+        // the event first: when both are signaled (it quit, then ended), the quit counts
+        let r = WaitForMultipleObjects(&[quit.0, p.0], false, INFINITE);
+        if r == WAIT_OBJECT_0 || (WaitForSingleObject(quit.0, 0)) == WAIT_OBJECT_0 {
+            return GuardEnd::Quit;
+        }
+        if r.0 != WAIT_OBJECT_0.0 + 1 {
+            return GuardEnd::Quit; // a failed wait: never a reason to start anything
+        }
+        let mut code = 0u32;
+        let _ = GetExitCodeProcess(p.0, &mut code);
+        let (mut created, mut exited, mut k, mut u) = (FILETIME::default(), FILETIME::default(), FILETIME::default(), FILETIME::default());
+        let ran = if GetProcessTimes(p.0, &mut created, &mut exited, &mut k, &mut u).is_ok() {
+            let t = |f: FILETIME| ((f.dwHighDateTime as u64) << 32) | f.dwLowDateTime as u64;
+            t(exited).saturating_sub(t(created)) as f64 / 1e7
+        } else {
+            0.0
+        };
+        GuardEnd::Gone { code, ran }
+    }
+}
+
+/// Windows is signing out or shutting down (SM_SHUTTINGDOWN).
+pub fn shutting_down() -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_SHUTTINGDOWN};
+    unsafe { GetSystemMetrics(SM_SHUTTINGDOWN) != 0 }
+}
+
+/// This process waits in the background: lowest priority, its memory given back.
+pub fn background_quiet() {
+    use windows::Win32::System::Threading::{GetCurrentProcess, IDLE_PRIORITY_CLASS, SetPriorityClass, SetProcessWorkingSetSize};
+    unsafe {
+        let _ = SetPriorityClass(GetCurrentProcess(), IDLE_PRIORITY_CLASS);
+        let _ = SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX);
+    }
+}
