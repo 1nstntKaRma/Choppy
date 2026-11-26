@@ -58,11 +58,6 @@ pub struct SettingsContent {
     unit_help: Option<Rc<RefCell<UnitHelpWindow>>>,
 }
 
-/// Unit for the speed limit: what "Show speed in" says (Auto = MB/s here; a network copy shows Mbps).
-fn limit_in_mbps() -> bool {
-    Settings::current().speed_unit.as_deref() == Some("mbps")
-}
-
 impl SettingsContent {
     fn new() -> SettingsContent {
         let mut c = SettingsContent {
@@ -624,7 +619,7 @@ pub fn create(owner: Option<Win>) -> Option<Rc<RefCell<SettingsWindow>>> {
     let g = crate::app::gfx();
     let owner = owner.filter(|o| o.is_visible());
     let park = crate::testhook::park();
-    let spec = Spec { title: "Choppy settings".into(), owner, framed: true, taskbar: !park, ..Default::default() };
+    let spec = Spec { title: "Choppy settings".into(), owner, taskbar: !park, ..Default::default() };
     let w = Window::create(&g, &spec, Sizing::ContentHeight(540.0), 46.0, SettingsContent::new())?;
     {
         let mut m = w.borrow_mut();

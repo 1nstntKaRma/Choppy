@@ -109,7 +109,6 @@ impl VolumeInfo {
 pub struct StorageDeviceNumber {
     pub device_type: i32,
     pub device_number: i32,
-    pub partition_number: i32,
 }
 
 impl StorageDeviceNumber {
@@ -118,7 +117,7 @@ impl StorageDeviceNumber {
         let mut out = [0u8; 12];
         let (ok, _) = sys::device_io_control(h, sys::IOCTL_STORAGE_GET_DEVICE_NUMBER, &[], &mut out);
         let int = |o: usize| i32::from_le_bytes(out[o..o + 4].try_into().unwrap());
-        ok.then(|| StorageDeviceNumber { device_type: int(0), device_number: int(4), partition_number: int(8) })
+        ok.then(|| StorageDeviceNumber { device_type: int(0), device_number: int(4) })
     }
 }
 

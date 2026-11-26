@@ -68,7 +68,7 @@ pub enum Ev {
     ExitSizeMove,
     Sizing(u32),
     /// The tray icon's callback (the mouse message).
-    Tray(u32),
+    Tray,
     /// Minimized / maximized / restored (WM_SIZE's wParam).
     State(u32),
 }
@@ -123,7 +123,6 @@ pub struct Spec {
     pub title: String,
     pub owner: Option<Win>,
     /// Frameless with WPF WindowChrome's look (captioned, DWM shadow): true. A layered pop-up: false.
-    pub framed: bool,
     pub resizable: bool,
     pub minimize: bool,
     pub maximize: bool,
@@ -400,21 +399,10 @@ impl Win {
     pub fn activate(&self) -> bool {
         unsafe { SetForegroundWindow(self.0).as_bool() }
     }
-    pub fn is_active(&self) -> bool {
-        unsafe { GetActiveWindow() == self.0 }
-    }
-    pub fn focus(&self) {
-        unsafe {
-            let _ = SetFocus(Some(self.0));
-        }
-    }
     pub fn enable(&self, on: bool) {
         unsafe {
             let _ = EnableWindow(self.0, on);
         }
-    }
-    pub fn is_enabled(&self) -> bool {
-        unsafe { IsWindowEnabled(self.0).as_bool() }
     }
     pub fn invalidate(&self) {
         unsafe {
@@ -449,10 +437,6 @@ impl Win {
             let _ = ScreenToClient(self.0, &mut p);
         }
         (p.x as f64, p.y as f64)
-    }
-    pub fn owner(&self) -> Option<Win> {
-        let h = unsafe { GetWindow(self.0, GW_OWNER) }.ok()?;
-        if h.0.is_null() { None } else { Some(Win(h)) }
     }
 
     /// The work area (the taskbar left out) of the monitor the window is on: (left, top, right, bottom) pixels.
@@ -503,14 +487,6 @@ impl Win {
             let _ = DeleteObject(dib.into());
             let _ = DeleteDC(mem);
             ReleaseDC(None, screen);
-        }
-    }
-
-    /// A layered pop-up's overall alpha (PopupAnimation="Fade").
-    pub fn set_layered_alpha(&self, a: u8) {
-        unsafe {
-            let blend = BLENDFUNCTION { BlendOp: AC_SRC_OVER as u8, BlendFlags: 0, SourceConstantAlpha: a, AlphaFormat: AC_SRC_ALPHA as u8 };
-            let _ = UpdateLayeredWindow(self.0, None, None, None, None, None, COLORREF(0), Some(&blend), ULW_ALPHA);
         }
     }
 
@@ -568,15 +544,6 @@ pub fn primary_work_area() -> (i32, i32, i32, i32) {
     unsafe { monitor_work(MonitorFromPoint(POINT { x: 0, y: 0 }, MONITOR_DEFAULTTOPRIMARY)) }
 }
 
-/// The work area of the monitor with the mouse on it (WindowStartupLocation="CenterScreen").
-pub fn work_area_at_cursor() -> (i32, i32, i32, i32) {
-    let mut p = POINT::default();
-    unsafe {
-        let _ = GetCursorPos(&mut p);
-        monitor_work(MonitorFromPoint(p, MONITOR_DEFAULTTOPRIMARY))
-    }
-}
-
 /// The work area of the monitor at a point, and that monitor's DPI.
 pub fn work_area_at(x: i32, y: i32) -> ((i32, i32, i32, i32), u32) {
     unsafe {
@@ -614,10 +581,6 @@ pub fn hover_time() -> u32 {
 }
 pub fn caret_blink_ms() -> u32 {
     unsafe { GetCaretBlinkTime() }.clamp(100, 2000)
-}
-/// The double-click time (ms) and the drag threshold.
-pub fn double_click_ms() -> u32 {
-    unsafe { GetDoubleClickTime() }
 }
 
 pub fn key_down(vk: u16) -> bool {
@@ -693,7 +656,7 @@ fn decode(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> Option<Ev> {
         WM_ENTERSIZEMOVE => Ev::EnterSizeMove,
         WM_EXITSIZEMOVE => Ev::ExitSizeMove,
         WM_SIZING => Ev::Sizing(w.0 as u32),
-        WM_TRAY => Ev::Tray((l.0 & 0xFFFF) as u32),
+        WM_TRAY => Ev::Tray,
         _ => return None,
     })
 }
@@ -1095,10 +1058,6 @@ pub fn on_session_end(f: fn()) {
     let _ = SESSION_END.set(f);
 }
 
-pub fn set_device_handler(f: Option<Rc<dyn Fn(usize)>>) {
-    DEVICE_HANDLER.with(|d| *d.borrow_mut() = f);
-}
-
 extern "system" fn dispatch_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     unsafe {
         match msg {
@@ -1266,10 +1225,6 @@ pub fn tray_remove() {
         }
     });
     TRAY_HANDLER.with(|t| *t.borrow_mut() = None);
-}
-
-pub fn tray_shown() -> bool {
-    TRAY.with(|t| t.borrow().is_some())
 }
 
 /// The tray needs the menu's window in front so a click elsewhere closes it.

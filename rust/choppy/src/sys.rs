@@ -30,7 +30,6 @@ pub use shell::*;
 pub use text::*;
 pub use volume::*;
 
-pub const ERROR_SUCCESS: u32 = 0;
 pub const ERROR_FILE_NOT_FOUND: u32 = 2;
 pub const ERROR_PATH_NOT_FOUND: u32 = 3;
 pub const ERROR_ACCESS_DENIED: u32 = 5;
@@ -44,16 +43,13 @@ pub const ERROR_NETWORK_BUSY: u32 = 54;
 pub const ERROR_DEV_NOT_EXIST: u32 = 55;
 pub const ERROR_UNEXP_NET_ERR: u32 = 59;
 pub const ERROR_NETNAME_DELETED: u32 = 64;
-pub const ERROR_NETWORK_ACCESS_DENIED: u32 = 65;
 pub const ERROR_BAD_NET_NAME: u32 = 67;
 pub const ERROR_FILE_EXISTS: u32 = 80;
 pub const ERROR_DISK_FULL: u32 = 112;
 pub const ERROR_SEM_TIMEOUT: u32 = 121;
 pub const ERROR_INVALID_NAME: u32 = 123;
-pub const ERROR_DIR_NOT_EMPTY: u32 = 145;
 pub const ERROR_ALREADY_EXISTS: u32 = 183;
 pub const ERROR_FILENAME_EXCED_RANGE: u32 = 206;
-pub const ERROR_NO_MORE_FILES: u32 = 18;
 pub const ERROR_REQUEST_ABORTED: u32 = 1235;
 pub const ERROR_CONNECTION_ABORTED: u32 = 1236;
 pub const ERROR_NETWORK_UNREACHABLE: u32 = 1231;
@@ -67,7 +63,6 @@ pub const ERROR_IO_PENDING: u32 = 997;
 pub const ERROR_INVALID_PARAMETER: u32 = 87;
 pub const ERROR_FILE_TOO_LARGE: u32 = 223;
 pub const ERROR_MORE_DATA: u32 = 234;
-pub const ERROR_NO_MORE_ITEMS: u32 = 259;
 pub const ERROR_NOT_SUPPORTED: u32 = 50;
 pub const ERROR_INVALID_FUNCTION: u32 = 1;
 pub const ERROR_NOT_SAME_DEVICE: u32 = 17;
@@ -78,18 +73,15 @@ pub const COPY_FILE_ALLOW_DECRYPTED_DESTINATION: u32 = 0x00000008;
 pub const COPY_FILE_NO_BUFFERING: u32 = 0x00001000;
 
 pub const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
-pub const MOVEFILE_COPY_ALLOWED: u32 = 0x2;
 pub const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
 
 pub const PROGRESS_CONTINUE: u32 = 0;
 pub const PROGRESS_CANCEL: u32 = 1;
-pub const CALLBACK_CHUNK_FINISHED: u32 = 0;
 pub const CALLBACK_STREAM_SWITCH: u32 = 1;
 
 pub const GENERIC_READ: u32 = 0x80000000;
 pub const GENERIC_WRITE: u32 = 0x40000000;
 pub const DELETE: u32 = 0x00010000;
-pub const FILE_READ_ATTRIBUTES: u32 = 0x0080;
 pub const FILE_WRITE_ATTRIBUTES: u32 = 0x0100;
 pub const FILE_SHARE_READ: u32 = 1;
 pub const FILE_SHARE_WRITE: u32 = 2;
@@ -101,14 +93,10 @@ pub const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x02000000;
 pub const FILE_FLAG_SEQUENTIAL_SCAN: u32 = 0x08000000;
 pub const FILE_FLAG_NO_BUFFERING: u32 = 0x20000000;
 pub const FILE_FLAG_OVERLAPPED: u32 = 0x40000000;
-pub const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x00200000;
 pub const FILE_FLAG_DELETE_ON_CLOSE: u32 = 0x04000000;
 pub const FILE_ATTRIBUTE_TEMPORARY: u32 = 0x100;
 
-pub const DRIVE_UNKNOWN: u32 = 0;
-pub const DRIVE_NO_ROOT_DIR: u32 = 1;
 pub const DRIVE_REMOVABLE: u32 = 2;
-pub const DRIVE_FIXED: u32 = 3;
 pub const DRIVE_REMOTE: u32 = 4;
 pub const DRIVE_CDROM: u32 = 5;
 pub const DRIVE_RAMDISK: u32 = 6;
@@ -142,10 +130,6 @@ pub const IOCTL_STORAGE_QUERY_PROPERTY: u32 = 0x002D1400;
 /// which physical disk a volume sits on (two volumes on one disk share the heads)
 pub const IOCTL_STORAGE_GET_DEVICE_NUMBER: u32 = 0x002D1080;
 
-pub const MEM_COMMIT: u32 = 0x1000;
-pub const MEM_RESERVE: u32 = 0x2000;
-pub const MEM_RELEASE: u32 = 0x8000;
-pub const PAGE_READWRITE: u32 = 0x04;
 
 /// Keeps the PC from sleeping while the calling thread asks for it (the screen may still turn off).
 pub const ES_CONTINUOUS: u32 = 0x80000000;

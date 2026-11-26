@@ -20,7 +20,6 @@ pub fn get_volume_path_name(path: &WString) -> Option<WString> {
 #[derive(Clone, Debug, Default)]
 pub struct VolumeInformation {
     pub serial: u32,
-    pub max_component: u32,
     pub flags: u32,
     pub file_system: WString,
     pub label: WString,
@@ -45,7 +44,6 @@ pub fn get_volume_information(root: &WString, with_label: bool) -> Option<Volume
     .ok()?;
     Some(VolumeInformation {
         serial,
-        max_component,
         flags,
         file_system: WString::from_nul_terminated(&fs),
         label: if with_label { WString::from_nul_terminated(&label) } else { WString::new() },

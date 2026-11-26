@@ -402,7 +402,6 @@ pub fn create(info: Incoming, owner: Option<Win>, tx: Sender<ConflictAnswer>) ->
     let spec = Spec {
         title: "File already exists - Choppy".into(),
         owner,
-        framed: true,
         taskbar: owner.is_none() && !park,
         topmost: owner.is_none() && !park,
         ..Default::default()

@@ -354,7 +354,6 @@ pub struct ScanResult {
 }
 
 pub struct ConflictInfo {
-    pub file: Arc<FileItem>,
     pub incoming_path: WString,  // short form
     pub existing_path: WString,  // short form
     pub incoming_size: i64,

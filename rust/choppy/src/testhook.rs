@@ -27,7 +27,6 @@ pub fn park() -> bool {
 }
 
 pub struct TestHook {
-    dir: PathBuf,
     timer: usize,
 }
 
@@ -44,12 +43,9 @@ impl TestHook {
         append(&dir.join("out.txt"), &format!("ready {:02}:{:02}:{:02}.{:03}\r\n", now.hour, now.minute, sec, ms));
         let d = dir.clone();
         let timer = win::timer(150, false, Rc::new(move || poll(&d)));
-        TestHook { dir, timer }
+        TestHook { timer }
     }
 
-    pub fn dir(&self) -> &Path {
-        &self.dir
-    }
 }
 
 impl Drop for TestHook {

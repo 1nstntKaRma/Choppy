@@ -43,7 +43,6 @@ pub struct Transfer {
     pub skip: AtomicBool,
     pub verifying: AtomicBool,
     pub verify_done: AtomicI64,   // bytes hashed (source + copy)
-    pub started: Instant,
     pub times_set: AtomicBool,    // creation date already set through the copy's own handle
     pub rename_to: Mutex<Option<WString>>, // plain final name: rename through the copy's handle once every byte is written
     pub renamed: AtomicBool,
@@ -60,7 +59,6 @@ impl Transfer {
             skip: AtomicBool::new(false),
             verifying: AtomicBool::new(false),
             verify_done: AtomicI64::new(0),
-            started: Instant::now(),
             times_set: AtomicBool::new(false),
             rename_to: Mutex::new(None),
             renamed: AtomicBool::new(false),
@@ -114,6 +112,33 @@ impl Gate {
         while !*g {
             g = super::wait(&self.cv, g);
         }
+    }
+}
+
+/// Wakes the workers waiting for work (more of them allowed, the last file taken, a cancel) at once, instead of at
+/// their next look 100 ms later: every copy ended up to ~110 ms late (fix list 6.29).
+struct Wake {
+    generation: Mutex<u64>,
+    cv: Condvar,
+}
+
+impl Wake {
+    fn new() -> Wake {
+        Wake { generation: Mutex::new(0), cv: Condvar::new() }
+    }
+    fn generation(&self) -> u64 {
+        *lock(&self.generation)
+    }
+    /// Waits for a pulse after `since` (taken before looking), at most `d`.
+    fn wait_since(&self, since: u64, d: Duration) {
+        let g = lock(&self.generation);
+        if *g == since {
+            drop(wait_timeout(&self.cv, g, d));
+        }
+    }
+    fn pulse(&self) {
+        *lock(&self.generation) += 1;
+        self.cv.notify_all();
     }
 }
 
@@ -211,6 +236,7 @@ pub struct CopyJob {
     files: OnceLock<Vec<Arc<FileItem>>>,
     next_index: AtomicI32,
     active_workers: AtomicI32,
+    idle_wake: Wake,
     big_in_flight: Mutex<i32>,
     big_cv: Condvar,
     pending_big: AtomicI32,
@@ -228,6 +254,7 @@ pub struct CopyJob {
     flush: Mutex<FlushState>,
     flush_cv: Condvar,
     job_dests: Mutex<Option<HashSet<WString>>>,
+    chpart_dests: OnceLock<HashSet<WString>>, // where this job's own "*.chpart" files land (usually none)
     worker_panic: Mutex<Option<Box<dyn std::any::Any + Send>>>,
 }
 
@@ -330,6 +357,7 @@ impl CopyJob {
             files: OnceLock::new(),
             next_index: AtomicI32::new(0),
             active_workers: AtomicI32::new(0),
+            idle_wake: Wake::new(),
             big_in_flight: Mutex::new(0),
             big_cv: Condvar::new(),
             pending_big: AtomicI32::new(0),
@@ -347,6 +375,7 @@ impl CopyJob {
             flush: Mutex::new(FlushState::default()),
             flush_cv: Condvar::new(),
             job_dests: Mutex::new(None),
+            chpart_dests: OnceLock::new(),
             worker_panic: Mutex::new(None),
             spec,
         }
@@ -448,10 +477,6 @@ impl CopyJob {
     pub fn is_paused(&self) -> bool {
         self.paused.load(SEQ)
     }
-    pub fn is_running(&self) -> bool {
-        self.started.load(SEQ)
-            && matches!(self.phase(), JobPhase::Analyzing | JobPhase::Copying | JobPhase::Waiting | JobPhase::Finishing)
-    }
     pub fn is_finished(&self) -> bool {
         matches!(self.phase(), JobPhase::Done | JobPhase::Canceled | JobPhase::Failed)
     }
@@ -523,6 +548,7 @@ impl CopyJob {
     pub fn cancel(self: &Arc<Self>) {
         self.canceled.store(true, SEQ);
         self.run_gate.set();
+        self.idle_wake.pulse();
         if !self.started.load(SEQ) {
             self.phase.store(phase_index(JobPhase::Canceled), SEQ);
             self.raise_phase();
@@ -675,7 +701,7 @@ impl CopyJob {
             let a = match sys::get_file_attributes_err(src) {
                 Ok(a) => a,
                 Err(e) => {
-                    self.fail_note(src, sys::error_text(e));
+                    self.fail_note(src, &target, sys::error_text(e));
                     continue;
                 }
             };
@@ -686,7 +712,7 @@ impl CopyJob {
                 continue;
             }
             if is_dir && paths::is_same_or_inside(&self.spec.dest, src) {
-                self.fail_note(src, "A folder can't be moved into itself.".into());
+                self.fail_note(src, &target, "A folder can't be moved into itself.".into());
                 continue;
             }
             if self.move_item(src, &target, is_dir, &mut fallback, true) {
@@ -723,14 +749,14 @@ impl CopyJob {
                 if top {
                     fallback.push(src.clone());
                 } else {
-                    self.fail_note(src, "It is on another drive mounted inside this folder - move it on its own.".into());
+                    self.fail_note(src, target, "It is on another drive mounted inside this folder - move it on its own.".into());
                 }
                 return true;
             }
             if e == sys::ERROR_ACCESS_DENIED && dest_refuses(paths::parent(target).as_ref()) && self.hand_over(None) {
                 return false;
             }
-            self.fail_note(src, sys::error_text(e));
+            self.fail_note(src, target, sys::error_text(e));
             return true;
         }
         let target_is_dir = (ta & sys::FILE_ATTRIBUTE_DIRECTORY) != 0;
@@ -772,27 +798,35 @@ impl CopyJob {
             ConflictPolicy::KeepBoth => {
                 let free = free_name(target, is_dir);
                 if let Err(e) = sys::move_file_ex(src, &free, 0) {
-                    self.fail_note(src, sys::error_text(e));
+                    self.fail_note(src, target, sys::error_text(e));
                 }
                 true
             }
             _ => {
                 // Replace
                 if is_dir || target_is_dir {
-                    self.fail_note(src, "A file and a folder have the same name - kept both untouched.".into());
+                    self.fail_note(src, target, "A file and a folder have the same name - kept both untouched.".into());
                     return true;
                 }
                 clear_read_only(target);
                 if let Err(e) = sys::move_file_ex(src, target, sys::MOVEFILE_REPLACE_EXISTING) {
-                    self.fail_note(src, sys::error_text(e));
+                    self.fail_note(src, target, sys::error_text(e));
                 }
                 true
             }
         }
     }
 
-    fn fail_note(&self, src: &WString, why: String) {
-        let fi = FileItem::new(src.clone(), paths::file_name(src), 0);
+    /// An item of a same-drive move that failed. Its place under the destination is kept (`target`): a retry of an item
+    /// from inside a merged folder then lands there, not in the destination's top folder (fix list 6.26).
+    fn fail_note(&self, src: &WString, target: &WString, why: String) {
+        let base = self.spec.dest.trim_end_char('\\');
+        let rel = if target.len() > base.len() + 1 && paths::is_same_or_inside(target, &base) {
+            WString::from_units(target.units()[base.len() + 1..].to_vec())
+        } else {
+            paths::file_name(src)
+        };
+        let fi = FileItem::new(src.clone(), rel, 0);
         fi.set_error(Some(why));
         fi.set_st(FileState::Failed);
         self.failed_files.fetch_add(1, SEQ);
@@ -970,7 +1004,7 @@ impl CopyJob {
         if !self.paused() {
             self.copy_clock.start();
         }
-        self.active_workers.store(workers, SEQ);
+        self.set_active_workers(workers);
         let threads = if can_tune { workers.max(max_workers) } else { workers };
         let mut ws = Vec::new();
         for i in 0..threads.max(1) {
@@ -1028,14 +1062,21 @@ impl CopyJob {
         self.finish_folders();
     }
 
+    /// How many workers take files now; the ones waiting for work look again at once.
+    fn set_active_workers(&self, n: i32) {
+        self.active_workers.store(n, SEQ);
+        self.idle_wake.pulse();
+    }
+
     fn worker_loop(self: &Arc<Self>, idx: i32) {
         let files = self.files();
         while !self.canceled() {
+            let since = self.idle_wake.generation();
             if idx >= self.active_workers.load(SEQ) {
                 if self.next_index.load(SEQ) as usize >= files.len() {
                     return;
                 }
-                sys::sleep_ms(100);
+                self.idle_wake.wait_since(since, Duration::from_millis(100));
                 continue;
             }
             self.wait_to_run();
@@ -1043,6 +1084,9 @@ impl CopyJob {
                 return;
             }
             let i = self.next_index.fetch_add(1, SEQ) as usize;
+            if i + 1 >= files.len() {
+                self.idle_wake.pulse(); // the last file is taken: the waiting workers end now
+            }
             if i >= files.len() {
                 return;
             }
@@ -1163,11 +1207,16 @@ impl CopyJob {
         let mut temp = temp_name(&final_);
         let mut alt = 0;
         if f.temp_exists {
-            if self.spec.resume_mode && !self.is_job_dest(&temp) {
+            // never one that something still writes: an administrator copy of the interrupted run may (fix list 6.24)
+            if self.spec.resume_mode && !self.is_job_dest(&temp) && !sys::file_in_use(&temp) {
                 delete_quiet(&temp);
             } else {
                 temp = free_temp(&final_, &mut alt);
             }
+        } else if self.is_job_chpart(&temp) {
+            // this copy brings a real "<name>.chpart" too ("x" and "x.chpart" in one folder): this file writes under
+            // another temp name, so the two never meet (fix list 6.28)
+            temp = free_temp(&final_, &mut alt);
         }
 
         let mut attempt = 0;
@@ -1228,6 +1277,11 @@ impl CopyJob {
                     // file it takes, a quota): pausing would never help - this file fails, the rest go on
                     let room = self.free_at_dest();
                     if room < 0 || room < f.size() + (64 << 20) {
+                        // nobody to press Resume (the command line, the Benchmark): the file fails (fix list 6.23)
+                        if self.no_one_to_resume() {
+                            self.mark_failed(f, "The destination is full.".into());
+                            return;
+                        }
                         self.set_status(Some("The destination is full - free some space, then press Resume.".into()));
                         self.pause();
                         continue;
@@ -1238,13 +1292,17 @@ impl CopyJob {
                 if is_net_error(err) && attempt < 6 {
                     attempt += 1;
                     if !self.wait_for_network() {
+                        self.network_gone(f, &temp, 0);
                         return;
                     }
+                    // this try's temp goes first: it stayed behind and the next try took another name (fix list 6.20)
+                    delete_quiet(&temp);
                     self.backoff(attempt, Some(f), "The network hiccuped");
                     continue;
                 }
                 if is_busy(err) && attempt < 3 {
                     attempt += 1;
+                    delete_quiet(&temp);
                     self.backoff(attempt, Some(f), "In use by another program");
                     continue;
                 }
@@ -1259,14 +1317,31 @@ impl CopyJob {
 
             // verify before the file gets its real name
             if check {
-                t.verifying.store(true, SEQ);
-                lock(&self.active).push(t.clone());
-                let r = catch_unwind(AssertUnwindSafe(|| self.verify_one(f, &temp, &t)));
-                lock(&self.active).retain(|x| !Arc::ptr_eq(x, &t));
-                t.verifying.store(false, SEQ);
-                let vr = match r {
-                    Ok(v) => v,
-                    Err(e) => resume_unwind(e),
+                let mut vtries = 0;
+                let vr = loop {
+                    t.verifying.store(true, SEQ);
+                    lock(&self.active).push(t.clone());
+                    let r = catch_unwind(AssertUnwindSafe(|| self.verify_one(f, &temp, &t)));
+                    lock(&self.active).retain(|x| !Arc::ptr_eq(x, &t));
+                    t.verifying.store(false, SEQ);
+                    let vr = match r {
+                        Ok(v) => v,
+                        Err(e) => resume_unwind(e),
+                    };
+                    // a program (an antivirus) has the original or the copy open for a moment: checked again - the
+                    // good copy isn't thrown away for it (fix list 6.22)
+                    if let Err(ve) = vr
+                        && is_busy(ve)
+                        && vtries < 3
+                        && !self.canceled()
+                        && !t.skip.load(SEQ)
+                    {
+                        vtries += 1;
+                        t.verify_done.store(0, SEQ);
+                        self.backoff(vtries, Some(f), "In use by another program");
+                        continue;
+                    }
+                    break vr;
                 };
                 let same = match vr {
                     Ok(same) => same,
@@ -1285,6 +1360,7 @@ impl CopyJob {
                         if is_net_error(ve) && attempt < 6 {
                             attempt += 1;
                             if !self.wait_for_network() {
+                                self.network_gone(f, &temp, t.done.load(SEQ));
                                 return;
                             }
                             self.backoff(attempt, None, "");
@@ -1349,6 +1425,7 @@ impl CopyJob {
                 if is_net_error(re) && attempt < 6 {
                     attempt += 1;
                     if !self.wait_for_network() {
+                        self.network_gone(f, &temp, t.done.load(SEQ));
                         return;
                     }
                     self.backoff(attempt, None, "");
@@ -1523,7 +1600,9 @@ impl CopyJob {
             if err == 0 {
                 return (true, 0);
             }
-            if err != big_copy::NOT_SUPPORTED {
+            // ERROR_HANDLE_EOF: the source got shorter while it was read (something saved it meanwhile) - CopyFileEx
+            // copies it as it is now (fix list 6.21)
+            if err != big_copy::NOT_SUPPORTED && err != sys::ERROR_HANDLE_EOF {
                 return (false, err);
             }
             // this file can't go that way (a file system or driver that refuses unbuffered I/O): CopyFileEx copies it
@@ -1865,7 +1944,9 @@ impl CopyJob {
     /// A move's copy is complete: its original goes now (durable = the copy was flushed already) or after the flush.
     fn moved(self: &Arc<Self>, f: &Arc<FileItem>, durable: bool) {
         if durable {
-            self.delete_source(f);
+            // its data went to the disk before it got its name: one more flush puts the rename there too, else a power
+            // cut right after the original's delete could leave the whole copy only as "<name>.chpart" (fix list 6.18)
+            self.flush_then_delete(vec![f.clone()]);
             return;
         }
         let mut st = lock(&self.flush);
@@ -2046,6 +2127,7 @@ impl CopyJob {
             speed_limit_mbps: if limit > 0.0 { limit * 8.0 / 1e6 } else { 0.0 },
             origin: "Administrator".into(),
             engine: self.spec.engine.clone(),
+            resume_mode: self.spec.resume_mode, // fix list 6.24
             sources: sources.clone().unwrap_or_else(|| self.spec.sources.clone()),
             ..Default::default()
         };
@@ -2222,7 +2304,7 @@ impl CopyJob {
             }
         } else if let Some(sources) = sources {
             for s in sources {
-                self.fail_note(s, format!("Access denied. {why}"));
+                self.fail_note(s, &paths::combine(&self.spec.dest, &paths::file_name(s)), format!("Access denied. {why}"));
             }
         }
     }
@@ -2237,7 +2319,6 @@ impl CopyJob {
                 None => p = ConflictPolicy::Skip,
                 Some(ask) => {
                     let info = ConflictInfo {
-                        file: f.clone(),
                         incoming_path: paths::to_short(&f.src),
                         existing_path: paths::to_short(final_),
                         incoming_size: f.size(),
@@ -2279,6 +2360,19 @@ impl CopyJob {
         set.contains(&upper(path))
     }
 
+    /// A file of this job named "<something>.chpart" lands under this name. Only those are kept (usually none): a set
+    /// of every destination would cost a lot of memory on a big copy.
+    fn is_job_chpart(&self, path: &WString) -> bool {
+        let set = self.chpart_dests.get_or_init(|| {
+            self.files()
+                .iter()
+                .filter(|x| x.rel.to_string_lossy().to_ascii_lowercase().ends_with(TEMP_SUFFIX))
+                .map(|x| upper(&paths::combine(&self.spec.dest, &x.rel)))
+                .collect()
+        });
+        !set.is_empty() && set.contains(&upper(path))
+    }
+
     /// The copy reads back the same as the original (xxHash64 of both; the copy past the cache).
     fn same_content(&self, src: &WString, copy: &WString) -> bool {
         let mut go = |_: i64| !self.canceled();
@@ -2297,6 +2391,22 @@ impl CopyJob {
         self.skipped_files.fetch_add(1, SEQ);
         add(&self.skipped_bytes, f.size());
         lock(&self.skipped_items).push(f.clone());
+    }
+
+    /// The network didn't come back (wait_for_network gave up): the file fails - counted, and not left "active" with
+    /// its temp - unless the copy was canceled (fix list 6.19). `undo` = bytes of this try still counted as done.
+    fn network_gone(&self, f: &Arc<FileItem>, temp: &WString, undo: i64) {
+        if self.canceled() {
+            return;
+        }
+        add(&self.done_bytes, -undo);
+        delete_quiet(temp); // still unreachable: it stays, and a resume removes it
+        self.mark_failed(f, "The network didn't come back in 15 minutes.".into());
+    }
+
+    /// Nobody can press Resume on this copy (the command line, the Benchmark): a full destination fails the file.
+    fn no_one_to_resume(&self) -> bool {
+        matches!(self.spec.origin.as_str(), "CLI" | "Benchmark")
     }
 
     fn mark_failed(&self, f: &Arc<FileItem>, why: String) {
@@ -2359,6 +2469,8 @@ impl CopyJob {
         // empty folders exist too, folders get their original dates and attributes
         let dirs = &scan.dirs;
         let mut work: Vec<DirItem> = Vec::new();
+        // folders that couldn't be made: said so, and a move keeps their source folder (fix list 6.25)
+        let mut not_made: HashSet<WString> = HashSet::new();
         for d in dirs {
             if self.canceled() {
                 return;
@@ -2372,7 +2484,12 @@ impl CopyJob {
             }
             let target = paths::combine(&self.spec.dest, &d.rel);
             if !d.dest_existed {
-                self.ensure_dir(&target);
+                let e = self.ensure_dir(&target);
+                if e != 0 {
+                    self.note(format!("Couldn't create the folder {}: {}", paths::to_short(&target), sys::error_text(e)));
+                    not_made.insert(upper(&d.src));
+                    continue;
+                }
                 work.push(d.clone());
             }
         }
@@ -2417,7 +2534,7 @@ impl CopyJob {
             let mut order: Vec<&DirItem> = dirs.iter().collect();
             order.sort_by_key(|d| std::cmp::Reverse(d.depth));
             for d in order {
-                if !d.dest_is_file {
+                if !d.dest_is_file && !not_made.contains(&upper(&d.src)) {
                     sys::remove_directory(&d.src);
                 }
             }
@@ -2634,7 +2751,7 @@ impl CopyJob {
                     return;
                 }
                 p.saved = active;
-                self.active_workers.store(max_workers.min(active * 2), SEQ);
+                self.set_active_workers(max_workers.min(active * 2));
                 p.stage = 2;
                 p.start = t;
                 p.start_value = done_files as f64;
@@ -2656,13 +2773,13 @@ impl CopyJob {
                         // it helped: try one more step up
                         p.base_rate = rate;
                         p.saved = active;
-                        self.active_workers.store(max_workers.min(active * 2), SEQ);
+                        self.set_active_workers(max_workers.min(active * 2));
                         p.start = t;
                         p.start_value = done_files as f64;
                         return;
                     }
                 } else {
-                    self.active_workers.store(p.saved, SEQ);
+                    self.set_active_workers(p.saved);
                 }
                 p.stage = 3;
             }
@@ -2744,7 +2861,7 @@ impl CopyJob {
             if big {
                 self.set_big_slots(1);
             } else {
-                self.active_workers.store(p.saved, SEQ);
+                self.set_active_workers(p.saved);
             }
         }
         p.interrupts += 1;

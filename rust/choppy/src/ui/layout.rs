@@ -192,16 +192,8 @@ impl El {
         self.min_w = v;
         self
     }
-    pub fn min_h(mut self, v: f64) -> El {
-        self.min_h = v;
-        self
-    }
     pub fn max_h(mut self, v: f64) -> El {
         self.max_h = v;
-        self
-    }
-    pub fn max_w(mut self, v: f64) -> El {
-        self.max_w = v;
         self
     }
     pub fn ha(mut self, a: Al) -> El {
@@ -288,21 +280,12 @@ impl El {
         self.col = c;
         self
     }
-    pub fn span(mut self, rows: usize, cols: usize) -> El {
-        self.row_span = rows.max(1);
-        self.col_span = cols.max(1);
-        self
-    }
     pub fn col_span(mut self, c: usize) -> El {
         self.col_span = c.max(1);
         self
     }
     pub fn child(mut self, c: El) -> El {
         self.children.push(c);
-        self
-    }
-    pub fn kids(mut self, cs: impl IntoIterator<Item = El>) -> El {
-        self.children.extend(cs);
         self
     }
     pub fn push(&mut self, c: El) {

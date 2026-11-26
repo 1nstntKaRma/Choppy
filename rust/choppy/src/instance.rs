@@ -61,10 +61,13 @@ pub fn send(name: &str, args: &[WString]) -> bool {
     // we were started by the user's click: let the running Choppy bring its window to the front
     sys::allow_set_foreground_any();
     // relative paths are made absolute here, in the folder the second copy was started in
+    let switch = args.first().is_some_and(|a| a.starts_with("--"));
     let abs: Vec<String> = args
         .iter()
         .enumerate()
-        .map(|(i, a)| if i > 0 && !a.starts_with("-") { paths::make_abs(a) } else { a.clone() })
+        // (only a command's paths: a switch's words stay as they are - "--takeover on" arrived as "--takeover
+        // <folder>\on" and turned it off, fix list 6.30)
+        .map(|(i, a)| if i > 0 && !a.starts_with("-") && !switch { paths::make_abs(a) } else { a.clone() })
         .map(|a| a.to_string_lossy())
         .collect();
     let mut data = abs.join(&SEP.to_string());

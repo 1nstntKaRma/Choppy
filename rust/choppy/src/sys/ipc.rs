@@ -165,7 +165,9 @@ pub fn pipe_client(name: &str, timeout_ms: u32) -> Result<Handle, u32> {
             if !WaitNamedPipeW(&path, timeout_ms.saturating_sub(elapsed)).as_bool() {
                 let e = GetLastError();
                 if e == ERROR_FILE_NOT_FOUND {
-                    // the server isn't created yet: asked again (C#'s loop does this without a pause)
+                    // the server isn't created yet (a Choppy starting up or ending): asked again after a moment -
+                    // C#'s loop asked again at once and kept a core busy for up to 1.5 s (fix list 6.31)
+                    super::sleep_ms(15);
                 } else if e.0 == 0 {
                     break;
                 } else {

@@ -251,13 +251,6 @@ impl PathText {
     }
 }
 
-/// The size PathText asks for: the whole path's width and FormattedText's height.
-pub fn path_text_size(g: &crate::sys::gfx::Gfx, path: &str, size: f64, weight: u16, scale: f64) -> (f64, f64) {
-    let font = Font { fam: crate::sys::gfx::Fam::Ui, size, weight };
-    let t = g.text(&[(path, font, 0)], &TextOpts { ideal: true, ..Default::default() }, scale);
-    (t.w, t.h)
-}
-
 /// G.Drive: a rounded box with a line across, or G.Server for network places; stroke #AEB6C2 1.3. The Path asks
 /// for its geometry's bounds with the pen (17.65 x 13.65 / 15.65 x 17.65).
 pub fn drive_icon(server: bool) -> El {

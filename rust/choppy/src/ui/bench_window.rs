@@ -1524,7 +1524,7 @@ impl Content for BenchContent {
 pub fn create() -> Option<Rc<RefCell<BenchWindow>>> {
     let g = crate::app::gfx();
     let park = crate::testhook::park();
-    let spec = Spec { title: "Choppy Benchmark".into(), framed: true, resizable: true, minimize: true, maximize: true, taskbar: !park, ..Default::default() };
+    let spec = Spec { title: "Choppy Benchmark".into(), resizable: true, minimize: true, maximize: true, taskbar: !park, ..Default::default() };
     let w = Window::create(&g, &spec, Sizing::ContentHeight(860.0), 46.0, BenchContent::new())?;
     {
         let mut m = w.borrow_mut();

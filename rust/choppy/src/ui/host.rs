@@ -15,7 +15,6 @@ use crate::ui::layout::{El, Hit, INF, Lx, layout};
 pub const T_CARET: usize = 1;
 pub const T_TIP: usize = 2;
 pub const T_TIP_HIDE: usize = 3;
-pub const T_FADE: usize = 4;
 /// Window timers of their own start here.
 pub const T_USER: usize = 100;
 
@@ -42,6 +41,8 @@ pub trait Content {
     fn focus_lost(&mut self, _h: &mut Host, _id: u32) {}
     fn timer(&mut self, _h: &mut Host, _id: usize) {}
     fn wheel(&mut self, _h: &mut Host, _delta: i32, _x: f64, _y: f64) {}
+    /// The mouse came onto the window or left it (WPF's IsMouseOver).
+    fn mouse_inside(&mut self, _h: &mut Host, _inside: bool) {}
     /// Alt+F4 / the system menu: true keeps it open.
     fn closing(&mut self, _h: &mut Host) -> bool {
         false
@@ -64,10 +65,6 @@ pub trait Content {
 pub enum Sizing {
     /// Width fixed (DIPs), height = the content's (SizeToContent="Height").
     ContentHeight(f64),
-    /// Both fixed (DIPs).
-    Fixed(f64, f64),
-    /// The user sizes it.
-    User,
     /// The user sizes it (the Benchmark): its width as dragged; its height follows the content (SizeToContent) while
     /// `true`, as dragged when `false`.
     Free(bool),
@@ -80,6 +77,8 @@ pub struct Host {
     pub dpi: u32,
     pub ui: UiState,
     hits: Vec<Hit>,
+    /// The mouse is on the window (between its first move and WM_MOUSELEAVE).
+    mouse_in: bool,
     pub sizing: Sizing,
     /// The caption's height (DIPs; 0 = no title bar) and the resize border (Benchmark: 6).
     pub caption: f64,
@@ -161,6 +160,7 @@ impl Host {
             dpi: 96,
             ui: UiState { caret_on: true, ..Default::default() },
             hits: Vec::new(),
+            mouse_in: false,
             sizing,
             caption,
             resize: 0.0,
@@ -200,11 +200,6 @@ impl Host {
                 self.content_h = h;
                 ((w * s).round() as i32, crate::ui::layout::content_px(h, s) as i32)
             }
-            Sizing::Fixed(w, h) => ((w * s).round() as i32, (h * s).round() as i32),
-            Sizing::User => {
-                let (cw, ch) = self.win.client_size();
-                (cw as i32, ch as i32)
-            }
             Sizing::Free(auto) => {
                 let (cw, ch) = self.win.client_size();
                 if auto {
@@ -226,7 +221,7 @@ impl Host {
         }
         let (pw, ph) = self.measure(c);
         let (cw, ch) = self.win.client_size();
-        if (pw, ph) != (cw as i32, ch as i32) && matches!(self.sizing, Sizing::ContentHeight(_) | Sizing::Fixed(..)) {
+        if (pw, ph) != (cw as i32, ch as i32) && matches!(self.sizing, Sizing::ContentHeight(_)) {
             self.win.resize(pw, ph);
         }
     }
@@ -311,8 +306,6 @@ impl Host {
         let maxed = self.layered.is_none() && self.win.is_maximized();
         let (w, h) = match self.sizing {
             Sizing::ContentHeight(w) => (w, INF),
-            Sizing::Fixed(w, h) => (w, h),
-            Sizing::User => (cw, ch),
             Sizing::Free(auto) => (cw, if auto && !maxed { INF } else { ch }),
         };
         let (w, hh) = crate::ui::layout::layout_auto(&mut root, &lx, w, h);
@@ -438,7 +431,7 @@ impl Host {
                     self.target = None;
                     self.win.set_icons();
                     let (pw, ph) = match self.sizing {
-                        Sizing::User | Sizing::Free(_) => (r.2 - r.0, r.3 - r.1),
+                        Sizing::Free(_) => (r.2 - r.0, r.3 - r.1),
                         _ => self.measure(c),
                     };
                     self.win.set_pos(r.0, r.1, pw, ph);
@@ -467,6 +460,10 @@ impl Host {
                 true
             }
             Ev::MouseMove(x, y) => {
+                if !self.mouse_in {
+                    self.mouse_in = true;
+                    c.mouse_inside(self, true);
+                }
                 let (x, y) = (x / s, y / s);
                 let hot = self.hit_at(x, y).map(|h| h.id).unwrap_or(0);
                 let focus = self.ui.focus;
@@ -491,6 +488,10 @@ impl Host {
                 false
             }
             Ev::MouseLeave => {
+                if self.mouse_in {
+                    self.mouse_in = false;
+                    c.mouse_inside(self, false);
+                }
                 if self.ui.hot != 0 {
                     self.ui.hot = 0;
                     self.invalidate();
@@ -642,7 +643,7 @@ impl Host {
                 c.state(self, st);
                 false
             }
-            Ev::Tray(_) => false,
+            Ev::Tray => false,
         }
     }
 
@@ -720,8 +721,7 @@ impl Host {
         let lx = Lx { g: &self.g, scale: s, round: !self.plain, ideal: self.plain };
         let (w, h) = match self.sizing {
             Sizing::ContentHeight(w) => (w, INF),
-            Sizing::Fixed(w, h) => (w, h),
-            Sizing::User | Sizing::Free(_) => {
+            Sizing::Free(_) => {
                 let (cw, ch) = self.win.client_size();
                 (cw as f64 / s, ch as f64 / s)
             }

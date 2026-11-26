@@ -80,7 +80,8 @@ release.yml, and a new VERSION publishes a public release.
      (build.rs), and changing it would also change Cargo.lock, so the `--locked` build fails until Cargo.lock is
      committed again.
 
-4. **Bump VERSION and add the release notes.**
+4. **Bump VERSION and add the release notes.** *Done on `rust` already (2026-11-26, the user): VERSION is `2.0` and
+   `.github/RELEASE_NOTES.md` is the v2.0 text - check both after the merge and skip to the README part.*
 
    ```
    printf '2.0' > VERSION                    # the chosen number; no newline, like today's file

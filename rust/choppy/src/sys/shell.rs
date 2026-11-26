@@ -165,11 +165,6 @@ fn call(d: &IDispatch, name: &str, flags: DISPATCH_FLAGS, mut args: Vec<VARIANT>
     }
 }
 
-/// GetAncestor(h, GA_ROOT)
-pub fn root_of(h: isize) -> isize {
-    unsafe { GetAncestor(HWND(h as *mut _), GA_ROOT).0 as isize }
-}
-
 /// The shell folders C# took from Environment.GetFolderPath: the desktop, the Start menu's Programs, the roaming
 /// AppData, System32, Program Files (64-bit, as the AnyCPU C#). "" when Windows doesn't say (as .NET).
 pub enum Folder {
@@ -227,6 +222,7 @@ pub fn notify_assoc_changed() {
 }
 
 /// Tests: how many windows Explorer lists, asked both ways (the shell's interfaces; Shell.Application by name).
+#[cfg(test)]
 pub fn shell_window_counts() -> (Option<i32>, Option<i32>) {
     unsafe {
         let a = CoCreateInstance::<_, IShellWindows>(&ShellWindows, None, CLSCTX_SERVER).ok().and_then(|w| w.Count().ok());

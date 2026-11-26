@@ -1,0 +1,4 @@
+# Kept in the repository, left out of the source zip GitHub builds (the README's one-liner downloads it): the
+# port's test tools and their pictures - nothing the build needs.
+rust/tools export-ignore
+rust/look-test/results export-ignore

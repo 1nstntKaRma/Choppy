@@ -74,9 +74,6 @@ impl WString {
         let w: Vec<u16> = s.encode_utf16().collect();
         self.0.ends_with(&w)
     }
-    pub fn starts_with_w(&self, s: &WString) -> bool {
-        self.0.starts_with(&s.0)
-    }
     pub fn contains_char(&self, c: char) -> bool {
         self.0.contains(&unit(c))
     }

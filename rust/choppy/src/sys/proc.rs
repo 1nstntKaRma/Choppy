@@ -242,27 +242,6 @@ pub fn com_init_sta() {
     }
 }
 
-/// A process with this exe name runs (Process.GetProcessesByName: any session of this user's view).
-pub fn process_running(exe: &str) -> bool {
-    use windows::Win32::System::Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS};
-    unsafe {
-        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else { return false };
-        let mut e = PROCESSENTRY32W { dwSize: size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
-        let mut found = false;
-        let mut ok = Process32FirstW(snap, &mut e).is_ok();
-        while ok {
-            let n = e.szExeFile.iter().position(|&c| c == 0).unwrap_or(e.szExeFile.len());
-            if String::from_utf16_lossy(&e.szExeFile[..n]).eq_ignore_ascii_case(exe) {
-                found = true;
-                break;
-            }
-            ok = Process32NextW(snap, &mut e).is_ok();
-        }
-        let _ = CloseHandle(snap);
-        found
-    }
-}
-
 // ================= step 5: the other copier, the revive, a crash =================
 
 /// The ids of the running processes with this exe name (Process.GetProcessesByName, which matches without ".exe").

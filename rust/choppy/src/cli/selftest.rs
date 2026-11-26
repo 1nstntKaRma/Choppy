@@ -162,7 +162,7 @@ pub fn self_test(out_file: Option<&WString>) -> i32 {
     check("ReFS to another drive: the pipeline", Plan::choose(&copy, Some(&refs), Some(&ntfs), None).pipeline);
     check("same ReFS drive, a move: renamed in place", Plan::choose(&mv, Some(&refs), Some(&refs), None).instant_move);
     // only a disk device's number says which disk a volume is on (a cloud drive answers as a file system, "number 0")
-    let dn = |t: i32, n: i32| StorageDeviceNumber { device_type: t, device_number: n, partition_number: 0 };
+    let dn = |t: i32, n: i32| StorageDeviceNumber { device_type: t, device_number: n };
     check(
         "disk number: a disk counts, a file system device doesn't",
         volume_probe::disk_number(dn(FILE_DEVICE_DISK, 2)) == 2

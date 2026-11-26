@@ -147,22 +147,6 @@ pub fn full_path_name(path: &WString) -> Option<WString> {
     }
 }
 
-/// GetLongPathNameW (8.3 short names expanded). Err = the Win32 error.
-pub fn long_path_name(path: &WString) -> Result<WString, u32> {
-    let p = path.to_wide_z();
-    let mut buf = vec![0u16; 260];
-    loop {
-        let n = unsafe { GetLongPathNameW(PCWSTR(p.as_ptr()), Some(&mut buf)) } as usize;
-        if n == 0 {
-            return Err(unsafe { windows::Win32::Foundation::GetLastError() }.0);
-        }
-        if n < buf.len() {
-            return Ok(WString::from_units(buf[..n].to_vec()));
-        }
-        buf.resize(n + 1, 0);
-    }
-}
-
 /// One GetLongPathNameW call into a buffer of `capacity` characters, as .NET's PathHelper makes it: (its result, what
 /// it wrote, GetLastError). `path` ends at its first NUL (.NET puts one in to try a shorter path).
 pub fn long_path_name_with(path: &[u16], capacity: usize) -> (u32, Vec<u16>, u32) {

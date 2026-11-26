@@ -638,6 +638,17 @@ still fits).
 lists of steps 2, 3 and 5; optionally keep the step tools' pictures off main (the source zip the one-liner downloads
 grows from ~0.8 MB to ~4.6 MB, `rust/tools/step4/results` is 2.8 MB of it).
 
+## The planned fixes and 2.0 on the rust branch (2026-11-26)
+
+The user asked for every "For after the switch-over" item now, on `rust`, then VERSION 2.0 there, pushed and installed
+(the merge into main after the user's own test). Fix list 6.17-6.34 (PLAN.md): the Benchmark estimate (6.17), the 11
+engine items of step 2 (6.18-6.28), step 3's idle naps (6.29), step 5's two (6.30, 6.31), step 1's dead code (6.32),
+step 6's zip size (6.33), and a gap the dead-code pass found (6.34: holding the mouse on a finished copy's window).
+Checks: `cargo check` / `--tests` / clippy clean, the self-test, `fixtests.py` (scratch: copy end 197 -> 74 ms, an
+open leftover kept, x + x.chpart, --takeover on), the engine gate against C# 1.48 (rerun; differences only where a
+fix changes the behaviour on purpose). VERSION = 2.0 and `.github/RELEASE_NOTES.md` = the draft (with the fixes) are
+on `rust` now, so the switch-over's step 4 is done; README.md still waits for the merge (`switchover/README-lines.md`).
+
 ## After step 6: the user's try (2026-11-26)
 
 The user installed the step-6 exe and ran a Thorough Benchmark (Faster 39 / Marginal Tie 9 / Never Slower of 48).

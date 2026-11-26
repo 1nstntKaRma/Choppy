@@ -18,7 +18,6 @@ pub struct UsbLink {
     pub bcd_usb: i32,       // the USB version the drive reports right now (0x0210, 0x0320...)
 }
 
-pub const LOW: i32 = 0;
 pub const FULL: i32 = 1;
 pub const HIGH: i32 = 2;
 pub const SUPER: i32 = 3;

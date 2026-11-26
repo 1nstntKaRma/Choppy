@@ -3,7 +3,7 @@
 //! Pill, Seg, QuickDot, Quick, QuickPill, Box, Box.Small; and the text box itself (caret, selection, clipboard,
 //! WholeNumberBox's digits only).
 
-use crate::sys::gfx::{Argb, Canvas, Font, Rect, TextAlign, TextOpts};
+use crate::sys::gfx::{Argb, Canvas, Font, Rect, TextOpts};
 use crate::sys::win::{self, Cursor};
 use crate::ui::layout::*;
 use crate::ui::theme::*;
@@ -99,20 +99,6 @@ pub const BTN_TITLE: BtnStyle = BtnStyle {
     disabled: 1.0,
 };
 pub const BTN_TITLE_CLOSE: BtnStyle = BtnStyle { hover_bg: 0xFFC42B1C, hover_fg: Some(WHITE), pressed_bg: 0xFFA3271B, ..BTN_TITLE };
-/// Btn.Link: flat clickable text, a soft background on hover, no pressed or focus look.
-pub const BTN_LINK: BtnStyle = BtnStyle {
-    bg: 0,
-    border: 0,
-    fg: DIM,
-    hover_bg: 0xFF262B32,
-    hover_border: None,
-    hover_fg: None,
-    pressed_bg: 0,
-    focus_border: None,
-    radius: 5.0,
-    thick: 0.0,
-    disabled: 1.0,
-};
 /// The Benchmark's small buttons beside DRIVES (Mini).
 pub const BTN_MINI: BtnStyle = BtnStyle {
     bg: 0xFF22262C,
@@ -307,7 +293,6 @@ pub struct BoxStyle {
     pub center: bool,
 }
 
-pub const BOX: BoxStyle = BoxStyle { bg: 0xFF1F2329, font: sf(14.0, NORMAL), pad: Th::hv(8.0, 5.0), center: false };
 pub const BOX_SMALL: BoxStyle = BoxStyle { bg: 0xFF15181C, font: sf(14.0, SEMI), pad: Th::hv(2.0, 1.0), center: true };
 
 /// A one-line text box: caret, selection (drag, Shift+arrows, double click, Ctrl+A), Backspace / Delete, Home / End,
@@ -559,15 +544,7 @@ pub fn tooltip_el(t: &str) -> El {
     border(Some(Fill::Solid(0xFF2A2F37)), Some(0xFF3F4650), 1.0, 5.0, Th::hv(9.0, 5.0)).child(text(t, sf(12.5, NORMAL), 0xFFE6E9EE))
 }
 
-/// Text left / center / right helpers.
-pub fn txt(s: impl Into<String>, size: f64, weight: u16, c: Argb) -> El {
-    text(s, sf(size, weight), c)
-}
-
 pub fn run(s: impl Into<String>, size: f64, weight: u16, c: Argb) -> (String, Font, Argb) {
     (s.into(), sf(size, weight), c)
 }
 
-pub fn align_right(e: El) -> El {
-    e.align(TextAlign::Right)
-}

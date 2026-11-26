@@ -3,8 +3,6 @@
 #![windows_subsystem = "windows"]
 #![deny(unsafe_code)]
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
-// the port fills in step by step: some parts are only used by the steps after this one
-#![allow(dead_code)]
 
 mod app;
 mod bench;

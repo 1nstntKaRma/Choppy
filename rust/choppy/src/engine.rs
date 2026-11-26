@@ -69,9 +69,6 @@ impl Stopwatch {
     pub fn restart(&self) {
         *lock(&self.st) = (Some(Instant::now()), Duration::ZERO);
     }
-    pub fn is_running(&self) -> bool {
-        lock(&self.st).0.is_some()
-    }
     pub fn elapsed(&self) -> Duration {
         let g = lock(&self.st);
         g.1 + g.0.map_or(Duration::ZERO, |t| t.elapsed())

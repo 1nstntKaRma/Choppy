@@ -357,6 +357,9 @@ pub mod journal {
         line(format!("policy={}", s.policy.name()));
         line(format!("limit={}", netfmt::g(s.speed_limit_mbps)));
         line(format!("origin={}", s.origin));
+        if s.resume_mode {
+            line("resume=1".into()); // an administrator copy of a resumed job resumes too (fix list 6.24)
+        }
         for src in &s.sources {
             line(format!("src={src}"));
         }
@@ -391,10 +394,11 @@ pub mod journal {
             f.write_all(text.as_bytes())?;
             f.sync_all()?;
         }
-        if path.exists() {
-            fs::remove_file(path)?;
-        }
-        fs::rename(&tmp, path)
+        // into place with the rename itself on the disk (MOVEFILE_WRITE_THROUGH): before, a crash in a copy's first
+        // seconds could lose the record and no resume was offered (fix list 6.27)
+        let (t, p) = (WString::from_os(tmp.as_os_str()), WString::from_os(path.as_os_str()));
+        sys::move_file_ex(&t, &p, sys::MOVEFILE_REPLACE_EXISTING | sys::MOVEFILE_WRITE_THROUGH)
+            .map_err(|e| std::io::Error::from_raw_os_error(e as i32))
     }
 
     /// Reads a job record; None when it holds nothing to do.
@@ -424,6 +428,7 @@ pub mod journal {
                     }
                 }
                 "origin" => s.origin = v.to_string(),
+                "resume" => s.resume_mode = v == "1",
                 "src" => s.sources.push(paths::to_long(&WString::from(v))),
                 "file" | "dir" => {
                     let Some(t) = v.find('\t') else { continue };

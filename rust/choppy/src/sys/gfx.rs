@@ -89,7 +89,6 @@ pub struct Font {
 pub enum TextAlign {
     #[default]
     Left,
-    Center,
     Right,
 }
 
@@ -200,7 +199,6 @@ impl Gfx {
             let _ = t.SetWordWrapping(if wrap { DWRITE_WORD_WRAPPING_WRAP } else { DWRITE_WORD_WRAPPING_NO_WRAP });
             let _ = t.SetTextAlignment(match align {
                 TextAlign::Left => DWRITE_TEXT_ALIGNMENT_LEADING,
-                TextAlign::Center => DWRITE_TEXT_ALIGNMENT_CENTER,
                 TextAlign::Right => DWRITE_TEXT_ALIGNMENT_TRAILING,
             });
             if trim {
@@ -298,8 +296,6 @@ impl Gfx {
                 asc,
                 dw_baseline: if multi { -1.0 } else { dw_base },
                 line_shift: 0.0,
-                lines: count,
-                trimmed: limited && o.trim && m.widthIncludingTrailingWhitespace > max_w as f32,
             }
         }
     }
@@ -598,13 +594,11 @@ pub struct Text {
     pub asc: f64,
     dw_baseline: f64,
     line_shift: f64,
-    pub lines: u32,
-    pub trimmed: bool,
 }
 
 impl Text {
     fn empty(h: f64, asc: f64, runs: Vec<(u32, Argb)>) -> Text {
-        Text { layout: None, runs, w: 0.0, h, asc, dw_baseline: 0.0, line_shift: 0.0, lines: 1, trimmed: false }
+        Text { layout: None, runs, w: 0.0, h, asc, dw_baseline: 0.0, line_shift: 0.0 }
     }
     /// The character position under x (DIPs from the text's start).
     pub fn hit(&self, x: f64) -> u32 {

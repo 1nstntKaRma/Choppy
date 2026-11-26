@@ -55,9 +55,6 @@ impl Memory {
     pub fn commit(len: usize) -> Option<Memory> {
         Block::commit(len).map(Memory)
     }
-    pub fn len(&self) -> usize {
-        self.0.len
-    }
     pub fn bytes(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(self.0.ptr, self.0.len) }
     }
@@ -85,9 +82,6 @@ impl Slot {
     /// Its place in the ring (piece k sits in slot k % slots).
     pub fn index(&self) -> usize {
         self.index
-    }
-    pub fn len(&self) -> usize {
-        self.len
     }
     pub fn bytes(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(self.block.ptr.add(self.off), self.len) }

@@ -36,10 +36,6 @@ pub const SEP: Argb = 0xFF2E343C;
 pub const LINK: Argb = 0xFF6CC4F5;
 pub const WHITE: Argb = 0xFFFFFFFF;
 
-/// B.Progress: #1A7FE6 -> #5AC8FA, left to right.
-pub fn progress() -> Fill {
-    Fill::Linear(vec![(0.0, 0xFF1A7FE6), (1.0, 0xFF5AC8FA)], (0.0, 0.0), (1.0, 0.0))
-}
 /// B.Window: #232931 -> #1B1F25, top to bottom.
 pub fn window_bg() -> Fill {
     Fill::Linear(vec![(0.0, WIN_TOP), (1.0, WIN_BOTTOM)], (0.0, 0.0), (0.0, 1.0))
@@ -59,8 +55,6 @@ pub const NORMAL: u16 = 400;
 pub const SEMI: u16 = 600;
 pub const BOLD: u16 = 700;
 
-/// T.Label: 11 SemiBold, B.Label.
-pub const T_LABEL: Font = sf(11.0, SEMI);
 /// T.Cap: section caps (FROM, TO, SPEED, CURRENT FILE...): 11.5 SemiBold, B.Label.
 pub const T_CAP: Font = sf(11.5, SEMI);
 

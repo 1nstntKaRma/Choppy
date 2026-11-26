@@ -182,3 +182,12 @@ impl Drop for Find {
 pub fn struct_sizes() -> (usize, usize) {
     (size_of::<WIN32_FIND_DATAW>(), size_of::<WIN32_FILE_ATTRIBUTE_DATA>())
 }
+
+/// Another process has this file open right now (it can't be opened with no sharing at all). A file that isn't there
+/// isn't in use; any other refusal counts as in use (never touch what can't be checked).
+pub fn file_in_use(path: &WString) -> bool {
+    match create_file(path, super::GENERIC_READ, 0, super::OPEN_EXISTING, 0) {
+        Ok(_) => false,
+        Err(e) => e != super::ERROR_FILE_NOT_FOUND && e != super::ERROR_PATH_NOT_FOUND,
+    }
+}

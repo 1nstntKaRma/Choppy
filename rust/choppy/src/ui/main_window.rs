@@ -159,7 +159,6 @@ pub struct MainContent {
     queue_popup: Option<Rc<RefCell<QueueWindow>>>,
     pub mouse_over: bool,
     /// The last time the window's height changed (KeepOnScreen after the view switch).
-    keep_on_screen: bool,
     /// drawn once off-screen and closed (App's warm-up): not the app's copy window
     warm_up: bool,
 }
@@ -195,7 +194,6 @@ impl MainContent {
             limit_focused: false,
             queue_popup: None,
             mouse_over: false,
-            keep_on_screen: false,
             warm_up: false,
         };
         if crate::app::elevated() {
@@ -1260,6 +1258,11 @@ impl MainContent {
 }
 
 impl Content for MainContent {
+    /// IsMouseOver: the mouse on the window holds a finished copy's window open (fix list 6.34: it was never set).
+    fn mouse_inside(&mut self, _h: &mut Host, inside: bool) {
+        self.mouse_over = inside;
+    }
+
     fn build(&mut self, ui: &UiState) -> El {
         let ext = self.extended();
         let v = &self.v;
@@ -1692,10 +1695,6 @@ impl MainContent {
         h.win.set_timer(T_TICK, 100);
     }
 
-    pub fn mouse(&mut self, inside: bool) {
-        self.mouse_over = inside;
-    }
-
     pub fn lift(&self, h: &mut Host) {
         h.win.set_topmost(true);
         h.win.set_timer(T_LIFT, 1500);
@@ -1710,9 +1709,6 @@ impl MainContent {
         self.update_close_button();
     }
 
-    pub fn current_job(&self) -> Option<Arc<CopyJob>> {
-        self.job.clone()
-    }
 }
 
 // ================= the queue pop-up =================
@@ -1799,7 +1795,7 @@ impl Content for QueueContent {
 /// Makes the copy window (hidden) for `manager`.
 pub fn create(manager: Arc<JobManager>) -> Option<Rc<RefCell<MainWindow>>> {
     let g = crate::app::gfx();
-    let spec = Spec { title: "Choppy".into(), framed: true, minimize: true, taskbar: !crate::testhook::park(), ..Default::default() };
+    let spec = Spec { title: "Choppy".into(), minimize: true, taskbar: !crate::testhook::park(), ..Default::default() };
     let w = Window::create(&g, &spec, Sizing::ContentHeight(WIDTH), 46.0, MainContent::new(manager))?;
     {
         let mut m = w.borrow_mut();
@@ -1815,7 +1811,7 @@ pub fn create(manager: Arc<JobManager>) -> Option<Rc<RefCell<MainWindow>>> {
 /// finds Direct2D, DirectWrite and the window's fonts ready.
 pub fn warm_up(manager: Arc<JobManager>) {
     let g = crate::app::gfx();
-    let spec = Spec { title: "Choppy".into(), framed: true, minimize: true, taskbar: false, ..Default::default() };
+    let spec = Spec { title: "Choppy".into(), minimize: true, taskbar: false, ..Default::default() };
     let Some(w) = Window::create(&g, &spec, Sizing::ContentHeight(WIDTH), 46.0, MainContent::new(manager)) else { return };
     let Ok(mut m) = w.try_borrow_mut() else { return };
     let Window { host, c } = &mut *m;

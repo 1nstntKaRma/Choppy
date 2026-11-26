@@ -48,13 +48,6 @@ impl BenchDrive {
         BenchDrive { letter: letter.into(), root: root.into(), purge_ok: true, ..Default::default() }
     }
 
-    pub fn name(&self) -> String {
-        match self.label.as_deref() {
-            Some(l) if !l.is_empty() => format!("{} {l}", self.letter),
-            _ => self.letter.clone(),
-        }
-    }
-
     /// A USB drive: how it is connected (None = not USB, or Windows doesn't say).
     pub fn usb(&self) -> Option<&UsbLink> {
         self.vol.as_ref().and_then(|v| v.usb.as_ref())
@@ -444,16 +437,6 @@ impl BenchReport {
             ubr.map(|u| format!(".{u}")).unwrap_or_default()
         ));
         self.admin = crate::sys::is_admin();
-    }
-
-    pub fn machine(&self) -> String {
-        format!(
-            "{} ({} threads), {} GB RAM, {}",
-            self.cpu.clone().unwrap_or_else(|| "CPU unknown".into()),
-            self.threads,
-            inv(self.ram_gb, 1, 0),
-            self.windows.clone().unwrap_or_default()
-        )
     }
 
     // ================= saving =================

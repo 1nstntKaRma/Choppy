@@ -215,7 +215,6 @@ fn open(owner: Option<Win>, mut c: DialogContent, width: f64, topmost_alone: boo
     let spec = Spec {
         title: if c.about.is_some() { "About Choppy".into() } else { "Choppy".into() },
         owner,
-        framed: true,
         taskbar: owner.is_none() && !park,
         topmost: owner.is_none() && topmost_alone && !park,
         ..Default::default()
