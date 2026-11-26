@@ -201,8 +201,10 @@ impl BenchContent {
 
     /// The drives that would be tested and how long it would take, for the chosen mode and runs.
     fn preview(&mut self) {
+        // the Benchmark first: it reads which drives are checked from the list taken out next (fix list 6.17)
+        let b = self.new_bench();
         let Some(mut drives) = self.drives.take() else { return };
-        let est = self.new_bench().preview(&mut drives);
+        let est = b.preview(&mut drives);
         self.usable = drives.iter().filter(|d| d.skip.is_none()).count() as i32;
         self.chosen = drives.iter().filter(|d| d.skip.is_none() && !self.off.contains(&d.letter)).count() as i32;
         self.drives = Some(drives);
