@@ -6,7 +6,7 @@
 
 [![Version](https://img.shields.io/github/v/release/1nstntKaRma/Choppy?label=version&color=blue)](https://github.com/1nstntKaRma/Choppy/releases/latest)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6)
-![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.8%20(built--in)-512BD4)
+![Rust](https://img.shields.io/badge/built%20with-Rust-B7410E)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 **Choppy** copies and moves files and shows everything that matters in one dark window: from where to where, how far along it is, the speed now and on average, the time elapsed and remaining, and the file in flight. It can take over **Ctrl+V** in Explorer, or stay on the right-click menu only.
@@ -29,7 +29,7 @@
 - **Quick:** with Choppy in the tray, its window opens in a fraction of a second after Ctrl+V or a right-click paste.
 - **Checks your drives:** the drive's name on both sides of every copy, and a USB drive held back by its port, cable or hub is flagged beside its name (*⚠ USB 2.0, can do 5 Gbps*).
 - **Built-in Benchmark:** *Settings → Benchmark* runs Choppy VS Windows on every drive and saves a report with both times per route.
-- **Zero dependencies:** one `Choppy.exe` (under 1 MB) on **.NET Framework 4.8**, part of every Windows 10/11. Installs per user - no administrator rights.
+- **Zero dependencies:** one `Choppy.exe` (about 3.7 MB) with everything inside - nothing else to install. Installs per user - no administrator rights.
 
 ---
 
@@ -78,7 +78,7 @@ Non-interactive: `-Shell Apply`, `-Shell RightClick`, `-Shell Revert` or `-Shell
 
 **Off:** Windows is left alone - use right-click **Paste with Choppy** on folders and drives.
 
-Switch it in Settings or from the tray icon.
+Switch it in Settings or from the tray icon. If Choppy in the tray ever closes without being quit, it starts itself again once it is fully closed - a Choppy that is only busy is left alone.
 
 ## Adaptive Engine
 
