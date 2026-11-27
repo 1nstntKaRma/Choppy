@@ -2,12 +2,13 @@
 //! destination folders that already exist to find name conflicts - one listing per folder instead of one check per file.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU8, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
+use std::sync::atomic::{AtomicI32, AtomicI64, AtomicU8, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 
 use super::copy_job::TEMP_SUFFIX;
 use super::model::{DirItem, FileItem, JobSpec, OpKind, ScanResult};
-use super::paths;
+use super::{lock, paths, wait};
 use crate::sys;
 use crate::wstr::{WString, w};
 
@@ -177,49 +178,70 @@ impl Scanner {
             }
             return;
         }
-        let pending = AtomicUsize::new(roots.len());
-        let q = Mutex::new(VecDeque::from(roots));
-        let done = AtomicBool::new(false);
-        std::thread::scope(|sc| {
-            for _ in 0..threads {
-                let (q, pending, done) = (&q, &pending, &done);
-                std::thread::Builder::new()
-                    .name("scan".into())
-                    .spawn_scoped(sc, move || {
-                        let mut spin = 0u32;
-                        while !done.load(Ordering::SeqCst) {
-                            let next = q.lock().unwrap().pop_front();
-                            if let Some(n) = next {
-                                spin = 0;
-                                let subs = if self.canceled() { Vec::new() } else { work(&n) };
-                                for s in subs {
-                                    pending.fetch_add(1, Ordering::SeqCst);
-                                    q.lock().unwrap().push_back(s);
-                                }
-                                if pending.fetch_sub(1, Ordering::SeqCst) == 1 {
-                                    done.store(true, Ordering::SeqCst);
-                                }
-                            } else if pending.load(Ordering::SeqCst) == 0 {
-                                done.store(true, Ordering::SeqCst);
-                            } else if spin >= 10 {
-                                // SpinWait: after 10 spins it yields; here a 1 ms sleep as the C# does then
-                                sys::sleep_ms(1);
-                            } else {
-                                for _ in 0..(4u32 << spin) {
-                                    std::hint::spin_loop();
-                                }
-                                spin += 1;
-                            }
+        // A queue of folders and how many are still listed or waiting. Threads with nothing to do wait on the condvar and
+        // wake the moment a folder is added or the last one is done (C#'s SpinWait slept 1 ms at a time, and Windows'
+        // Sleep(1) lasts a whole 15.6 ms timer tick: every listing with more than one thread ended up to 15.6 ms late,
+        // and new folders waited that long for a thread).
+        struct Pool {
+            q: VecDeque<NodeRef>,
+            pending: usize,
+        }
+        let pool = Mutex::new(Pool { pending: roots.len(), q: VecDeque::from(roots) });
+        let cv = Condvar::new();
+        let panicked: Mutex<Option<Box<dyn std::any::Any + Send>>> = Mutex::new(None);
+        let worker = || {
+            loop {
+                let n = {
+                    let mut g = lock(&pool);
+                    loop {
+                        if g.pending == 0 {
+                            return;
                         }
-                    })
-                    .expect("scan thread");
+                        if let Some(n) = g.q.pop_front() {
+                            break n;
+                        }
+                        g = wait(&cv, g);
+                    }
+                };
+                // a panic in one listing is kept for the job (it fails) and that folder counts as done: the other
+                // threads never wait for it forever
+                let subs = if self.canceled() {
+                    Vec::new()
+                } else {
+                    match catch_unwind(AssertUnwindSafe(|| work(&n))) {
+                        Ok(subs) => subs,
+                        Err(e) => {
+                            lock(&panicked).get_or_insert(e);
+                            Vec::new()
+                        }
+                    }
+                };
+                let mut g = lock(&pool);
+                let added = subs.len();
+                g.q.extend(subs);
+                g.pending = g.pending + added - 1;
+                if g.pending == 0 || added > 1 {
+                    cv.notify_all();
+                } else if added == 1 {
+                    cv.notify_one();
+                }
             }
+        };
+        std::thread::scope(|sc| {
+            // this thread lists too; a thread that can't be made (no memory) just leaves the work to the others
+            for _ in 1..threads {
+                let _ = std::thread::Builder::new().name("scan".into()).spawn_scoped(sc, worker);
+            }
+            worker();
         });
+        if let Some(e) = lock(&panicked).take() {
+            resume_unwind(e);
+        }
     }
 
     fn list_source(&self, n: &NodeRef) -> Vec<NodeRef> {
         let mut subs = Vec::new();
-        let mut node = n.lock().unwrap();
+        let mut node = lock(n);
         let list = match sys::find_first(&paths::combine(&node.dir.src, &w("*"))) {
             Ok(l) => l,
             Err(e) => {
@@ -312,7 +334,7 @@ impl Scanner {
             match t {
                 TopItem::File(f) => Self::mark(f, &root_map),
                 TopItem::Node(n) => {
-                    let mut node = n.lock().unwrap();
+                    let mut node = lock(n);
                     if let Some(e) = root_map.get(&node.dir.rel.to_upper_invariant()) {
                         if e.is_dir {
                             node.dir.dest_existed = true;
@@ -325,14 +347,14 @@ impl Scanner {
             }
         }
         self.run_pool(roots, threads, &|n: &NodeRef| {
-            let mut node = n.lock().unwrap();
+            let mut node = lock(n);
             let map = Self::list_dest(&paths::combine(dest, &node.dir.rel));
             for f in node.files.iter_mut() {
                 Self::mark(f, &map);
             }
             let mut next = Vec::new();
             for s in &node.subs {
-                let mut sn = s.lock().unwrap();
+                let mut sn = lock(s);
                 let nm = paths::file_name(&sn.dir.rel);
                 if let Some(e) = map.get(&nm.to_upper_invariant()) {
                     if e.is_dir {
@@ -365,16 +387,19 @@ fn top_largest(files: &[Arc<FileItem>], n: usize) -> Vec<(WString, i64)> {
     top.iter().map(|f| (f.name(), f.size())).collect()
 }
 
+/// Files of a folder, then its subfolders, depth first - with its own stack, not the thread's: a tree thousands of
+/// folders deep (a path can be 32,767 characters) would overflow the thread's stack and end Choppy.
 fn flatten(n: &NodeRef, res: &mut ScanResult) {
-    let node = std::mem::take(&mut *n.lock().unwrap());
-    if let Some(e) = &node.error {
-        res.problems.push(format!("Couldn't read folder {} - {}", paths::to_short(&node.dir.src), e));
-    }
-    res.dirs.push(node.dir);
-    res.problems.extend(node.notes);
-    res.files.extend(node.files.into_iter().map(Arc::new));
-    for s in &node.subs {
-        flatten(s, res);
+    let mut stack: Vec<NodeRef> = vec![n.clone()];
+    while let Some(n) = stack.pop() {
+        let node = std::mem::take(&mut *lock(&n));
+        if let Some(e) = &node.error {
+            res.problems.push(format!("Couldn't read folder {} - {}", paths::to_short(&node.dir.src), e));
+        }
+        res.dirs.push(node.dir);
+        res.problems.extend(node.notes);
+        res.files.extend(node.files.into_iter().map(Arc::new));
+        stack.extend(node.subs.into_iter().rev());
     }
 }
 

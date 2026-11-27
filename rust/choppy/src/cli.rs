@@ -7,6 +7,7 @@
 mod bench_checks;
 mod bench_cli;
 mod bench_copy;
+mod diag;
 mod job;
 mod plan_dump;
 pub mod selftest;
@@ -29,6 +30,7 @@ pub fn run(args: &[WString]) -> i32 {
             "--benchmark" => bench_cli::bench_cli(args),
             "--shellcopy" if args.len() >= 2 => crate::bench::shell_copy::child(&args[1].to_string_lossy()),
             "--where" => where_::where_(args.get(1)),
+            "--diag" => diag::diag(args),
             _ => {
                 eprintln!("not ported yet: {first}");
                 1

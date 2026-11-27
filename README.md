@@ -1,8 +1,9 @@
+<h1 align="center">Choppy</h1>
+
 <img src="screenshots/icon.png" width="96" align="right" alt="Choppy">
 
-# Choppy
-
-> **📋⚡ Windows 10 / 11 - fast, clear file copier ⚡ everything that matters in one plain, dark window.**
+> ⚡ Windows 10 / 11 - fast, clear file copier<br>
+> ⚡ Everything that matters in one plain, dark window.
 
 [![Version](https://img.shields.io/github/v/release/1nstntKaRma/Choppy?label=version&color=blue)](https://github.com/1nstntKaRma/Choppy/releases/latest)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6)
@@ -25,7 +26,7 @@
 
 - **Adaptive transfer:** Choppy picks how to copy by the drives at both ends. Big files between local drives are read and written at the same time, in large pieces, with the next reads already queued at the disk, so another program using that disk (a torrent client, an indexer) gets in the way less. Many small files go several at once. A move within one drive is a rename.
 - **Everything in one window:** a compact view, or an extended one with a speed graph, the current file, the largest files, quick toggles and the queue. One color per number: blue = speed right now, lavender = average, green = done, peach = total, amber = time elapsed, pink = time remaining.
-- **Careful with your files:** each file is written under a temporary name and gets its real name once complete (and checked, with Verify on). A move deletes the original only after its copy is on the disk. After a cancel, a crash or a power cut, the next start offers **Resume**.
+- **Careful with your files:** a file only counts as copied once it is complete (and checked, with Verify on) - until then it is either under a temporary name or marked as unfinished. A move deletes the original only after its copy is on the disk. After a cancel, a crash or a power cut, the next start offers **Resume**.
 - **Quick:** with Choppy in the tray, its window opens in a fraction of a second after Ctrl+V or a right-click paste.
 - **Checks your drives:** the drive's name on both sides of every copy, and a USB drive held back by its port, cable or hub is flagged beside its name (*⚠ USB 2.0, can do 5 Gbps*).
 - **Built-in Benchmark:** *Settings → Benchmark* runs Choppy VS Windows on every drive and saves a report with both times per route.
@@ -95,9 +96,9 @@ The badge in the window shows the choice: *Adaptive · 1 stream*.
 
 ## Careful With Your Files
 
-- Each file is written as `<name>.chpart` and renamed when complete.
+- Big files are written as `<name>.chpart` and renamed when complete. Small new files go straight to their name, marked as unfinished (and hidden) until their last byte is written, so a copy that gets cut off is still recognized and redone.
 - A move deletes an original only after its copy is flushed to the disk - and with **Verify** (xxHash64) on, only after the copy matches.
-- **Resume:** after a crash or a power cut, the next start offers to finish the copy; files already there are kept.
+- **Resume:** after a crash or a power cut, the next start offers to finish the copy; files already there are kept, and a file the crash left unfinished is copied again.
 - A dropped network is waited for, a file in use is tried again, a full destination pauses the copy. What still fails is listed for **Retry failed**.
 - Dates, attributes and paths longer than 260 characters are kept.
 

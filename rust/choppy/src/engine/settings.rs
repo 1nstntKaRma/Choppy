@@ -106,7 +106,7 @@ impl Values {
 impl Settings {
     /// Settings.Current: loaded on first use.
     pub fn current() -> MutexGuard<'static, Settings> {
-        CURRENT.get_or_init(|| Mutex::new(Settings::load())).lock().unwrap()
+        super::lock(CURRENT.get_or_init(|| Mutex::new(Settings::load())))
     }
 
     /// Settings.Current when no other thread holds it right now (a crash handler can't wait).

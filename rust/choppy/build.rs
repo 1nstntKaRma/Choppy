@@ -27,7 +27,9 @@ fn main() {
     let (major, minor, build) = (parts[0], parts[1], parts[2]);
     let file_version = format!("{major}.{minor}.{build}.0");
     let product_version = format!("{major}.{minor}.{build}");
-    println!("cargo:rustc-env=CHOPPY_VERSION={product_version}");
+    // what the windows and the Benchmark report show: VERSION as written, as the release is named ("2.01", not the
+    // stamp's 2.1.0)
+    println!("cargo:rustc-env=CHOPPY_VERSION={}", raw.trim());
 
     let out = PathBuf::from(env::var("OUT_DIR").unwrap());
     let rc = out.join("choppy.rc");

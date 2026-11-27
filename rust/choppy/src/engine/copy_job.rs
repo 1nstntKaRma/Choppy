@@ -34,6 +34,10 @@ use crate::wstr::{WString, w};
 /// A file being written is named "<name>.chpart" until it is complete.
 pub const TEMP_SUFFIX: &str = ".chpart";
 
+/// New files below this size are written straight under their real name, with the unfinished mark until complete
+/// (big_copy::UNFINISHED_ATTRS).
+const DIRECT_MAX: i64 = 1 << 20;
+
 const SEQ: Ordering = Ordering::SeqCst;
 
 /// One file in flight (for the "current file" card, Skip and progress).
@@ -49,10 +53,12 @@ pub struct Transfer {
     pub has_src_hash: AtomicBool, // the pipeline hashed the source as it read it: verify reads only the copy
     pub src_hash: AtomicU64,
     pub durable: AtomicBool,      // the copy was flushed to the disk itself (a move may delete the original at once)
+    pub created: AtomicBool,      // this try made its destination file (so only then may a failed try remove it)
+    pub marked: bool,             // written straight under its real name, born with the unfinished mark
 }
 
 impl Transfer {
-    fn new(file: Arc<FileItem>) -> Transfer {
+    fn new(file: Arc<FileItem>, marked: bool) -> Transfer {
         Transfer {
             file: Mutex::new(file),
             done: AtomicI64::new(0),
@@ -65,6 +71,8 @@ impl Transfer {
             has_src_hash: AtomicBool::new(false),
             src_hash: AtomicU64::new(0),
             durable: AtomicBool::new(false),
+            created: AtomicBool::new(false),
+            marked,
         }
     }
     pub fn file(&self) -> Arc<FileItem> {
@@ -840,8 +848,8 @@ impl CopyJob {
         let canceled = self.canceled.clone();
         let scanner = Arc::new(Scanner::new(move || canceled.load(SEQ)));
         *lock(&self.scanner) = Some(scanner.clone());
-        let src_threads = if self.src_vol().is_some_and(|v| v.is_network()) { 8 } else { 1 };
-        let dst_threads = if self.dst_vol().is_some_and(|v| v.is_network()) { 8 } else { 2 };
+        let src_threads = list_threads(self.src_vol());
+        let dst_threads = list_threads(self.dst_vol()).max(2);
         let scan = if let Some(explicit) = explicit_items {
             let mut scan = ScanResult::default();
             for f in explicit {
@@ -1181,7 +1189,17 @@ impl CopyJob {
                 }
                 return;
             }
-            if !replace {
+            // a file this or another Choppy copy was still writing when it was cut off (it has the unfinished mark): never
+            // a conflict, never "already there" - it goes and the file is copied again (one being written right now stays)
+            let mut leftover = false;
+            if !replace && !f.dest_is_dir && unfinished(&final_, f.size()) && !sys::file_in_use(&final_) {
+                delete_quiet(&final_);
+                leftover = !paths::exists(&final_);
+                if leftover {
+                    self.conflicts_left.fetch_sub(1, SEQ);
+                }
+            }
+            if !replace && !leftover {
                 let choice = self.resolve_conflict(f, &final_);
                 if self.canceled() {
                     return;
@@ -1219,6 +1237,22 @@ impl CopyJob {
             temp = free_temp(&final_, &mut alt);
         }
 
+        // A new small file is written straight under its real name, born with the unfinished mark (big_copy::
+        // UNFINISHED_ATTRS) and losing it with its last byte: the temp name's rename was about a third of a small file's
+        // time (20,000 files on the NVMe, 32 at once: 3.9 s through "<name>.chpart", 3.1 s marked, 2.8 s with no
+        // protection at all), and the mark keeps what the temp name kept - a cut-off copy is known as unfinished, hidden
+        // from Explorer, and redone. Only on NTFS / ReFS drives of this PC (a network share and FAT / exFAT keep their temp
+        // name), never for a file that replaces another (the temp name keeps the old one whole until the new one is),
+        // goes through the pipeline (one rename is nothing to a big file) or has more than its data (extra streams,
+        // extended attributes: Windows' own copy keeps those); one try - anything that goes wrong goes the usual way.
+        let mut direct = !self.spec.always_temp
+            && self.can_mark()
+            && !replace
+            && !f.temp_exists
+            && f.size() < DIRECT_MAX
+            && (f.attr & big_copy::SKIP_ATTRS) == 0
+            && (f.attr & big_copy::UNFINISHED_ATTRS) != big_copy::UNFINISHED_ATTRS
+            && !self.use_pipe(f);
         let mut attempt = 0;
         let mut verify_retried = false;
         loop {
@@ -1232,19 +1266,44 @@ impl CopyJob {
 
             // whether this file is checked: decided once per try (the switch can change while it copies)
             let check = self.verify();
-            let t = Arc::new(Transfer::new(f.clone()));
+            // a checked copy gets its real name only once it matched: never straight
+            let straight = direct && !check;
+            let t = Arc::new(Transfer::new(f.clone(), straight));
             // fast path for a brand-new file without verify: one rename through the copy's own handle instead of open
             // + rename + close afterwards (saves round trips per file on a NAS)
-            if !replace && !check && !self.spec.no_fast_path && !self.fast_path_off.load(SEQ) {
+            if !straight && !replace && !check && !self.spec.no_fast_path && !self.fast_path_off.load(SEQ) {
                 *lock(&t.rename_to) = Some(final_.clone());
             }
             lock(&self.active).push(t.clone());
-            let r = catch_unwind(AssertUnwindSafe(|| self.copy_file(f, &temp, &t)));
+            let target = if straight { &final_ } else { &temp };
+            let r = catch_unwind(AssertUnwindSafe(|| self.copy_file(f, target, &t)));
             lock(&self.active).retain(|x| !Arc::ptr_eq(x, &t));
             let (ok, err) = match r {
                 Ok(v) => v,
                 Err(e) => resume_unwind(e),
             };
+            if straight {
+                if ok {
+                    t.renamed.store(true, SEQ); // under its real name already
+                } else {
+                    add(&self.done_bytes, -t.done.load(SEQ));
+                    // only a file this try made goes: a name taken meanwhile is someone else's
+                    if t.created.load(SEQ) {
+                        delete_quiet(&final_);
+                    }
+                    direct = false;
+                    if err == sys::ERROR_REQUEST_ABORTED {
+                        if self.canceled() {
+                            return;
+                        }
+                        if t.skip.load(SEQ) {
+                            self.mark_skipped(f);
+                            return;
+                        }
+                    }
+                    continue; // again the usual way, with its own handling of what went wrong
+                }
+            }
 
             if !ok {
                 add(&self.done_bytes, -t.done.load(SEQ));
@@ -1566,16 +1625,19 @@ impl CopyJob {
         let end = (at + room).min(mem.len());
         let data = &mut mem[at..end];
         let rename_to = lock(&t.rename_to).clone();
-        let (err, renamed, times_set) =
-            big_copy::write_small(temp, data, size, align, f.ctime, f.mtime, f.attr, rename_to.as_ref(), cached);
-        if err == big_copy::NOT_SUPPORTED {
+        let w = big_copy::write_small(temp, data, size, align, f.ctime, f.mtime, f.attr, rename_to.as_ref(), cached, self.dest_local(), t.marked);
+        if w.err == big_copy::NOT_SUPPORTED {
+            if w.created {
+                delete_quiet(temp); // CopyFileEx makes it anew (and only then is it this try's file again)
+            }
             return None;
         }
-        if err != 0 {
-            return Some(err);
+        t.created.store(w.created, SEQ);
+        if w.err != 0 {
+            return Some(w.err);
         }
-        t.renamed.store(renamed, SEQ);
-        t.times_set.store(times_set, SEQ);
+        t.renamed.store(w.renamed, SEQ);
+        t.times_set.store(w.times_set, SEQ);
         if self.verify() {
             let mut x = XxHash64::new();
             x.update(&data[..size as usize]);
@@ -1595,6 +1657,10 @@ impl CopyJob {
         if let Some(err) = self.copy_from_batch(f, temp, t) {
             return (err == 0, err);
         }
+        if t.marked {
+            let err = self.copy_marked(f, temp, t);
+            return (err == 0, err);
+        }
         if self.use_pipe(f) {
             let err = self.copy_big(f, temp, t);
             if err == 0 {
@@ -1611,6 +1677,65 @@ impl CopyJob {
             delete_quiet(temp);
         }
         self.copy_one(f, temp, t)
+    }
+
+    /// A small file straight under its real name: read whole, then made with the unfinished mark, written and given
+    /// its dates and attributes (big_copy::write_small). 0 = copied; any error (NOT_SUPPORTED: it has more than its data)
+    /// sends it the usual way.
+    fn copy_marked(self: &Arc<Self>, f: &Arc<FileItem>, dst: &WString, t: &Transfer) -> u32 {
+        thread_local! {
+            static BUF: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+        }
+        let share = sys::FILE_SHARE_READ | sys::FILE_SHARE_DELETE;
+        let hs = match sys::create_file(&f.src, sys::GENERIC_READ, share, sys::OPEN_EXISTING, sys::FILE_FLAG_SEQUENTIAL_SCAN) {
+            Ok(h) => h,
+            Err(e) => return e,
+        };
+        let size = match sys::file_size(&hs) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        if size >= DIRECT_MAX || !sys::data_only(&hs) {
+            return big_copy::NOT_SUPPORTED;
+        }
+        if self.canceled() || t.skip.load(SEQ) {
+            return sys::ERROR_REQUEST_ABORTED;
+        }
+        BUF.with(|b| {
+            let mut buf = b.borrow_mut();
+            if buf.len() < size as usize {
+                buf.resize(size as usize, 0);
+            }
+            let mut got = 0usize;
+            while got < size as usize {
+                match sys::read(&hs, &mut buf[got..size as usize]) {
+                    Ok(0) => break,
+                    Ok(n) => got += n as usize,
+                    Err(e) => return e,
+                }
+            }
+            if got as i64 != size {
+                return big_copy::NOT_SUPPORTED; // it changed meanwhile: the usual way copies it as it is then
+            }
+            drop(hs);
+            // the attributes Windows' own copy gave such a file before: read-only, hidden and system kept, archive added,
+            // not-indexed left to the destination folder
+            let attr = (f.attr & !sys::FILE_ATTRIBUTE_NOT_CONTENT_INDEXED) | sys::FILE_ATTRIBUTE_ARCHIVE;
+            let w = big_copy::write_small(dst, &mut buf[..], size, 1, f.ctime, f.mtime, attr, None, true, true, true);
+            t.created.store(w.created, SEQ);
+            if w.err != 0 {
+                return w.err;
+            }
+            t.times_set.store(w.times_set, SEQ);
+            if size != f.size() {
+                add(&self.total_bytes, size - f.size());
+                f.set_size(size);
+            }
+            t.done.store(size, SEQ);
+            add(&self.done_bytes, size);
+            self.throttle(size);
+            0
+        })
     }
 
     fn use_pipe(&self, f: &FileItem) -> bool {
@@ -1791,6 +1916,22 @@ impl CopyJob {
         }
     }
 
+    /// The destination is a drive of this PC (not a network share).
+    fn dest_local(&self) -> bool {
+        self.dst_vol().is_some_and(|v| !v.is_network())
+    }
+
+    /// The destination can hold the unfinished mark: an NTFS or ReFS drive of this PC.
+    fn can_mark(&self) -> bool {
+        self.dest_local()
+            && self.dst_vol().and_then(|v| v.file_system.as_deref()).is_some_and(|fs| fs.eq_ignore_ascii_case("NTFS") || fs.eq_ignore_ascii_case("ReFS"))
+    }
+
+    /// A copy's real name through its own handle (the fast path): on a local drive the plain-name rename in its folder.
+    fn rename_open(&self, h: &sys::Handle, temp: &WString, to: &WString) -> bool {
+        if self.dest_local() { sys::rename_local(h, temp, to) } else { sys::rename_by_handle(h, to) }
+    }
+
     /// Free bytes at the destination for this user (quotas count); -1 = couldn't tell.
     fn free_at_dest(&self) -> i64 {
         let dir = paths::to_short(&self.spec.dest).trim_end_char('\\') + "\\";
@@ -1824,6 +1965,7 @@ impl CopyJob {
                 }
             }
             if let Some(hd) = p.dest {
+                t.created.store(true, SEQ);
                 // original creation date, set on the copy's own open handle (no extra round trip later)
                 if !t.times_set.load(SEQ)
                     && p.reason == sys::CALLBACK_STREAM_SWITCH
@@ -1838,7 +1980,7 @@ impl CopyJob {
                     && !t.renamed.load(SEQ)
                     && p.transferred >= p.total
                 {
-                    if sys::rename_by_handle(hd, to) {
+                    if self.rename_open(hd, temp, to) {
                         t.renamed.store(true, SEQ);
                     } else {
                         *rt = None;
@@ -2128,6 +2270,7 @@ impl CopyJob {
             origin: "Administrator".into(),
             engine: self.spec.engine.clone(),
             resume_mode: self.spec.resume_mode, // fix list 6.24
+            always_temp: self.spec.always_temp,
             sources: sources.clone().unwrap_or_else(|| self.spec.sources.clone()),
             ..Default::default()
         };
@@ -2167,7 +2310,7 @@ impl CopyJob {
         self.raise_phase();
         let base_done = self.done_bytes.load(SEQ);
         let base_files = self.done_files.load(SEQ);
-        let mirror = Arc::new(Transfer::new(Arc::new(FileItem::default())));
+        let mirror = Arc::new(Transfer::new(Arc::new(FileItem::default()), false));
         let mut mirrored = false;
         let (mut seq, mut owner_pid) = (0, 0);
         let (mut sent_pause, mut sent_cancel) = (false, false);
@@ -2493,7 +2636,7 @@ impl CopyJob {
                 work.push(d.clone());
             }
         }
-        let threads = if self.dst_vol().is_some_and(|v| v.is_network()) { 8 } else { 1 };
+        let threads = list_threads(self.dst_vol()) as usize;
         let work = Arc::new(work);
         let next = Arc::new(AtomicI64::new(-1));
         let run = {
@@ -2724,8 +2867,13 @@ impl CopyJob {
             return;
         }
         let pend = self.pending_small.load(SEQ);
-        let max_workers = self.plan_get(|x| x.max_workers);
+        let (max_workers, network) = self.plan_get(|x| (x.max_workers, x.network));
         let active = self.active_workers.load(SEQ);
+        // a network share's rate swings: 2 s to settle, 5 s stretches. A drive of this PC does thousands of small files
+        // a second, steady enough in 2 s stretches - else the try came only after 12 s, past most copies' end. A drive
+        // in a USB case keeps the long way: it stalls with much in flight, so more is tried only on a long copy
+        let usb = self.src_vol().is_some_and(|v| v.on_usb) || self.dst_vol().is_some_and(|v| v.on_usb);
+        let (settle, stretch) = if network || usb { (2.0, 5.0) } else { (1.0, 2.0) };
         match p.stage {
             0 => {
                 if pend < 150 || active >= max_workers {
@@ -2735,14 +2883,14 @@ impl CopyJob {
                     p.start = t;
                     return;
                 }
-                if t - p.start >= 2.0 {
+                if t - p.start >= settle {
                     p.stage = 1;
                     p.start = t;
                     p.start_value = done_files as f64;
                 }
             }
             1 => {
-                if t - p.start < 5.0 {
+                if t - p.start < stretch {
                     return;
                 }
                 p.base_rate = (done_files as f64 - p.start_value) / (t - p.start);
@@ -2757,7 +2905,7 @@ impl CopyJob {
                 p.start_value = done_files as f64;
             }
             2 => {
-                if t - p.start < 5.0 {
+                if t - p.start < stretch {
                     return;
                 }
                 let rate = (done_files as f64 - p.start_value) / (t - p.start);
@@ -2950,6 +3098,22 @@ struct Probe {
     interrupts: i32,
 }
 
+/// Threads that list a folder tree at once (the analysis, the destination check) or give its folders their dates: a
+/// network share hides its round trips with many; a drive of this PC answers from memory or its own queue, so an SSD
+/// takes many too (C:\Program Files on the NVMe, 161,595 files in 22,000 folders: 1.3 s with 1 thread, 0.27 s with 8;
+/// 6 s with 1 the first time) and a hard disk a few (24,207 files: 466 ms -> 223 ms with 4, 177 -> 66 ms from
+/// memory). A USB stick, a disc or a drive that didn't say what it is: one, as before.
+fn list_threads(v: Option<&VolumeInfo>) -> i32 {
+    match v {
+        Some(v) if v.is_network() => 8,
+        Some(v) if matches!(v.kind, DeviceKind::Ssd | DeviceKind::Ram) => {
+            if v.on_usb { 4 } else { 8 }
+        }
+        Some(v) if v.kind == DeviceKind::Hdd => 4,
+        _ => 1,
+    }
+}
+
 /// A copy of a job record's file (scan data only).
 fn copy_item(f: &FileItem) -> FileItem {
     FileItem {
@@ -3116,6 +3280,13 @@ fn cache_budget() -> i64 {
     let Some((phys, _)) = sys::memory_status() else { return 0 };
     let b = (phys / 4) as i64;
     if b < (64 << 20) { 0 } else { (2i64 << 30).min(b) }
+}
+
+/// The file has the unfinished mark and is no bigger than its original: Choppy's own, cut off (read from the file
+/// itself: a folder listing can show older attributes).
+fn unfinished(path: &WString, size: i64) -> bool {
+    let m = big_copy::UNFINISHED_ATTRS;
+    sys::get_file_attributes_ex(path).is_ok_and(|d| (d.attributes & m) == m && d.size() <= size)
 }
 
 fn delete_quiet(path: &WString) {

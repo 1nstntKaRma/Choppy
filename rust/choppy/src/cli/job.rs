@@ -42,6 +42,7 @@ pub fn engine_option(args: &[WString], i: &mut usize, spec: &mut JobSpec) -> boo
     match args[*i].to_string_lossy().as_str() {
         "--workers" => spec.force_workers = int(&arg(args, i)),
         "--no-fast" => spec.no_fast_path = true,
+        "--always-temp" => spec.always_temp = true,
         "--engine" => {
             let e = arg(args, i);
             spec.engine = if e == "auto" { None } else { Some(e) };

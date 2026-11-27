@@ -11,7 +11,8 @@ use windows::Win32::Foundation::{FILETIME, HANDLE};
 use windows::Win32::Storage::FileSystem::{
     COPYFILE_FLAGS, COPYPROGRESSROUTINE_PROGRESS, CopyFileExW, CreateDirectoryW, DeleteFileW, FILE_ATTRIBUTE_NORMAL,
     FILE_BEGIN, FILE_FLAGS_AND_ATTRIBUTES, FILE_INFO_BY_HANDLE_CLASS, FindClose, FindFirstStreamW, FindNextStreamW,
-    FindStreamInfoStandard, FlushFileBuffers, GetDiskFreeSpaceExW, GetFileSizeEx, LPPROGRESS_ROUTINE_CALLBACK_REASON,
+    FileStreamInfo, FindStreamInfoStandard, FlushFileBuffers, GetDiskFreeSpaceExW, GetFileInformationByHandleEx,
+    GetFileSizeEx, LPPROGRESS_ROUTINE_CALLBACK_REASON,
     MOVE_FILE_FLAGS, MoveFileExW, MoveFileW, REPLACEFILE_WRITE_THROUGH, ReadFile, RemoveDirectoryW, ReplaceFileW,
     SetFileAttributesW, SetFileInformationByHandle, SetFilePointerEx, SetFileTime, WIN32_FIND_STREAM_DATA, WriteFile,
 };
@@ -296,3 +297,77 @@ pub fn first_lcn(h: &Handle) -> Option<i64> {
 
 /// FILE_ATTRIBUTE_NORMAL as the flags of CreateFileW take it.
 pub const ATTRIBUTE_NORMAL: u32 = FILE_ATTRIBUTE_NORMAL.0;
+
+#[link(name = "ntdll")]
+unsafe extern "system" {
+    fn NtSetInformationFile(h: HANDLE, iosb: *mut [usize; 2], info: *const c_void, len: u32, class: i32) -> i32;
+    fn NtQueryInformationFile(h: HANDLE, iosb: *mut [usize; 2], info: *mut c_void, len: u32, class: i32) -> i32;
+}
+
+/// The open file has nothing but its data: no extended attributes (FileEaInformation - WSL keeps Linux permissions
+/// there) and no extra data streams (FileStreamInfo - ":Zone.Identifier", the mark of a download). Windows' own copy
+/// keeps both; a file that has either (or that can't be asked) goes that way. True = data only.
+pub fn data_only(h: &Handle) -> bool {
+    let mut iosb = [0usize; 2];
+    let mut ea = 0u32;
+    if unsafe { NtQueryInformationFile(h.0, &mut iosb, &mut ea as *mut u32 as *mut c_void, 4, 7) } < 0 || ea != 0 {
+        return false;
+    }
+    // FILE_STREAM_INFO entries: { NextEntryOffset u32, StreamNameLength u32, StreamSize i64, StreamAllocationSize i64,
+    // StreamName } - only "::$DATA" (one entry, no next) is a file of data only; ERROR_HANDLE_EOF = no streams at all
+    let mut buf = [0u64; 64];
+    match unsafe { GetFileInformationByHandleEx(h.0, FileStreamInfo, buf.as_mut_ptr() as *mut c_void, 512) } {
+        Ok(()) => {
+            let b: &[u8] = unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, 512) };
+            let next = u32::from_le_bytes(b[0..4].try_into().unwrap());
+            let len = u32::from_le_bytes(b[4..8].try_into().unwrap()) as usize;
+            let name: Vec<u16> = (0..len / 2).map(|i| u16::from_le_bytes([b[24 + 2 * i], b[25 + 2 * i]])).collect();
+            next == 0 && name == "::$DATA".encode_utf16().collect::<Vec<u16>>()
+        }
+        Err(e) => win32_code(&e) == super::ERROR_HANDLE_EOF,
+    }
+}
+
+/// rename_by_handle for a copy on a local drive, from its temp name to its real name: when both are in one folder, the
+/// plain-name rename (rename_in_folder: Windows doesn't open the folder a second time - 20,000 small files on the NVMe,
+/// 8 at once: 5.5-6.9 s with the full path, 5.0-5.2 s this way, 3.3 s with no rename at all); if that is refused for
+/// any reason but the name being taken, the full-path rename.
+pub fn rename_local(h: &Handle, from: &WString, to: &WString) -> bool {
+    let (f, t) = (from.units(), to.units());
+    let slash = |u: &[u16]| u.iter().rposition(|&c| c == b'\\' as u16);
+    if let (Some(a), Some(b)) = (slash(f), slash(t))
+        && a == b
+        && f[..a] == t[..b]
+    {
+        match rename_in_folder(h, &WString::from_units(t[b + 1..].to_vec())) {
+            Ok(()) => return true,
+            Err(STATUS_OBJECT_NAME_COLLISION) => return false,
+            Err(_) => {}
+        }
+    }
+    rename_by_handle(h, to)
+}
+
+const STATUS_OBJECT_NAME_COLLISION: i32 = 0xC0000035u32 as i32;
+
+/// Renames an open file within its own folder (NtSetInformationFile, FileRenameInformation with a plain name and no
+/// root folder: the file system renames it in place, no second open of the folder). Never replaces an existing file.
+/// Err = the NTSTATUS.
+pub fn rename_in_folder(h: &Handle, new_name: &WString) -> Result<(), i32> {
+    let name = new_name.units();
+    if name.is_empty() || name.contains(&(b'\\' as u16)) || name.contains(&(b'/' as u16)) {
+        return Err(-1);
+    }
+    let (off_len, off_name) = (16usize, 20usize);
+    let name_bytes = name.len() * 2;
+    let size = off_name + name_bytes + 2;
+    let mut buf = vec![0u64; size.div_ceil(8)];
+    let bytes: &mut [u8] = unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut u8, buf.len() * 8) };
+    bytes[off_len..off_len + 4].copy_from_slice(&(name_bytes as u32).to_le_bytes());
+    for (i, c) in name.iter().enumerate() {
+        bytes[off_name + 2 * i..off_name + 2 * i + 2].copy_from_slice(&c.to_le_bytes());
+    }
+    let mut iosb = [0usize; 2];
+    let st = unsafe { NtSetInformationFile(h.0, &mut iosb, buf.as_ptr() as *const c_void, size as u32, 10) };
+    if st >= 0 { Ok(()) } else { Err(st) }
+}

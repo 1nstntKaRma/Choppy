@@ -620,6 +620,13 @@ pub struct BigResult {
 /// BigCopy.NotSupported (C#'s -1): this file can't go through the pipeline - CopyFileEx takes it.
 pub const NOT_SUPPORTED: u32 = u32::MAX;
 
+/// The unfinished mark: a file written straight under its real name is made with these attributes (attributes CreateFile
+/// takes with the creation - not-indexed isn't one of them) and loses them, with its own dates and attributes, in one
+/// call once its last byte is written. No copy keeps TEMPORARY (KEEP_ATTRS), and hardly any file is hidden, system and
+/// temporary at once; one that is, and no bigger than the original, is Choppy's own, cut off by a crash or a pulled
+/// drive (hidden from Explorer meanwhile), and goes when its copy is redone.
+pub const UNFINISHED_ATTRS: u32 = sys::FILE_ATTRIBUTE_HIDDEN | sys::FILE_ATTRIBUTE_SYSTEM | sys::FILE_ATTRIBUTE_TEMPORARY;
+
 const KEEP_ATTRS: u32 = sys::FILE_ATTRIBUTE_READONLY
     | sys::FILE_ATTRIBUTE_HIDDEN
     | sys::FILE_ATTRIBUTE_SYSTEM
@@ -886,9 +893,10 @@ pub fn open_small(src: &WString) -> Option<(Handle, i64, i64)> {
     )
     .ok()?;
     let size = sys::file_size(&h).ok()?;
-    let streams = named_streams(src)?;
-    if !streams.is_empty() {
-        return None; // extra streams: the usual way keeps them
+    // extra streams or extended attributes (WSL's Linux permissions): the usual way keeps them (before, only the streams
+    // were looked at, by path - a WSL file lost its attributes here)
+    if !sys::data_only(&h) {
+        return None;
     }
     let lcn = sys::first_lcn(&h).unwrap_or(i64::MAX);
     Some((h, size, lcn))
@@ -915,8 +923,17 @@ pub fn read_small(h: &Handle, buf: &mut [u8], size: i64, align: i32) -> bool {
     done as i64 == size
 }
 
+/// What write_small did: 0 or the error, renamed through its handle, dates set, the file made (by this call).
+pub struct SmallWrite {
+    pub err: u32,
+    pub renamed: bool,
+    pub times_set: bool,
+    pub created: bool,
+}
+
 /// Writes a file from memory to a new name in one go, past the cache, with its dates and attributes; renamed through
-/// its own handle to rename_to when given. Returns (0 or the error, renamed, times set). buf must have room for the
+/// its own handle to rename_to when given (local: a drive of this PC, sys::rename_local); marked: straight under its
+/// real name, with the unfinished mark until its dates are set. Returns (0 or the error, renamed, times set). buf must have room for the
 /// sector padding.
 #[allow(clippy::too_many_arguments)]
 pub fn write_small(
@@ -929,16 +946,22 @@ pub fn write_small(
     attrs: u32,
     rename_to: Option<&WString>,
     cached: bool,
-) -> (u32, bool, bool) {
+    local: bool,
+    marked: bool,
+) -> SmallWrite {
+    let fail = |err: u32, created: bool| SmallWrite { err, renamed: false, times_set: false, created };
+    // written straight under its real name: born with the unfinished mark (UNFINISHED_ATTRS, given with the file's
+    // creation, so no moment exists without it); the dates and attributes below take it away, all in one call
+    let born = if marked { UNFINISHED_ATTRS } else { sys::ATTRIBUTE_NORMAL };
     let hd = match sys::create_file(
         dst,
         sys::GENERIC_READ | sys::GENERIC_WRITE | sys::DELETE,
         sys::FILE_SHARE_READ,
         sys::CREATE_NEW,
-        (if cached { 0 } else { sys::FILE_FLAG_NO_BUFFERING }) | sys::ATTRIBUTE_NORMAL,
+        (if cached { 0 } else { sys::FILE_FLAG_NO_BUFFERING }) | born,
     ) {
         Ok(h) => h,
-        Err(e) => return (unsupported(e), false, false),
+        Err(e) => return fail(unsupported(e), false),
     };
     // through the cache: the exact size; Windows writes it out in its own time, many files in one sweep
     let padded = if cached { size } else { (size + align as i64 - 1) / align as i64 * align as i64 } as usize;
@@ -946,18 +969,24 @@ pub fn write_small(
     if padded > 0
         && let Err(e) = sys::write(&hd, &buf[..padded])
     {
-        return (unsupported(e), false, false);
+        return fail(unsupported(e), true);
     }
     if !cached && let Err(e) = sys::set_end_of_file(&hd, size) {
-        return (e, false, false); // only the padded unbuffered write needs trimming
+        return fail(e, true); // only the padded unbuffered write needs trimming
     }
     let mut a = attrs & KEEP_ATTRS;
+    if marked {
+        a |= sys::FILE_ATTRIBUTE_ARCHIVE; // the rename to its real name used to give it this (NTFS sets it on a rename)
+    }
     if a == 0 {
         a = sys::FILE_ATTRIBUTE_NORMAL;
     }
     let times_set = sys::set_basic_info(&hd, ctime, mtime, a);
-    let renamed = rename_to.is_some_and(|to| sys::rename_by_handle(&hd, to));
-    (0, renamed, times_set)
+    if marked && !times_set {
+        return fail(NOT_SUPPORTED, true); // the mark couldn't be taken away: this file goes the usual way
+    }
+    let renamed = rename_to.is_some_and(|to| if local { sys::rename_local(&hd, dst, to) } else { sys::rename_by_handle(&hd, to) });
+    SmallWrite { err: 0, renamed, times_set, created: true }
 }
 
 /// The way in or out refuses unbuffered I/O (some file systems and drivers): CopyFileEx takes this file.

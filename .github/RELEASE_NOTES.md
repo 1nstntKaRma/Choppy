@@ -1,27 +1,24 @@
-## Choppy v2.0
+## Choppy v2.01
 
-📋⚡ Windows 10 / 11 - fast, clear file copier ⚡ everything that matters in one plain, dark window.
+⚡ Windows 10 / 11 - fast, clear file copier ⚡ Everything that matters in one plain, dark window.
 
-### What's in v2.0
-- **Rebuilt in Rust:** Choppy is now one native exe with everything it needs inside - no .NET. The copy engine, every window, the Benchmark, the tray and Explorer's Ctrl+V and right-click paste work as in 1.48, and the windows look the same.
-- **Opens quicker:** on the test PC the copy window came up in about **0.02 s** after a paste with Choppy in the tray (1.48: about 0.12 s), and in about **0.2 s** when Choppy wasn't running (1.48: about 1.1 s).
-- **Lighter:** in the tray it used about **38 MB** of memory on the test PC (1.48: about 100 MB).
-- **Same copy speed:** the same way of copying as 1.48. On the test PC the Benchmark put it level with 1.48 route by route.
-- **Starts again by itself:** with *Default file manager* on, if the tray Choppy ever ends without being quit (ended from Task Manager, or an error), it starts again in the tray once it is completely gone - a Choppy that is only busy is never closed. It tries this a few times at most and notes each time in Choppy's folder.
-- **Copies finish a little sooner:** a copy ends as soon as its last file is done, not up to a tenth of a second later.
+### What's in v2.01
+- **Many small files copy about twice as fast:** on the test PC, 20,000 small files from the NVMe to itself took about **3.1 s** instead of 6.4 s; 2,000 small files to a hard disk about 15-20% less time.
+  - More files are in flight at once between SSDs inside the PC.
+  - A new small file goes straight to its own name instead of through `<name>.chpart` and a rename - the rename was about a third of a small file's time.
+- **Just as careful:** a small file written straight to its name is made *marked as unfinished* (and hidden) and loses the mark with its last byte. If a crash or a pulled drive cuts a copy off, **Resume** finds the unfinished files and copies them again on its own - no questions about files Choppy left half-written. A canceled copy removes them at once. Big files, network shares, FAT / exFAT drives, files that replace another and *Check every copy* keep the `.chpart` way, where it costs nothing.
+- **Big folders start sooner:** a folder tree is listed with several threads on SSDs and hard disks. On the test PC a folder with about 160,000 files was ready in about **0.3 s** instead of 1.4 s.
+- **No more short waits:** checking the destination ended up to 15 ms late on every copy into an existing folder; now it ends at once.
+- **Adaptive mode reacts sooner:** on drives inside the PC it tries more files at once after about 3 s instead of 12 s.
+- **Finishing is quicker:** folders get their dates with several threads at once.
 - **Safer in rare cases:**
-  - A moved big file's original goes only once the copy's name is on the disk too, so a power cut right then can't leave the copy only as a `.chpart` file.
-  - When the network doesn't come back within 15 minutes, the file is reported as failed instead of staying active.
-  - A file that another program (an antivirus) holds for a moment is checked again instead of failing the check.
-  - A file that got shorter while it was copied is copied again as it is now.
-  - A resumed copy never removes a `.chpart` file that something is still writing, and an administrator copy of a resumed job resumes too.
-  - A folder that couldn't be created is reported, and a move keeps its original folder.
-  - Retrying a failed move puts each item back into its own folder.
-- **Small fixes:** the Benchmark's time estimate follows the drives checked; holding the mouse on a finished copy's window keeps it open; `Choppy.exe --takeover on` sent to a running Choppy turns it on.
-- **Everything carries over:** your settings, the right-click entry, *Default file manager*, start with Windows and unfinished copies (*Resume*) stay as they are. Nothing to set up again.
-- **The exe is bigger:** about 3.7 MB instead of under 1 MB, since it now carries what .NET used to provide.
+  - A very deep folder tree, or an error while listing folders, can no longer end Choppy or leave a copy waiting forever.
+  - Small files copied to a hard disk keep their Linux permissions from WSL (extended attributes) - before, only their extra data streams were looked at.
+  - A small file that couldn't be written the quick way on a hard disk no longer leaves a `.chpart` file behind.
+- **Small fixes:** Settings, About and the Benchmark report show the version as released (v2.01, not 2.1.0); the README has a new header.
+- **Everything carries over:** your settings and unfinished copies (*Resume*) stay as they are.
 
 ### Install / Update
-1. Download **Choppy-v2.0.zip** and extract all files (or use the PowerShell one-liner from the README).
+1. Download **Choppy-v2.01.zip** and extract all files (or use the PowerShell one-liner from the README).
 2. Double-click **Activate Choppy.cmd** (or run `build.ps1` and choose **[1]**).
 3. Remove at any time with **Revert to Windows Copy.cmd**.

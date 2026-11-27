@@ -50,7 +50,7 @@ fn main() {
     let first = args.first().map(|a| a.to_string_lossy()).unwrap_or_default();
     if matches!(
         first.as_str(),
-        "--cli" | "--selftest" | "--where" | "--usb" | "--benchmark" | "--shellcopy" | "--plan-dump" | "--benchcopy"
+        "--cli" | "--selftest" | "--where" | "--usb" | "--benchmark" | "--shellcopy" | "--plan-dump" | "--benchcopy" | "--diag"
     ) {
         std::process::exit(cli::run(&args));
     }

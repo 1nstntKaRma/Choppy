@@ -280,10 +280,20 @@ impl Plan {
             "Disk"
         }
         .into();
+        // many small files between two SSDs inside the PC: most of each file's time is Windows' own work around it
+        // (making it, the antivirus' look at it), not the drive, so many at once pay - 20,000 files of 1-64 KB, the NVMe
+        // to itself: 8 at once 6.3 s, 16 5.0 s, 32 4.5 s, 64 4.4 s. A drive in a USB case stays at 8 (it stalls with
+        // much more in flight - see one_usb above); tuning may go on to 64.
+        let internal_ssd = |v: Option<&VolumeInfo>| v.is_some_and(|v| matches!(v.kind, DeviceKind::Ssd | DeviceKind::Ram) && !v.on_usb);
         p.workers = if files <= 1 {
             1
         } else if files > 32 && median < (1 << 20) {
-            8
+            if internal_ssd(src) && internal_ssd(dst) {
+                p.max_workers = 64;
+                32
+            } else {
+                8
+            }
         } else {
             4
         };

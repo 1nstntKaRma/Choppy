@@ -132,16 +132,16 @@ pub struct Recorded {
 
 impl Recorded {
     pub fn finish(&self) {
-        *self.done.lock().unwrap() = true;
+        *super::lock(&self.done) = true;
         self.cv.notify_all();
     }
     pub fn is_completed(&self) -> bool {
-        *self.done.lock().unwrap()
+        *super::lock(&self.done)
     }
     /// Waits up to `timeout`; true when it is written.
     pub fn wait(&self, timeout: Duration) -> bool {
-        let g = self.done.lock().unwrap();
-        let (g, _) = self.cv.wait_timeout_while(g, timeout, |d| !*d).unwrap();
+        let g = super::lock(&self.done);
+        let (g, _) = self.cv.wait_timeout_while(g, timeout, |d| !*d).unwrap_or_else(|e| e.into_inner());
         *g
     }
 }
@@ -163,6 +163,7 @@ pub struct JobSpec {
     pub recorded: Option<Arc<Recorded>>, // the job record being written (see Journal.SaveSoon)
     pub force_workers: i32,              // tests: fixed number of files in flight (0 = Adaptive)
     pub no_fast_path: bool,              // tests: always rename with a separate call
+    pub always_temp: bool,               // tests: small files through "<name>.chpart" too (no unfinished mark)
     pub engine: Option<String>,          // tests: None = Adaptive, "copyfile" = CopyFileEx only, "nobuf" = the old unbuffered CopyFileEx
     // tests: pipeline piece size / pieces in flight (0 = Adaptive)
     pub pipe_chunk_mb: i32,
@@ -208,6 +209,7 @@ impl Default for JobSpec {
             recorded: None,
             force_workers: 0,
             no_fast_path: false,
+            always_temp: false,
             engine: None,
             pipe_chunk_mb: 0,
             pipe_slots: 0,
