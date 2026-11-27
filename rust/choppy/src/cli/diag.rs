@@ -4,6 +4,7 @@
 //! `--diag smallcopy <src> <dest> <threads> <way>`   small files copied one per call, that many at once, each way:
 //!   direct = CopyFileEx straight to the name, temp = to "<name>.chpart" + the full-path rename through its handle,
 //!   plain = the same with the plain-name rename in its folder (sys::rename_in_folder), own = read + write + dates
+//! `--diag update`                                   the latest release on GitHub, as the update check sees it
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
@@ -19,6 +20,16 @@ pub fn diag(args: &[WString]) -> i32 {
     let arg = |i: usize| args.get(i).map(|a| a.to_string_lossy()).unwrap_or_default();
     let path = |i: usize| paths::to_long(&paths::fix_arg(&WString::from(arg(i).as_str())));
     match arg(1).as_str() {
+        "update" => {
+            let sw = Instant::now();
+            let r = sys::latest_release_tag(crate::update::REPO);
+            let ms = sw.elapsed().as_secs_f64() * 1000.0;
+            match r {
+                Ok(t) => println!("latest {t} ({ms:.0} ms); this is v{}; newer: {}", env!("CHOPPY_VERSION"), crate::update::newer(&t, env!("CHOPPY_VERSION"))),
+                Err(e) => println!("failed ({ms:.0} ms): {e}"),
+            }
+            0
+        }
         "probe" => {
             for p in &args[2..] {
                 let long = paths::to_long(&paths::fix_arg(p));

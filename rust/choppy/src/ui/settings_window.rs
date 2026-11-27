@@ -1,15 +1,16 @@
 //! SettingsWindow.xaml / .cs: one line per setting (name | what it does / its choices | switch; the choices and
-//! switches line up), the "?" card that sets Mbps and MB/s side by side, Benchmark, Logs folder, About.
+//! switches line up), the "?" card that sets Mbps and MB/s side by side, Check for updates and the update label in
+//! the title row (2.02), Benchmark, Logs folder, About.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::engine::model::ConflictPolicy;
-use crate::engine::settings::{Settings, app_paths};
+use crate::engine::settings::{MAX_UPDATE_DAYS, MAX_UPDATE_SECONDS, Settings, UpdateWhen, app_paths};
 use crate::sys::gfx::{Canvas, Cap, Image, Rect};
 use crate::sys::win::{self, Spec, Win};
 use crate::ui::format;
-use crate::ui::host::{Content, Host, Place, Sizing, Window};
+use crate::ui::host::{Content, Host, Place, Sizing, T_USER, Window};
 use crate::ui::kit::*;
 use crate::ui::layout::*;
 use crate::ui::theme::*;
@@ -34,6 +35,19 @@ const BENCH: u32 = 17;
 const LOGS: u32 = 18;
 const ABOUT: u32 = 19;
 const DONE: u32 = 20;
+const UPD_CHECK: u32 = 21;
+const UPD_START: u32 = 22;
+const UPD_AFTER: u32 = 23;
+const UPD_EVERY: u32 = 24;
+const UPD_AFTER_VALUE: u32 = 25;
+const UPD_EVERY_VALUE: u32 = 26;
+const UPD_LABEL: u32 = 27;
+
+/// The update label's glow: a frame about every 33 ms (WM_TIMER rounds it to the 15.6 ms tick: ~32 a second).
+const T_GLOW: usize = T_USER + 1;
+const GLOW_MS: u32 = 33;
+/// One full glow every 2 s, between 30 % and 100 %.
+const GLOW_PERIOD: f64 = 2.0;
 
 /// The name column (NameCol).
 const NAME_COL: f64 = 200.0;
@@ -54,6 +68,11 @@ pub struct SettingsContent {
     unit: String,
     takeover: bool,
     uc_note: bool,
+    update_check: bool,
+    update_when: UpdateWhen,
+    after_value: TextBox,
+    every_value: TextBox,
+    glowing: bool,
     icon: Option<Image>,
     unit_help: Option<Rc<RefCell<UnitHelpWindow>>>,
 }
@@ -72,6 +91,11 @@ impl SettingsContent {
             unit: "auto".into(),
             takeover: false,
             uc_note: false,
+            update_check: true,
+            update_when: UpdateWhen::Startup,
+            after_value: TextBox::new(4, true),
+            every_value: TextBox::new(3, true),
+            glowing: false,
             icon: None,
             unit_help: None,
         };
@@ -109,6 +133,14 @@ impl SettingsContent {
             _ => "auto".into(),
         };
         self.takeover = s.explorer_takeover;
+        self.update_check = s.update_check;
+        self.update_when = s.update_when;
+        if focused != UPD_AFTER_VALUE {
+            self.after_value.set(&s.update_after_seconds.to_string());
+        }
+        if focused != UPD_EVERY_VALUE {
+            self.every_value.set(&s.update_every_days.to_string());
+        }
         drop(s);
         self.uc_note = crate::explorer::ultracopier_installed();
         self.loading = false;
@@ -148,9 +180,88 @@ impl SettingsContent {
             s.limit_value_mbps = v;
         }
         s.speed_limit_mbps = if self.limit_on { s.limit_value_mbps } else { 0.0 };
+        // Check for updates: whole seconds / days in their range; anything else keeps what was saved
+        let updates = (s.update_check, s.update_when, s.update_after_seconds, s.update_every_days);
+        s.update_check = self.update_check;
+        s.update_when = self.update_when;
+        if let Some(v) = whole(&self.after_value.text, MAX_UPDATE_SECONDS) {
+            s.update_after_seconds = v;
+        }
+        if let Some(v) = whole(&self.every_value.text, MAX_UPDATE_DAYS) {
+            s.update_every_days = v;
+        }
+        let updates_changed = updates != (s.update_check, s.update_when, s.update_after_seconds, s.update_every_days);
         s.save();
         drop(s);
         crate::app::manager().apply_live_settings();
+        if updates_changed {
+            crate::update::settings_changed();
+        }
+    }
+
+    /// The update label in the title row, centered between "Settings" and the close button: "Update to vX" (a click
+    /// updates), "... after the copy", "Updating to vX...", or "Updated to vX" for a moment after an update. Its
+    /// green glow breathes from 30 % to 100 % and back every 2 s while there is something to click.
+    fn update_label(&self, ui: &UiState) -> Option<El> {
+        let (label, active, k, fade) = if let Some(l) = crate::update::label() {
+            let t = crate::started().elapsed().as_secs_f64() % GLOW_PERIOD / GLOW_PERIOD;
+            let k = 0.3 + 0.7 * (0.5 - 0.5 * (2.0 * std::f64::consts::PI * t).cos());
+            (l, crate::update::phase() == crate::update::Phase::Idle, k, 1.0)
+        } else if let Some((tag, age)) = crate::update::just_updated() {
+            // steady, and gone in its last second
+            let left = (crate::update::UPDATED_SHOWN.as_secs_f64() - age.as_secs_f64()).clamp(0.0, 1.0);
+            (format!("Updated to {tag}"), false, 0.55, left)
+        } else {
+            return None;
+        };
+        let hot = active && ui.is_hot(UPD_LABEL);
+        let pressed = active && ui.is_pressed(UPD_LABEL);
+        let bg = if pressed { 0xFF142B20 } else if hot { 0xFF1D4030 } else { 0xFF183426 };
+        let edge = ((0.35 + 0.45 * k) * 255.0) as u32;
+        let bd = if hot { UPDATE } else { edge << 24 | (UPDATE & 0x00FF_FFFF) };
+        let mark = if active || crate::update::phase() != crate::update::Phase::Idle {
+            ellipse(7.0, 7.0, UPDATE).vcenter().m(0.0, 1.0, 8.0, 0.0)
+        } else {
+            text(G_CHECK, icons(11.0), UPDATE).vcenter().m(0.0, 1.0, 7.0, 0.0)
+        };
+        let body = border(Some(Fill::Solid(bg)), Some(bd), 1.0, 13.0, Th::new(12.0, 0.0, 14.0, 0.0))
+            .h(26.0)
+            .child(hstack().vcenter().child(mark).child(text(label, sf(13.0, SEMI), UPDATE_TEXT).vcenter().m(0.0, 0.0, 0.0, 1.0)));
+        let glow = draw((0.0, 0.0), move |cv, r| cv.glow(r, 13.0, 18.0, UPDATE_GLOW, k));
+        let mut el = panel().center().child(glow).child(body).opacity(fade);
+        if active {
+            el = el.id(UPD_LABEL).hand().tip("Downloads it from GitHub and installs it - your settings stay as they are");
+        }
+        Some(el)
+    }
+
+    /// Seg with a number box inside: "[30] seconds after startup", "Every [7] days".
+    fn seg_box(&self, ui: &UiState, id: u32, on: bool, enabled: bool, before: &str, value: (u32, &TextBox), after: &str, tip: &str) -> El {
+        let hot = enabled && ui.is_hot(id);
+        let (bg, mut bd, fg, w) = if on { (ACCENT, 0xFF2A86EE, WHITE, SEMI) } else { (0xFF262B32, 0xFF383E47, TEXT2, NORMAL) };
+        if hot && !on {
+            bd = 0xFF59616C;
+        }
+        let mut row = hstack().vcenter();
+        if !before.is_empty() {
+            row.push(text(before, sf(13.5, w), fg).vcenter().m(4.0, 0.0, 8.0, 0.0));
+        }
+        row.push(value.1.el(ui, value.0, &BOX_SMALL, enabled).size(44.0, 24.0));
+        row.push(text(after, sf(13.5, w), fg).vcenter().m(8.0, 0.0, 0.0, 0.0));
+        border(Some(Fill::Solid(bg)), Some(bd), 1.0, 6.0, Th::new(if before.is_empty() { 4.0 } else { 8.0 }, 3.0, 12.0, 3.0))
+            .child(row)
+            .id(id)
+            .hand()
+            .focusable(true)
+            .tip(tip)
+            .m(0.0, 0.0, 6.0, 6.0)
+    }
+
+    fn update_choice(&mut self, w: UpdateWhen) {
+        if self.update_check {
+            self.update_when = w;
+            self.changed();
+        }
     }
 
     fn takeover_changed(&mut self, h: &mut Host) {
@@ -208,6 +319,20 @@ impl SettingsContent {
                 if (value == "1") != self.unit_help_open() {
                     self.toggle_unit_help(h);
                 }
+            }
+            "updcheck" => {
+                self.update_check = value == "1";
+                self.changed();
+            }
+            "updwhen" => self.update_choice(match value {
+                "after" => UpdateWhen::After,
+                "every" => UpdateWhen::Every,
+                _ => UpdateWhen::Startup,
+            }),
+            "updafter" | "upddays" => {
+                let (id, tb) = if key == "updafter" { (UPD_AFTER_VALUE, &mut self.after_value) } else { (UPD_EVERY_VALUE, &mut self.every_value) };
+                tb.set(value);
+                self.text_changed(h, id);
             }
             "unit" => {
                 self.unit = match value {
@@ -341,6 +466,26 @@ impl Content for SettingsContent {
             ),
             Th::new(0.0, 13.0, 0.0, 13.0),
         ));
+        // check for updates (the administrator copy never looks)
+        if !crate::app::elevated() {
+            let (on, w) = (self.update_check, self.update_when);
+            sp.push(Self::row(
+                vstack()
+                    .child(
+                        toggle(ui, UPD_CHECK, on, Some(head("Check for updates").vcenter()))
+                            .tip("Looks on GitHub for a newer Choppy - it only asks which version is the latest. Updating is always your click: the tray icon's green dot, or the label at the top here."),
+                    )
+                    .child(
+                        wrap()
+                            .m(0.0, 10.0, 0.0, -6.0)
+                            .opacity(if on { 1.0 } else { 0.45 })
+                            .child(seg(ui, UPD_START, w == UpdateWhen::Startup, "At startup", "When Choppy starts (with Windows, when Default file manager is on)"))
+                            .child(self.seg_box(ui, UPD_AFTER, w == UpdateWhen::After, on, "", (UPD_AFTER_VALUE, &self.after_value), "seconds after startup", "Waits this long after Choppy starts (1 to 3600 seconds)"))
+                            .child(self.seg_box(ui, UPD_EVERY, w == UpdateWhen::Every, on, "Every", (UPD_EVERY_VALUE, &self.every_value), "days", "Once in this many days (1 to 365), whenever Choppy runs")),
+                    ),
+                Th::new(0.0, 13.0, 0.0, 13.0),
+            ));
+        }
         // unit
         let help_hot = ui.is_hot(UNIT_HELP);
         let help = border(
@@ -429,7 +574,7 @@ impl Content for SettingsContent {
                 .child(button(ui, DONE, &BTN_PRIMARY, Th::hv(22.0, 0.0), true, |fg| text("Done", sf(14.0, SEMI), fg)).h(38.0).min_w(74.0).col(2)),
         );
 
-        let title = grid(&[], &[])
+        let mut title = grid(&[Len::Auto, Len::Star(1.0), Len::Auto], &[])
             .child(
                 hstack()
                     .vcenter()
@@ -437,7 +582,10 @@ impl Content for SettingsContent {
                     .child(image(self.icon.clone()).size(20.0, 20.0))
                     .child(text("Settings", sf(15.0, SEMI), 0xFFE9ECF0).m(10.0, 0.0, 0.0, 1.0).vcenter()),
             )
-            .child(title_button(ui, CLOSE, true, G_CLOSE, 12.0, 46.0).right());
+            .child(title_button(ui, CLOSE, true, G_CLOSE, 12.0, 46.0).col(2));
+        if let Some(l) = self.update_label(ui) {
+            title.push(l.col(1));
+        }
         let root = grid(&[], &[Len::Px(46.0), Len::Auto]).child(title).child(sp.row(1));
         border(Some(window_bg()), Some(WIN_BORDER), 1.0, 0.0, Th::default()).child(root)
     }
@@ -488,6 +636,14 @@ impl Content for SettingsContent {
                 win::shell_open("explorer.exe", Some(&format!("\"{}\"", d.display())));
             }
             ABOUT => crate::ui::dialogs::about(Some(h.win)),
+            UPD_CHECK => {
+                self.update_check = !self.update_check;
+                self.changed();
+            }
+            UPD_START => self.update_choice(UpdateWhen::Startup),
+            UPD_AFTER => self.update_choice(UpdateWhen::After),
+            UPD_EVERY => self.update_choice(UpdateWhen::Every),
+            UPD_LABEL => crate::update::click(true),
             _ => {}
         }
         h.invalidate();
@@ -505,13 +661,49 @@ impl Content for SettingsContent {
         match id {
             LIMIT_VALUE => Some((&mut self.limit_value, BOX_SMALL)),
             CLOSE_VALUE => Some((&mut self.close_value, BOX_SMALL)),
+            UPD_AFTER_VALUE if self.update_check => Some((&mut self.after_value, BOX_SMALL)),
+            UPD_EVERY_VALUE if self.update_check => Some((&mut self.every_value, BOX_SMALL)),
             _ => None,
         }
     }
 
-    fn text_changed(&mut self, _h: &mut Host, _id: u32) {
-        if !self.loading {
-            self.changed();
+    fn text_changed(&mut self, _h: &mut Host, id: u32) {
+        if self.loading {
+            return;
+        }
+        // typing a number picks its choice
+        match id {
+            UPD_AFTER_VALUE => self.update_when = UpdateWhen::After,
+            UPD_EVERY_VALUE => self.update_when = UpdateWhen::Every,
+            _ => {}
+        }
+        self.changed();
+    }
+
+    fn focus_lost(&mut self, h: &mut Host, id: u32) {
+        // a box left empty or out of range shows what is saved again
+        if matches!(id, UPD_AFTER_VALUE | UPD_EVERY_VALUE) {
+            self.reload_with(0);
+            h.invalidate();
+        }
+    }
+
+    fn timer(&mut self, h: &mut Host, id: usize) {
+        if id == T_GLOW {
+            h.invalidate();
+        }
+    }
+
+    /// The glow's frames run while the update label shows (and only then).
+    fn after_paint(&mut self, h: &Host) {
+        let want = crate::update::label().is_some() || crate::update::just_updated().is_some();
+        if want != self.glowing {
+            self.glowing = want;
+            if want {
+                h.win.set_timer(T_GLOW, GLOW_MS);
+            } else {
+                h.win.kill_timer(T_GLOW);
+            }
         }
     }
 
@@ -638,6 +830,14 @@ pub fn create(owner: Option<Win>) -> Option<Rc<RefCell<SettingsWindow>>> {
         host.win.show_drawn(!park);
     }
     Some(w)
+}
+
+/// A whole number from 1 to `max`, as typed.
+fn whole(t: &str, max: i32) -> Option<i32> {
+    if t.is_empty() || !t.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    t.parse::<i32>().ok().filter(|v| (1..=max).contains(v))
 }
 
 #[allow(dead_code)]

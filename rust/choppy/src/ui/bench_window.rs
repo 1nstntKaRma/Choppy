@@ -577,9 +577,15 @@ impl BenchContent {
         h.invalidate();
     }
 
+    /// A run is going (an update waits for it to end).
+    pub fn running(&self) -> bool {
+        self.running
+    }
+
     fn finished(&mut self, h: &mut Host, rep: BenchReport) {
         h.win.kill_timer(T_TICK);
         self.running = false;
+        win::post_local(Box::new(crate::update::copies_done)); // an update that waited for the run
         self.add_new(rep.results.clone(), true);
         self.show_summary(&rep.results.clone(), true, rep.ended());
         self.totals = rep.totals();

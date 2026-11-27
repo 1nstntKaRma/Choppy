@@ -32,6 +32,10 @@ pub const REMAIN: Argb = 0xFFF59BC6;
 /// quick toggles: green dot = on, red dot = off
 pub const ON: Argb = 0xFF3DD27A;
 pub const OFF: Argb = 0xFFF0645F;
+/// an update is out: the tray icon's dot, the tray menu's dot, the settings' label and its glow
+pub const UPDATE: Argb = 0xFF3DD27A;
+pub const UPDATE_TEXT: Argb = 0xFF7BE3A6;
+pub const UPDATE_GLOW: Argb = 0xFF22C063;
 pub const SEP: Argb = 0xFF2E343C;
 pub const LINK: Argb = 0xFF6CC4F5;
 pub const WHITE: Argb = 0xFFFFFFFF;

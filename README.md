@@ -30,6 +30,7 @@
 - **Quick:** with Choppy in the tray, its window opens in a fraction of a second after Ctrl+V or a right-click paste.
 - **Checks your drives:** the drive's name on both sides of every copy, and a USB drive held back by its port, cable or hub is flagged beside its name (*⚠ USB 2.0, can do 5 Gbps*).
 - **Built-in Benchmark:** *Settings → Benchmark* runs Choppy VS Windows on every drive and saves a report with both times per route.
+- **One-click updates:** a new version puts a green dot on the tray icon and a glowing *Update to vX* at the top of Settings. One click installs it - your settings stay. A running copy finishes first.
 - **Zero dependencies:** one `Choppy.exe` (about 3.7 MB) with everything inside - nothing else to install. Installs per user - no administrator rights.
 
 ---
@@ -115,4 +116,4 @@ Everything is per user:
 
 ## License
 
-[MIT](LICENSE) - by 1nstntKaRma. No telemetry, no update checks: the link in *About* opens your browser only when you click it.
+[MIT](LICENSE) - by 1nstntKaRma. No telemetry. *Check for updates* (Settings: at startup, some seconds after it or every few days, or off) only asks GitHub which version is the latest; the link in *About* opens your browser only when you click it.

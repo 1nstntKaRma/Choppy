@@ -10,7 +10,8 @@
 #   .\build.ps1 -Shell RightClick     install / update, Default file manager off (only right-click "Paste with Choppy")
 #   .\build.ps1 -Shell Install        install / update, keep the user's choices (a first install turns Default file
 #                                     manager on), then open Choppy's settings
-#   .\build.ps1 -Shell Revert         remove Choppy (Ultracopier's startup entry comes back if Choppy had parked it)
+#   .\build.ps1 -Shell Update         as Install, without opening the settings (Choppy's own "Update to vX" runs this)
+#   .\build.ps1 -Shell Revert        remove Choppy (Ultracopier's startup entry comes back if Choppy had parked it)
 #   .\build.ps1 -Shell Cancel         build only
 #   .\build.ps1 -NoBuild -Shell ...   only install / remove (uses bin\Choppy.exe)
 #
@@ -19,7 +20,7 @@
 # user, through a one-time scheduled task: Choppy's Ctrl+V hook, clipboard and Explorer hand-off live in the
 # user's own session.
 param(
-    [ValidateSet('Ask', 'Apply', 'RightClick', 'Install', 'Revert', 'Cancel', 'Abort', '1', '2', '3', '4')][string]$Shell = 'Ask',
+    [ValidateSet('Ask', 'Apply', 'RightClick', 'Install', 'Update', 'Revert', 'Cancel', 'Abort', '1', '2', '3', '4')][string]$Shell = 'Ask',
     [switch]$NoBuild,
     [switch]$AsUserStep     # internal: this run is the signed-in user's part of an elevated run
 )

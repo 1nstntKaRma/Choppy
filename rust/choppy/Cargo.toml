@@ -52,6 +52,8 @@ windows = { version = "0.62", features = [
     "Win32_Security_Authorization",            # the pipe's access list (SDDL), the user's SID for the instance names
     "Win32_System_Variant",                    # asking Explorer's windows which folder they show (ShellWindows, IDispatch)
     "Win32_System_Kernel",                     # the crash filter's EXCEPTION_POINTERS (a crash revives the tray Choppy)
+    # 2.02: is there a newer release? (Windows' own HTTP; the update itself is a PowerShell script)
+    "Win32_Networking_WinHttp",
 ] }
 # Vector2 / Matrix3x2 in the Direct2D calls (part of the `windows` family, already in the lock file for look test A)
 windows-numerics = "0.3"

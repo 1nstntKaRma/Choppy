@@ -922,6 +922,15 @@ impl<'a> Canvas<'a> {
     /// A soft shadow under a rounded rectangle (WPF's DropShadowEffect: BlurRadius, ShadowDepth down-right at
     /// 315°, Opacity, black): rings of fading alpha, the cheap stand-in for a Gaussian blur.
     pub fn shadow(&mut self, r: Rect, radius: f64, blur: f64, depth: f64, opacity: f64) {
+        self.halo(r, radius, blur, depth, 0, opacity);
+    }
+
+    /// A soft glow of `color` (its RGB) all around a rounded rectangle: the shadow's rings, not moved.
+    pub fn glow(&mut self, r: Rect, radius: f64, blur: f64, color: Argb, opacity: f64) {
+        self.halo(r, radius, blur, 0.0, color & 0x00FF_FFFF, opacity);
+    }
+
+    fn halo(&mut self, r: Rect, radius: f64, blur: f64, depth: f64, rgb: Argb, opacity: f64) {
         let d = depth / std::f64::consts::SQRT_2;
         let steps = (blur * self.scale).ceil().max(1.0) as i32;
         let sigma = blur / 3.0;
@@ -929,7 +938,7 @@ impl<'a> Canvas<'a> {
             let spread = blur * (i as f64 + 0.5) / steps as f64;
             // the share of a Gaussian beyond `spread` (each ring adds its part)
             let a = opacity * (-(spread * spread) / (2.0 * sigma * sigma)).exp() / steps as f64 * 2.2;
-            let c = ((a.clamp(0.0, 1.0) * 255.0) as u32) << 24;
+            let c = ((a.clamp(0.0, 1.0) * 255.0) as u32) << 24 | rgb;
             let rr = Rect::new(r.x + d - spread / 2.0, r.y + d - spread / 2.0, r.w + spread, r.h + spread);
             self.fill_round(rr, radius + spread / 2.0, c);
         }

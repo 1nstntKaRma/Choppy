@@ -4,6 +4,8 @@
 //!   shot main|conflict|settings|dialog|benchmark|unithelp file.png     press pause|skip|cancel|verify|unit|queue|retry
 //!   conflict replace|skip|keepboth|compare [all]   dialog 1|2   about   settings open|close   set key value
 //!   benchmark ...   state file.json   enqueue copy|move|paste ...args separated by |   quit
+//!   update state|fake vX|click tray|settings|done|updated vX settings|tray|failed text (2.02)
+//!   shot trayicon file.png [px]   shot traymenu file.png
 #![deny(unsafe_code)]
 
 use std::io::Write;
@@ -94,6 +96,13 @@ fn run(line: &str) -> String {
             let (what, file) = arg.split_once(' ').unwrap_or((arg, ""));
             let file = PathBuf::from(file);
             // the settings' "?" card is a pop-up of its own: "set unithelp 1", then "shot unithelp file.png"
+            if what == "trayicon" {
+                let (f, px) = file.to_str().unwrap_or("").rsplit_once(' ').and_then(|(f, n)| n.parse::<i32>().ok().map(|n| (f.to_string(), n))).unwrap_or((file.display().to_string(), 0));
+                return if crate::ui::tray_menu::shot_icon(Path::new(&f), px) { "ok".into() } else { "failed".into() };
+            }
+            if what == "traymenu" {
+                return if crate::ui::tray_menu::shot(&file) { "ok".into() } else { "failed".into() };
+            }
             if what == "unithelp" {
                 let Some(s) = crate::app::with(|a| a.settings.clone()).flatten() else { return "settings not open".into() };
                 let Ok(s) = s.try_borrow() else { return "busy".into() };
@@ -201,6 +210,7 @@ fn run(line: &str) -> String {
             crate::app::handle_args(&args);
             "ok".into()
         }
+        "update" => crate::update::for_test(arg),
         "quit" => {
             crate::app::quit_for_test();
             "ok".into()

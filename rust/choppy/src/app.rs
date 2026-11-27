@@ -242,7 +242,12 @@ fn make_manager() -> Arc<JobManager> {
         // a new copy: the window comes up on top
         win::post(Box::new(|| show_main(true)));
     }));
-    m.all_done = Some(Arc::new(|_| win::post(Box::new(maybe_exit))));
+    m.all_done = Some(Arc::new(|_| {
+        win::post(Box::new(|| {
+            crate::update::copies_done(); // an update that waited for the copies
+            maybe_exit();
+        }))
+    }));
     let m = Arc::new(m);
     m.on_changed(Arc::new(|| {
         with_main(|w| {
@@ -307,6 +312,20 @@ pub fn handle_args(args: &[WString]) {
         "--quit" => {
             quit_from_tray();
             return;
+        }
+        // the update script: the new Choppy is in place / what went wrong (either way the tray comes back with
+        // Default file manager on)
+        "--updated" | "--update-failed" => {
+            let takeover = Settings::current().explorer_takeover;
+            if takeover {
+                apply_takeover();
+            }
+            let a1 = args.get(1).map(|a| a.to_string_lossy()).unwrap_or_default();
+            if cmd == "--updated" {
+                crate::update::updated(&a1, args.get(2).is_some_and(|a| a.eq_ignore_case_str("settings")));
+            } else {
+                crate::update::failed(&a1);
+            }
         }
         _ => show_settings(None),
     }
@@ -473,6 +492,20 @@ pub fn show_settings(owner: Option<Win>) {
     }
     if let Some(w) = settings_window::create(owner) {
         with(|a| a.settings = Some(w));
+    }
+    crate::update::start();
+}
+
+pub fn settings_win() -> Option<Win> {
+    with(|a| a.settings.clone()).flatten().and_then(|s| s.try_borrow().ok().map(|s| s.host.win))
+}
+
+/// The settings window paints again (the update label came or went).
+pub fn settings_invalidate() {
+    if let Some(s) = with(|a| a.settings.clone()).flatten()
+        && let Ok(s) = s.try_borrow()
+    {
+        s.host.invalidate();
     }
 }
 
@@ -694,7 +727,7 @@ pub fn ensure_tray() {
     }
     with(|a| a.tray = true);
     win::tray_add(
-        "Choppy",
+        &crate::update::idle_tip(),
         Rc::new(|m| match m {
             // NotifyIcon.MouseClick (left) opens; the right button shows the menu
             0x0202 => win::post_local(Box::new(tray_open)),
@@ -717,6 +750,8 @@ pub fn set_tray_text(text: &str) {
     if !with(|a| a.tray).unwrap_or(false) {
         return;
     }
+    // nothing copies: "Choppy", or the update that is out
+    let text = if text == "Choppy" { crate::update::idle_tip() } else { text.to_string() };
     let t: String = text.chars().take(63).collect();
     win::tray_tip(&t);
 }
@@ -777,6 +812,7 @@ pub fn apply_takeover() {
             paste_hook::start(Some(on_explorer_paste), false);
         }
         schedule_warm_up();
+        crate::update::start();
     } else {
         paste_hook::stop();
         let busy = manager().busy();

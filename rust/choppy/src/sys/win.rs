@@ -1163,14 +1163,171 @@ fn copy_w(dst: &mut [u16], s: &str) {
     dst[v.len()] = 0;
 }
 
+thread_local! {
+    /// The tray icon's dot (an update is out): its color, and the icon made with it (destroyed when replaced).
+    static TRAY_DOT: Cell<Option<u32>> = const { Cell::new(None) };
+    static TRAY_DOTTED: Cell<Option<isize>> = const { Cell::new(None) };
+}
+
+/// The app icon at `px` x `px` as straight-alpha BGRA, top row first.
+pub fn icon_pixels(px: i32) -> Option<Vec<u8>> {
+    unsafe {
+        let h = LoadImageW(Some(inst()), PCWSTR(ICON_ID as usize as *const u16), IMAGE_ICON, px, px, LR_DEFAULTCOLOR).ok()?;
+        let icon = HICON(h.0);
+        let mut info = ICONINFO::default();
+        let got = GetIconInfo(icon, &mut info).is_ok();
+        let _ = DestroyIcon(icon);
+        if !got {
+            return None;
+        }
+        let dc = CreateCompatibleDC(None);
+        let mut bi = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: px,
+                biHeight: -px,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut out = vec![0u8; (px * px * 4) as usize];
+        let n = GetDIBits(dc, info.hbmColor, 0, px as u32, Some(out.as_mut_ptr() as *mut c_void), &mut bi, DIB_RGB_COLORS);
+        // an icon without an alpha channel: its mask says what shows (black = the icon)
+        if n == px && out.chunks(4).all(|p| p[3] == 0) {
+            let mut mask = vec![0u8; out.len()];
+            if GetDIBits(dc, info.hbmMask, 0, px as u32, Some(mask.as_mut_ptr() as *mut c_void), &mut bi, DIB_RGB_COLORS) == px {
+                for (p, m) in out.chunks_mut(4).zip(mask.chunks(4)) {
+                    p[3] = if m[0] == 0 { 255 } else { 0 };
+                }
+            }
+        }
+        let _ = DeleteObject(info.hbmColor.into());
+        let _ = DeleteObject(info.hbmMask.into());
+        let _ = DeleteDC(dc);
+        (n == px).then_some(out)
+    }
+}
+
+/// A round dot of `color` (0xAARRGGBB) near the top-left corner (the axe's head is top right), with a clear ring around
+/// it so it stands apart from the icon on any taskbar, and a gap to the edges so it doesn't touch the corner. 16 px: a
+/// 5 px dot, a 3/4 px ring, a 1 px gap.
+pub fn add_dot(px: &mut [u8], n: i32, color: u32) {
+    let unit = n as f64 / 16.0;
+    let r = 2.5 * unit;
+    let ring = 0.75 * unit;
+    let gap = unit.round().max(1.0);
+    let (cx, cy) = (gap + ring + r, gap + ring + r);
+    let dot_c = [(color & 0xFF) as f64, ((color >> 8) & 0xFF) as f64, ((color >> 16) & 0xFF) as f64];
+    for y in 0..n {
+        for x in 0..n {
+            // coverage from 4 x 4 samples: the dot, and the dot with its ring
+            let (mut dot, mut cut) = (0.0, 0.0);
+            for sy in 0..4 {
+                for sx in 0..4 {
+                    let fx = x as f64 + (sx as f64 + 0.5) / 4.0 - cx;
+                    let fy = y as f64 + (sy as f64 + 0.5) / 4.0 - cy;
+                    let d = (fx * fx + fy * fy).sqrt();
+                    if d <= r {
+                        dot += 1.0 / 16.0;
+                    }
+                    if d <= r + ring {
+                        cut += 1.0 / 16.0;
+                    }
+                }
+            }
+            if cut == 0.0 {
+                continue;
+            }
+            let i = ((y * n + x) * 4) as usize;
+            let a = px[i + 3] as f64 / 255.0 * (1.0 - cut);
+            let out_a = dot + a * (1.0 - dot);
+            for c in 0..3 {
+                px[i + c] = if out_a > 0.0 { ((dot_c[c] * dot + px[i + c] as f64 * a * (1.0 - dot)) / out_a).round().clamp(0.0, 255.0) as u8 } else { 0 };
+            }
+            px[i + 3] = (out_a * 255.0).round() as u8;
+        }
+    }
+}
+
+/// An icon from straight-alpha BGRA pixels.
+fn icon_from_pixels(px: &[u8], n: i32) -> Option<HICON> {
+    unsafe {
+        let bi = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: n,
+                biHeight: -n,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits: *mut c_void = std::ptr::null_mut();
+        let color = CreateDIBSection(None, &bi, DIB_RGB_COLORS, &mut bits, None, 0).ok()?;
+        std::ptr::copy_nonoverlapping(px.as_ptr(), bits as *mut u8, px.len());
+        // the alpha channel decides what shows; the mask is only there because an icon needs one
+        let row = ((n + 15) / 16 * 2) as usize;
+        let zeros = vec![0u8; row * n as usize];
+        let mask = CreateBitmap(n, n, 1, 1, Some(zeros.as_ptr() as *const c_void));
+        let info = ICONINFO { fIcon: TRUE, xHotspot: 0, yHotspot: 0, hbmMask: mask, hbmColor: color };
+        let icon = CreateIconIndirect(&info).ok();
+        let _ = DeleteObject(color.into());
+        let _ = DeleteObject(mask.into());
+        icon
+    }
+}
+
+/// The size of the tray's icons (SM_CXSMICON: 16 at 100 %, 20 at 125 %).
+pub fn small_icon_px() -> i32 {
+    unsafe { GetSystemMetrics(SM_CXSMICON) }
+}
+
+/// The tray's icon: the small app icon, with the dot when there is one.
+fn tray_icon() -> HICON {
+    unsafe {
+        let px = GetSystemMetrics(SM_CXSMICON);
+        if let Some(c) = TRAY_DOT.with(|d| d.get())
+            && let Some(mut p) = icon_pixels(px)
+        {
+            add_dot(&mut p, px, c);
+            if let Some(icon) = icon_from_pixels(&p, px) {
+                if let Some(old) = TRAY_DOTTED.with(|d| d.replace(Some(icon.0 as isize))) {
+                    let _ = DestroyIcon(HICON(old as *mut c_void));
+                }
+                return icon;
+            }
+        }
+        LoadImageW(Some(inst()), PCWSTR(ICON_ID as usize as *const u16), IMAGE_ICON, px, px, LR_DEFAULTCOLOR).map(|h| HICON(h.0)).unwrap_or_default()
+    }
+}
+
+/// Puts a dot of `color` on the tray icon (None takes it off); kept for the icon added later.
+pub fn tray_dot(color: Option<u32>) {
+    if TRAY_DOT.with(|d| d.replace(color)) == color {
+        return;
+    }
+    TRAY.with(|t| {
+        if let Some(d) = t.borrow_mut().as_mut() {
+            d.hIcon = tray_icon();
+            d.uFlags = NIF_ICON;
+            unsafe {
+                let _ = Shell_NotifyIconW(NIM_MODIFY, d);
+            }
+            d.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+        }
+    });
+}
+
 /// Adds the tray icon (the small app icon) with its tooltip; `on` gets its mouse messages.
 pub fn tray_add(tip: &str, on: Rc<dyn Fn(u32)>) {
     TRAY_HANDLER.with(|t| *t.borrow_mut() = Some(on));
     unsafe {
-        let px = GetSystemMetrics(SM_CXSMICON);
-        let icon = LoadImageW(Some(inst()), PCWSTR(ICON_ID as usize as *const u16), IMAGE_ICON, px, px, LR_DEFAULTCOLOR)
-            .map(|h| HICON(h.0))
-            .unwrap_or_default();
+        let icon = tray_icon();
         let mut d = NOTIFYICONDATAW {
             cbSize: size_of::<NOTIFYICONDATAW>() as u32,
             hWnd: dispatch_hwnd(),

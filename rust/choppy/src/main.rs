@@ -15,6 +15,7 @@ mod job_manager;
 mod sys; // the one module with unsafe code (it allows it itself)
 mod testhook;
 mod ui;
+mod update;
 mod wstr;
 
 #[cfg(test)]

@@ -55,7 +55,42 @@ pub struct Settings {
     pub extended: bool,                     // copy window: extended view (else compact)
     pub bench_runs_quick: i32,              // Benchmark: runs each of a Quick / Thorough run (0 = the default, 2 / 3)
     pub bench_runs_thorough: i32,
+    pub update_check: bool,                 // look for a newer Choppy on GitHub (2.02)
+    pub update_when: UpdateWhen,
+    pub update_after_seconds: i32,          // UpdateWhen::After: this many seconds after Choppy starts
+    pub update_every_days: i32,             // UpdateWhen::Every: when the last check is this many days old
+    pub update_checked: i64,                // the last check that got an answer (UTC FILETIME, 0 = never)
+    pub update_latest: Option<String>,      // the latest release it saw ("v2.02")
 }
+
+/// When Choppy looks for a newer version.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UpdateWhen {
+    Startup,
+    After,
+    Every,
+}
+
+impl UpdateWhen {
+    pub fn name(self) -> &'static str {
+        match self {
+            UpdateWhen::Startup => "startup",
+            UpdateWhen::After => "after",
+            UpdateWhen::Every => "every",
+        }
+    }
+    fn parse(v: &str) -> Option<UpdateWhen> {
+        match v {
+            "startup" => Some(UpdateWhen::Startup),
+            "after" => Some(UpdateWhen::After),
+            "every" => Some(UpdateWhen::Every),
+            _ => None,
+        }
+    }
+}
+
+pub const MAX_UPDATE_SECONDS: i32 = 3600;
+pub const MAX_UPDATE_DAYS: i32 = 365;
 
 impl Default for Settings {
     fn default() -> Self {
@@ -72,6 +107,12 @@ impl Default for Settings {
             extended: false,
             bench_runs_quick: 0,
             bench_runs_thorough: 0,
+            update_check: true,
+            update_when: UpdateWhen::Startup,
+            update_after_seconds: 30,
+            update_every_days: 7,
+            update_checked: 0,
+            update_latest: None,
         }
     }
 }
@@ -167,6 +208,28 @@ impl Settings {
         if let Some(v) = d.get("BenchRunsThorough") {
             s.bench_runs_thorough = runs(v);
         }
+        if let Some(v) = d.get("UpdateCheck") {
+            s.update_check = v != "0";
+        }
+        if let Some(w) = d.get("UpdateWhen").and_then(UpdateWhen::parse) {
+            s.update_when = w;
+        }
+        if let Some(x) = d.get("UpdateAfterSeconds").and_then(netfmt::parse_int)
+            && (1..=MAX_UPDATE_SECONDS).contains(&x)
+        {
+            s.update_after_seconds = x;
+        }
+        if let Some(x) = d.get("UpdateEveryDays").and_then(netfmt::parse_int)
+            && (1..=MAX_UPDATE_DAYS).contains(&x)
+        {
+            s.update_every_days = x;
+        }
+        if let Some(x) = d.get("UpdateChecked").and_then(|v| v.parse::<i64>().ok()) {
+            s.update_checked = x;
+        }
+        if let Some(v) = d.get("UpdateLatest").filter(|v| !v.is_empty()) {
+            s.update_latest = Some(v.to_string());
+        }
         let layout = d.get("SettingsVersion").and_then(netfmt::parse_int);
         if layout.is_none_or(|l| l < LAYOUT) {
             // from an older version (or none yet): the defaults, once; from now on they stay as they are set
@@ -198,6 +261,12 @@ impl Settings {
             ("View", if self.extended { "extended" } else { "compact" }.into()),
             ("BenchRunsQuick", self.bench_runs_quick.to_string()),
             ("BenchRunsThorough", self.bench_runs_thorough.to_string()),
+            ("UpdateCheck", if self.update_check { "1" } else { "0" }.into()),
+            ("UpdateWhen", self.update_when.name().into()),
+            ("UpdateAfterSeconds", self.update_after_seconds.to_string()),
+            ("UpdateEveryDays", self.update_every_days.to_string()),
+            ("UpdateChecked", self.update_checked.to_string()),
+            ("UpdateLatest", self.update_latest.clone().unwrap_or_default()),
             ("SettingsVersion", LAYOUT.to_string()),
         ];
         let _ = write(key, &d);
@@ -533,7 +602,14 @@ mod tests {
         assert_eq!(saved["SpeedLimitMbps"], "0");
         assert_eq!(saved["Policy"], "Ask");
         assert_eq!(saved["View"], "compact");
-        assert_eq!(saved.len(), 13);
+        // 2.02: Check for updates, on, at startup; never looked yet
+        assert_eq!(saved["UpdateCheck"], "1");
+        assert_eq!(saved["UpdateWhen"], "startup");
+        assert_eq!(saved["UpdateAfterSeconds"], "30");
+        assert_eq!(saved["UpdateEveryDays"], "7");
+        assert_eq!(saved["UpdateChecked"], "0");
+        assert_eq!(saved["UpdateLatest"], "");
+        assert_eq!(saved.len(), 19);
         // values of other kinds, read as .NET reads them; a value no longer kept is removed on save
         reg_add(&key, "CloseAfterSeconds", "REG_DWORD", "7");
         reg_add(&key, "SpeedUnit", "REG_EXPAND_SZ", "%SystemRoot%");
